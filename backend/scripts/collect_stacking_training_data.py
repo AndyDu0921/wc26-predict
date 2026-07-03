@@ -31,9 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
-import sqlite3
 import sys
 import time
 from collections import defaultdict
@@ -56,6 +54,13 @@ from app.core.engine import (
     CoreFusionResult,
     NEGBIN_R,
     NEGBIN_FUSION_WEIGHT,
+)
+from app.core.backtest_helpers import (
+    DEFAULT_ELO, ELO_HOME_ADVANTAGE, ELO_K_FACTOR, DC_HALF_LIFE,
+    WC26_COMPETITION, KO_STAGES,
+    load_all_training_data, load_wc26_eval_matches,
+    compute_elo_probs, update_elo_ratings, build_elo_ratings_as_of,
+    compute_pi_probs, update_pi_ratings, build_pi_ratings_as_of,
 )
 from app.core.stacking_features import (
     assemble_feature_vector,
@@ -87,261 +92,19 @@ WC_ENHANCER_WEIGHT = 0.10
 WC_ELO_WEIGHT = 0.12
 WC_PI_WEIGHT = 0.17
 
-# ── Constants ──
-WC26_COMPETITION = "FIFA World Cup 2026"
-KO_STAGES = {
-    "Round of 32", "Round of 16", "Quarter-finals",
-    "Semi-finals", "Final", "Third Place",
-}
-DEFAULT_ELO = 1500.0
-ELO_HOME_ADVANTAGE = 100.0
-ELO_K_FACTOR = 32.0
-DC_HALF_LIFE = 180  # confirmed optimal via grid search
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  Data loading (shared with backtest_full_pipeline.py)
-# ═══════════════════════════════════════════════════════════════════════
+# ── Thin wrappers around shared backtest helpers ──
+# load_all_training_data / load_wc26_eval_matches are imported from
+# app.core.backtest_helpers — re-export under the old function signatures.
 
 def load_all_training_data(min_date: str = "2020-01-01") -> pd.DataFrame:
-    """Load finished national-team matches from SQLite."""
-    if not DB_PATH.exists():
-        raise FileNotFoundError(f"Database not found: {DB_PATH}")
-
-    conn = sqlite3.connect(str(DB_PATH))
-    query = f"""
-        SELECT ht.name AS home_team,
-               at.name AS away_team,
-               mr.home_goals,
-               mr.away_goals,
-               m.match_date,
-               COALESCE(m.competition_weight, 1.0) AS competition_weight,
-               COALESCE(m.is_neutral_venue, 0)     AS is_neutral_venue,
-               m.competition,
-               m.competition_type,
-               m.stage
-        FROM matches m
-        JOIN teams ht ON m.home_team_id = ht.id
-        JOIN teams at ON m.away_team_id = at.id
-        JOIN match_results mr ON m.id = mr.match_id
-        WHERE m.status = 'finished'
-          AND ht.team_type = 'national'
-          AND at.team_type = 'national'
-          AND m.match_date >= '{min_date}'
-        ORDER BY m.match_date ASC
-    """
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-
-    df["match_date"] = pd.to_datetime(df["match_date"], utc=True, format="mixed")
-    print(f"  Loaded {len(df):,} training matches, {df.home_team.nunique()} teams")
-    return df
-
+    """Load finished national-team matches (→ shared helper)."""
+    from app.core.backtest_helpers import load_all_training_data as _load
+    return _load(DB_PATH, min_date=min_date)
 
 def load_wc26_eval_matches() -> pd.DataFrame:
-    """Load WC26 matches that have results (evaluation targets)."""
-    conn = sqlite3.connect(str(DB_PATH))
-    query = """
-        SELECT ht.name AS home_team,
-               at.name AS away_team,
-               mr.home_goals,
-               mr.away_goals,
-               m.match_date,
-               COALESCE(m.is_neutral_venue, 1) AS is_neutral_venue,
-               m.stage
-        FROM matches m
-        JOIN teams ht ON m.home_team_id = ht.id
-        JOIN teams at ON m.away_team_id = at.id
-        JOIN match_results mr ON m.id = mr.match_id
-        WHERE m.competition = ?
-        ORDER BY m.match_date ASC
-    """
-    df = pd.read_sql_query(query, conn, params=(WC26_COMPETITION,))
-    conn.close()
-
-    df["match_date"] = pd.to_datetime(df["match_date"], utc=True, format="mixed")
-    group_count = sum(1 for s in df["stage"] if s not in KO_STAGES)
-    ko_count = sum(1 for s in df["stage"] if s in KO_STAGES)
-    print(f"  WC26 evaluation matches: {len(df)} ({group_count} group + {ko_count} KO)")
-    return df
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  Elo computation (walk-forward, identical to backtest_full_pipeline.py)
-# ═══════════════════════════════════════════════════════════════════════
-
-def expected_score(r_home: float, r_away: float) -> float:
-    return 1.0 / (1.0 + 10.0 ** ((r_away - r_home) / 400.0))
-
-
-def elo_davidson_draw(gap: float, kappa: float = 0.30) -> float:
-    r = gap / 400.0
-    p_draw = kappa * math.sqrt(
-        (1.0 / (1.0 + 10.0 ** (-r))) *
-        (1.0 / (1.0 + 10.0 ** r))
-    )
-    return float(p_draw)
-
-
-def compute_elo_probs(
-    home_team: str, away_team: str,
-    ratings: dict[str, float],
-    is_neutral: bool = True,
-    kappa: float = 0.30,
-) -> dict[str, float]:
-    r_home = ratings.get(home_team, DEFAULT_ELO)
-    r_away = ratings.get(away_team, DEFAULT_ELO)
-    home_adv = 0.0 if is_neutral else ELO_HOME_ADVANTAGE
-
-    adj_home = r_home + home_adv
-    gap = adj_home - r_away
-
-    p_home_win = expected_score(adj_home, r_away)
-    p_away_win = 1.0 - p_home_win
-    p_draw = elo_davidson_draw(gap, kappa)
-
-    remaining = 1.0 - p_draw
-    if remaining > 0:
-        p_home_win = p_home_win * remaining
-        p_away_win = p_away_win * remaining
-
-    total = p_home_win + p_draw + p_away_win
-    if total > 0:
-        p_home_win /= total
-        p_draw /= total
-        p_away_win /= total
-
-    return {
-        "home": float(p_home_win),
-        "draw": float(p_draw),
-        "away": float(p_away_win),
-    }
-
-
-def update_elo_ratings(
-    ratings: dict[str, float],
-    home_team: str, away_team: str,
-    home_goals: int, away_goals: int,
-    is_neutral: bool = True,
-    k_factor: float = ELO_K_FACTOR,
-) -> None:
-    r_home = ratings.get(home_team, DEFAULT_ELO)
-    r_away = ratings.get(away_team, DEFAULT_ELO)
-    home_adv = 0.0 if is_neutral else ELO_HOME_ADVANTAGE
-
-    adj_home = r_home + home_adv
-    e_home = expected_score(adj_home, r_away)
-    e_away = 1.0 - e_home
-
-    if home_goals > away_goals:
-        s_home, s_away = 1.0, 0.0
-    elif home_goals == away_goals:
-        s_home, s_away = 0.5, 0.5
-    else:
-        s_home, s_away = 0.0, 1.0
-
-    goal_diff = abs(home_goals - away_goals)
-    g_mult = 1.0
-    if goal_diff == 2:
-        g_mult = 1.5
-    elif goal_diff >= 3:
-        g_mult = 1.75
-
-    ratings[home_team] = r_home + k_factor * g_mult * (s_home - e_home)
-    ratings[away_team] = r_away + k_factor * g_mult * (s_away - e_away)
-
-
-def build_elo_ratings_as_of(
-    history_df: pd.DataFrame,
-    cutoff_date: pd.Timestamp,
-) -> dict[str, float]:
-    ratings: dict[str, float] = {}
-    pre_df = history_df[history_df["match_date"] < cutoff_date]
-    for row in pre_df.itertuples(index=False):
-        update_elo_ratings(
-            ratings,
-            row.home_team, row.away_team,
-            int(row.home_goals), int(row.away_goals),
-            is_neutral=bool(row.is_neutral_venue),
-        )
-    return ratings
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  Pi-Rating computation (walk-forward)
-# ═══════════════════════════════════════════════════════════════════════
-
-def compute_pi_probs(
-    home_team: str, away_team: str,
-    pi_ratings: dict[str, float],
-    is_neutral: bool = True,
-) -> dict[str, float]:
-    r_home = pi_ratings.get(home_team, 0.0)
-    r_away = pi_ratings.get(away_team, 0.0)
-
-    home_adj = 0.0 if is_neutral else 0.3
-    xg_diff = (r_home + home_adj - r_away) * 0.35
-
-    p_home_win = 1.0 / (1.0 + math.exp(-xg_diff * 2.5))
-    p_away_win = 1.0 / (1.0 + math.exp(xg_diff * 2.5))
-    p_draw = 0.26 * math.exp(-xg_diff * xg_diff / 2.0)
-
-    total = p_home_win + p_draw + p_away_win
-    if total > 0:
-        p_home_win /= total
-        p_draw /= total
-        p_away_win /= total
-
-    return {
-        "home": float(p_home_win),
-        "draw": float(p_draw),
-        "away": float(p_away_win),
-    }
-
-
-def update_pi_ratings(
-    pi_ratings: dict[str, float],
-    home_team: str, away_team: str,
-    home_goals: int, away_goals: int,
-    is_neutral: bool = True,
-    k: float = 0.1,
-) -> None:
-    r_home = pi_ratings.get(home_team, 0.0)
-    r_away = pi_ratings.get(away_team, 0.0)
-    home_adj = 0.0 if is_neutral else 0.3
-
-    xg_diff = (r_home + home_adj - r_away) * 0.35
-    e_home = 1.0 / (1.0 + math.exp(-xg_diff * 2.5))
-    e_away = 1.0 - e_home
-
-    if home_goals > away_goals:
-        s_home, s_away = 1.0, 0.0
-    elif home_goals == away_goals:
-        s_home, s_away = 0.5, 0.5
-    else:
-        s_home, s_away = 0.0, 1.0
-
-    goal_diff = abs(home_goals - away_goals)
-    g_mult = min(2.0, 1.0 + goal_diff * 0.25)
-
-    pi_ratings[home_team] = r_home + k * g_mult * (s_home - e_home)
-    pi_ratings[away_team] = r_away + k * g_mult * (s_away - e_away)
-
-
-def build_pi_ratings_as_of(
-    history_df: pd.DataFrame,
-    cutoff_date: pd.Timestamp,
-) -> dict[str, float]:
-    pi_ratings: dict[str, float] = {}
-    pre_df = history_df[history_df["match_date"] < cutoff_date]
-    for row in pre_df.itertuples(index=False):
-        update_pi_ratings(
-            pi_ratings,
-            row.home_team, row.away_team,
-            int(row.home_goals), int(row.away_goals),
-            is_neutral=bool(row.is_neutral_venue),
-        )
-    return pi_ratings
+    """Load WC26 evaluation matches (→ shared helper)."""
+    from app.core.backtest_helpers import load_wc26_eval_matches as _load_eval
+    return _load_eval(DB_PATH)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -489,11 +252,13 @@ def collect_training_data(
             dc_xg_away = float(dc_pred.get("away_xg", 1.0))
             dc_probs = {"home": dc_home, "draw": dc_draw, "away": dc_away}
 
-            # ── 2. Elo probs ──
-            elo_probs = compute_elo_probs(home_team, away_team, elo_ratings, is_neutral, kappa)
+            # ── 2. Elo probs (shared helper returns home_win_prob/draw_prob/away_win_prob; remap to short keys for feature vector) ──
+            _elo_raw = compute_elo_probs(home_team, away_team, elo_ratings, is_neutral, kappa)
+            elo_probs = {"home": _elo_raw["home_win_prob"], "draw": _elo_raw["draw_prob"], "away": _elo_raw["away_win_prob"]}
 
             # ── 3. Pi probs ──
-            pi_probs = compute_pi_probs(home_team, away_team, pi_ratings, is_neutral)
+            _pi_raw = compute_pi_probs(home_team, away_team, pi_ratings, is_neutral)
+            pi_probs = {"home": _pi_raw["home_win_prob"], "draw": _pi_raw["draw_prob"], "away": _pi_raw["away_win_prob"]}
 
             # ── 4. NegBin probs ──
             negbin_probs = compute_negbin_probs(dc_xg_home, dc_xg_away)

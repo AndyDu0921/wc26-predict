@@ -376,11 +376,20 @@ def format_probability_ci(ci_data: dict) -> str:
     return f"{med:.0f}% (50% CI: {ci50_l:.0f}%–{ci50_h:.0f}%, 95% CI: {ci95_l:.0f}%–{ci95_h:.0f}%)"
 
 
+def _can_use_box_drawing() -> bool:
+    """Check whether the current stdout supports Unicode box-drawing."""
+    return sys.stdout.encoding and sys.stdout.encoding.upper() in (
+        "UTF-8", "UTF8", "UTF_8", "UTF-16", "UTF-16-LE", "UTF-16-BE",
+    )
+
+
 def print_bootstrap_summary(result: dict):
     """Print a human-readable summary of bootstrap results."""
     if not result:
         print("  No results to print.")
         return
+
+    use_unicode = _can_use_box_drawing()
 
     print(f"\n{'='*70}")
     print(f"BOOTSTRAP UNCERTAINTY QUANTIFICATION")
@@ -388,18 +397,33 @@ def print_bootstrap_summary(result: dict):
     print(f"  Bootstrap samples: {result['n_bootstrap']} (failed: {result['n_failed']})")
     print(f"{'='*70}")
 
-    print(f"\n  ╔══════════════╤══════════╤═══════════════════════════════════════════╗")
-    print(f"  ║  Outcome      │  Point   │  95% Bootstrap CI                          ║")
-    print(f"  ╠══════════════╪══════════╪═══════════════════════════════════════════╣")
+    if use_unicode:
+        print(f"\n  ╔{'═'*12}╤{'═'*10}╤{'═'*48}╗")
+        print(f"  ║  Outcome      │  Point   │  95% Bootstrap CI                          ║")
+        print(f"  ╠{'═'*12}╪{'═'*10}╪{'═'*48}╣")
+    else:
+        sep = "+" + "-"*12 + "+" + "-"*10 + "+" + "-"*48 + "+"
+        print(f"\n  {sep}")
+        print(f"  |  Outcome      |  Point   |  95% Bootstrap CI                          |")
+        print(f"  |{'='*12}|{'='*10}|{'='*48}|")
+
     for key, label in [("home_win", f"{result['home_team']} win"),
                         ("draw", "Draw"),
                         ("away_win", f"{result['away_team']} win")]:
         ci = result[key]
         base = result["base_prediction"][key]
-        in_ci = "✓" if ci.get("base_in_95ci", False) else "✗"
-        print(f"  ║ {label:12s} │ {base:5.1f}%   │ [{ci['ci95_low']:5.1f}%, {ci['ci95_high']:5.1f}%]  "
-              f"(base in CI: {in_ci})  ║")
-    print(f"  ╚══════════════╧══════════╧═══════════════════════════════════════════╝")
+        in_ci = "Y" if ci.get("base_in_95ci", False) else "N"
+        if use_unicode:
+            print(f"  ║ {label:12s} │ {base:5.1f}%   │ [{ci['ci95_low']:5.1f}%, {ci['ci95_high']:5.1f}%]  "
+                  f"(base in CI: {in_ci})  ║")
+        else:
+            print(f"  | {label:12s} | {base:5.1f}%   | [{ci['ci95_low']:5.1f}%, {ci['ci95_high']:5.1f}%]  "
+                  f"(base in CI: {in_ci})  |")
+
+    if use_unicode:
+        print(f"  ╚{'═'*12}╧{'═'*10}╧{'═'*48}╝")
+    else:
+        print(f"  +{'-'*12}+{'-'*10}+{'-'*48}+")
 
     # xG uncertainty
     print(f"\n  xG Bootstrap (95% CI):")

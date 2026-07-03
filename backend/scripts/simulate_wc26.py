@@ -30,17 +30,17 @@ import pandas as pd
 from app.services.artifact_registry import load_registry, validate_bundle
 from app.services.dixon_coles import DixonColesModel
 from app.services.tournament_simulator import TournamentSimulator
-from app.services.elo_ratings import EloRatingSystem, fuse_elo_probabilities
-from app.services.pi_ratings import PiRatingWrapper, fuse_pi_probabilities
+from app.services.elo_ratings import EloRatingSystem
+from app.services.pi_ratings import PiRatingWrapper
 from app.services.tabular_match_model import (
     TabularMatchEnhancer,
 )
 from app.services.weights import get_weight_config
-from app.services.weibull_model import WeibullWrapper, fuse_weibull_probs
+from app.services.weibull_model import WeibullWrapper
 from app.services.market.sync_provider import fetch_market_consensus_sync
 from app.core.engine import (
-    attenuate_market_boost,
-    fuse_dc_enhancer_adaptive,
+    run_core_fusion,
+    apply_market_boost,
 )
 
 # ── Constants ──────────────────────────────────────────────────────────
@@ -174,20 +174,25 @@ def predict_group_match(
     mode: str,
     weight_config: Any,
 ) -> dict[str, float]:
-    """Predict 3-way probabilities for a single group match."""
+    """Predict 3-way probabilities for a single group match.
+
+    V4.6.0: Uses the unified run_core_fusion() engine (shared with the
+    production pipeline).  This replaces the old per-component fuse_*()
+    calls and adds NegBin overdispersion correction that was previously
+    missing from the tournament simulator path.
+    """
     is_neutral = True
 
     # Step 1: Dixon-Coles
     dc_pred = dc.predict_match(home, away, is_neutral_venue=is_neutral)
-    fused = {
+    dc_probs = {
         "home_win_prob": dc_pred["home_win_prob"],
         "draw_prob": dc_pred["draw_prob"],
         "away_win_prob": dc_pred["away_win_prob"],
     }
 
-    # Step 2: TabularMatchEnhancer (standard+)
-    max_div = 0.0
-    direction_conflict = False
+    # Step 2: Compute individual component predictions
+    enh_probs = None
     if mode in ("standard", "full") and enhancer is not None:
         match_date = training_df["match_date"].max()
         enh_pred = enhancer.predict_match(
@@ -195,75 +200,67 @@ def predict_group_match(
             competition_weight=1.0, is_neutral_venue=is_neutral,
             training_df=training_df,
         )
-        dc_raw = {
-            "home_win_prob": fused["home_win_prob"],
-            "draw_prob": fused["draw_prob"],
-            "away_win_prob": fused["away_win_prob"],
-        }
-        enh_raw = {
+        enh_probs = {
             "home_win_prob": enh_pred["home_win_prob"],
             "draw_prob": enh_pred["draw_prob"],
             "away_win_prob": enh_pred["away_win_prob"],
         }
-        fused, max_div, direction_conflict, _dc_w = fuse_dc_enhancer_adaptive(
-            dc_raw, enh_raw, weight_config.dc,
-        )
 
-    # Step 2.5: Weibull (standard+, applied after Enhancer for consistency)
-    # V4.0.3-fix: Weibull was missing from tournament simulation pipeline.
+    wb_probs = None
     if mode in ("standard", "full") and weibull is not None and weibull._fitted:
         wb_pred = weibull.predict(home, away, is_neutral)
         if wb_pred is not None:
-            fused = fuse_weibull_probs(fused, wb_pred, wb_weight=weight_config.weibull)
+            wb_probs = wb_pred
 
-    # Step 3: Elo (standard+)
+    elo_probs = None
     if mode in ("standard", "full") and elo is not None:
         elo_pred = elo.predict(
             home, away, is_neutral=is_neutral,
             competition_weight=1.0, competition="FIFA World Cup 2026",
         )
-        fused = fuse_elo_probabilities(fused, elo_pred, elo_weight=weight_config.elo)
+        elo_probs = elo_pred
 
-    # Step 4: Pi-Rating (full)
+    pi_probs = None
     if mode == "full" and pi_model is not None:
         try:
             pi_pred = pi_model.predict(home, away, is_neutral)
-            fused = fuse_pi_probabilities(fused, pi_pred, pi_weight=weight_config.pi)
+            pi_probs = pi_pred
         except Exception:
             pass
 
-    # Step 5: Market consensus (R5-5: was missing from tournament simulators)
+    # Step 3: Unified core fusion (DC→Enhancer→NegBin→Weibull→Elo→Pi)
+    fusion = run_core_fusion(
+        dc_probs=dc_probs,
+        dc_home_xg=float(dc_pred.get("home_xg", 0)),
+        dc_away_xg=float(dc_pred.get("away_xg", 0)),
+        dc_base_weight=weight_config.dc,
+        enh_probs=enh_probs,
+        weibull_probs=wb_probs,
+        weibull_weight=weight_config.weibull if wb_probs else 0.0,
+        elo_probs=elo_probs,
+        elo_weight=weight_config.elo if elo_probs else 0.0,
+        pi_probs=pi_probs,
+        pi_weight=weight_config.pi if pi_probs else 0.0,
+    )
+    fused = fusion.probs
+    max_div = fusion.dc_enhancer_divergence_pp
+    direction_conflict = fusion.dc_enhancer_direction_conflict
+
+    # Step 4: Market consensus (R5-5)
     try:
         market_raw = fetch_market_consensus_sync(
             home, away, "FIFA World Cup 2026", timeout=8.0,
         )
         if market_raw and not market_raw.get("degraded"):
-            market_home = market_raw["home_prob"]
-            market_draw = market_raw["draw_prob"]
-            market_away = market_raw["away_prob"]
-            model_market_div = max(
-                abs(fused["home_win_prob"] - market_home),
-                abs(fused["draw_prob"] - market_draw),
-                abs(fused["away_win_prob"] - market_away),
+            boost_result = apply_market_boost(
+                fused=fused,
+                market_probs=market_raw,
+                market_max_weight=weight_config.market_max,
+                dc_enhancer_divergence_pp=max_div,
+                dc_enhancer_direction_conflict=direction_conflict,
+                pre_market_probs=fused,
             )
-            market_weight = weight_config.market_max
-            if model_market_div > 0.15:
-                boost = min(0.20, (model_market_div - 0.15) * 1.0)
-                boost, _ = attenuate_market_boost(
-                    boost,
-                    dc_enhancer_divergence_pp=max_div,
-                    dc_enhancer_direction_conflict=direction_conflict,
-                    pre_market_probs=fused,
-                    market_probs=market_raw,
-                )
-                market_weight = min(0.50, weight_config.market_max + boost)
-            fused_market = {
-                "home_win_prob": fused["home_win_prob"] * (1 - market_weight) + market_home * market_weight,
-                "draw_prob": fused["draw_prob"] * (1 - market_weight) + market_draw * market_weight,
-                "away_win_prob": fused["away_win_prob"] * (1 - market_weight) + market_away * market_weight,
-            }
-            total_m = sum(fused_market.values())
-            fused = {k: v / total_m for k, v in fused_market.items()}
+            fused = boost_result.probs
     except Exception:
         pass  # Market is best-effort
 

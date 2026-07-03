@@ -4,6 +4,9 @@
 Finds matches that finished yesterday, matches them to prediction snapshots,
 and runs the LearningEngine to attribute errors and update signal tracking.
 
+V4.6-process-eval: Now reads learning_weight from postmatch_process_eval
+to gate learning intensity — low-signal matches don't drive parameter changes.
+
 Usage:
     python scripts/auto_postmatch.py           # Yesterday's matches
     python scripts/auto_postmatch.py --days 3  # Last 3 days
@@ -14,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -34,6 +38,54 @@ from app.services.result_verification import (
     get_verification_service,
     SourceTier,
 )
+
+
+def _lookup_process_eval_weight(
+    home_team: str, away_team: str,
+) -> tuple[float, str, str | None, str | None]:
+    """Look up the process evaluation learning_weight for a match by team names.
+
+    Queries the SQLite postmatch_process_eval table (linked via wc26_schedule by
+    team names) and returns the learning_weight, learning_tier, failure_type,
+    and process_label from the process evaluator.
+
+    Returns:
+        (learning_weight, tier, model_failure_type, process_label)
+        Default: (1.0, "full", None, None) if no evaluation exists yet.
+    """
+    db_path = BACKEND_DIR / "data" / "local_stage2.db"
+    if not db_path.exists():
+        return (1.0, "full", None, None)
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        # Join postmatch_process_eval → wc26_schedule on match_id to match by team names
+        cur.execute(
+            "SELECT ppe.learning_weight, ppe.model_failure_type, ppe.process_label "
+            "FROM postmatch_process_eval ppe "
+            "JOIN wc26_schedule s ON ppe.match_id = s.id "
+            "WHERE s.home_team = ? AND s.away_team = ? "
+            "ORDER BY ppe.id DESC LIMIT 1",
+            (home_team, away_team),
+        )
+        row = cur.fetchone()
+        conn.close()
+
+        if row is None:
+            return (1.0, "full", None, None)
+
+        weight = float(row[0]) if row[0] is not None else 1.0
+        if weight >= 0.70:
+            tier = "full"
+        elif weight >= 0.30:
+            tier = "diagnostic"
+        else:
+            tier = "record_only"
+
+        return (weight, tier, str(row[1]) if row[1] else None, str(row[2]) if row[2] else None)
+    except Exception:
+        return (1.0, "full", None, None)
 
 
 async def auto_postmatch(days: int = 1, dry_run: bool = False) -> dict:
@@ -173,9 +225,18 @@ async def auto_postmatch(days: int = 1, dry_run: bool = False) -> dict:
                   f"({consensus.source_count} sources: {', '.join(consensus.source_names)})")
             # ── End verification gate ──────────────────────────────
 
+            # ── Process-eval learning weight (V4.6) ─────────────────
+            learning_weight, learning_tier, failure_type, process_label = (
+                _lookup_process_eval_weight(
+                    getattr(snapshot, 'home_team', ''),
+                    getattr(snapshot, 'away_team', ''),
+                )
+            )
+
             if dry_run:
                 print(f"[DRY-RUN] {row.match_date[:10]} {snapshot.home_team} "
-                      f"{home_goals}-{away_goals} {snapshot.away_team}")
+                      f"{home_goals}-{away_goals} {snapshot.away_team} "
+                      f"lw={learning_weight:.2f}/{learning_tier}")
                 processed += 1
                 continue
 
@@ -187,6 +248,7 @@ async def auto_postmatch(days: int = 1, dry_run: bool = False) -> dict:
                     int(away_goals),
                     db,
                     verified_result_id=verified_result_id,
+                    learning_weight=learning_weight,
                 )
                 total_brier += error_log.error_magnitude
                 processed += 1
@@ -194,6 +256,7 @@ async def auto_postmatch(days: int = 1, dry_run: bool = False) -> dict:
                       f"{home_goals}-{away_goals} {snapshot.away_team} "
                       f"Brier={error_log.error_magnitude:.3f} "
                       f"dir={error_log.error_direction} "
+                      f"lw={learning_weight:.2f}/{learning_tier} "
                       f"status={error_log.status}")
             except Exception as e:
                 await db.rollback()

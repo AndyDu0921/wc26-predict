@@ -20,7 +20,7 @@ if sys.platform == "win32":
         errors="replace",
     )
 
-from app.services.prediction_pipeline import PredictionPipeline
+from app.services.prediction_pipeline import PredictionPipeline, _count_market_providers
 from app.core.verification_gates import (
     preflight_check,
     postflight_check,
@@ -49,8 +49,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--no-market", action="store_true")
     parser.add_argument("--no-weather", action="store_true")
     persistence = parser.add_mutually_exclusive_group()
-    persistence.add_argument("--save", action="store_true")
-    persistence.add_argument("--no-save", action="store_true")
+    persistence.add_argument("--save", action="store_true",
+                             help="Persist snapshot to DB (default: enabled).")
+    persistence.add_argument("--no-save", action="store_true",
+                             help="Skip DB persistence (debug only).")
 
     args = parser.parse_args()
     args.home = args.home or args.home_pos or "Saudi Arabia"
@@ -60,7 +62,34 @@ def _parse_args() -> argparse.Namespace:
         or args.competition_pos
         or "FIFA World Cup 2026"
     )
+
+    # Auto-detect match_id from schedule if not provided
+    if not args.match_id:
+        args.match_id = _find_match_id(args.home, args.away, args.competition)
+        if args.match_id:
+            print(f"[Auto-resolved] match-id={args.match_id} for {args.home} vs {args.away}")
+
     return args
+
+
+def _find_match_id(home_team: str, away_team: str, competition: str) -> str:
+    """Look up the wc26_schedule.id for a match by team names."""
+    import sqlite3
+    from pathlib import Path as _Path
+    db_path = _Path(__file__).resolve().parent.parent / "data" / "local_stage2.db"
+    if not db_path.exists():
+        return ""
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.execute(
+            "SELECT id FROM wc26_schedule WHERE home_team=? AND away_team=? LIMIT 1",
+            (home_team, away_team),
+        )
+        row = cur.fetchone()
+        conn.close()
+        return str(row[0]) if row else ""
+    except Exception:
+        return ""
 
 
 def _bootstrap_payload(home: str, away: str, is_neutral: bool) -> dict | None:
@@ -115,7 +144,7 @@ def main() -> int:
         match_id=args.match_id,
         match_date=args.match_date,
         venue=args.venue,
-        save_snapshot=bool(args.save and not args.no_save),
+        save_snapshot=not args.no_save,  # Default True; --no-save disables
         enable_market=not args.no_market,
         enable_weather=not args.no_weather,
     )
@@ -128,10 +157,12 @@ def main() -> int:
         if isinstance(payload, dict)
         else 0
     )
+    market_provider_count = _count_market_providers(result)
     postflight_failures = postflight_check(
         probs=probs_for_gate if probs_for_gate else None,
         all_components_run=component_count,
         market_applied=payload.get("prediction", {}).get("market_applied", False) if isinstance(payload, dict) and isinstance(payload.get("prediction"), dict) else False,
+        market_provider_count=market_provider_count,
         calibration_applied=payload.get("calibration_applied", False) if isinstance(payload, dict) else False,
     )
     if postflight_failures:

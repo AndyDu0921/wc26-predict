@@ -62,6 +62,48 @@ PIPELINE_STEPS = [
 ]
 
 
+def _lookup_process_eval_weight(
+    home_team: str, away_team: str,
+) -> tuple[float, str, str | None, str | None]:
+    """Look up the process evaluation learning_weight for a match by team names.
+
+    Queries the SQLite postmatch_process_eval table (linked via wc26_schedule by
+    team names) and returns the learning_weight, learning_tier, failure_type,
+    and process_label from the process evaluator.
+
+    Returns:
+        (learning_weight, tier, model_failure_type, process_label)
+        Default: (1.0, "full", None, None) if no evaluation exists yet.
+    """
+    import sqlite3
+    db_path = BACKEND_DIR / "data" / "local_stage2.db"
+    if not db_path.exists():
+        return 1.0, "full", None, None
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ppe.learning_weight, ppe.model_failure_type, ppe.process_label "
+            "FROM postmatch_process_eval ppe "
+            "JOIN wc26_schedule s ON ppe.match_id = s.id "
+            "WHERE s.home_team = ? AND s.away_team = ? "
+            "ORDER BY ppe.created_at DESC LIMIT 1",
+            (home_team, away_team),
+        )
+        row = cur.fetchone()
+        conn.close()
+
+        if row is None:
+            return 1.0, "full", None, None
+
+        lw = float(row[0])
+        tier = "full" if lw >= 0.70 else ("diagnostic" if lw >= 0.30 else "record_only")
+        return lw, tier, row[1], row[2]
+    except Exception:
+        return 1.0, "full", None, None
+
+
 async def run_complete_postmatch(
     match_id: str,
     home_score: int,
@@ -368,12 +410,20 @@ async def run_complete_postmatch(
             pipeline_status["run_learning_engine"] = "skipped_dry_run"
         else:
             engine = get_learning_engine()
+            # Look up process evaluation learning_weight (V4.6)
+            learning_weight, learning_tier, failure_type, process_label = (
+                _lookup_process_eval_weight(
+                    getattr(snapshot, 'home_team', ''),
+                    getattr(snapshot, 'away_team', ''),
+                )
+            )
             error_log = await engine.process_match_result(
                 snapshot,
                 home_score,
                 away_score,
                 db,
                 verified_result_id=verified_result_id,
+                learning_weight=learning_weight,
             )
 
             pipeline_status["run_learning_engine"] = "passed"

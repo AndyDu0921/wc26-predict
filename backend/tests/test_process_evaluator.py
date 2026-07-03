@@ -1,11 +1,11 @@
 """Tests for process_evaluator and failure_classifier."""
 import pytest
-from backend.app.services.match_stats.process_evaluator import (
+from app.services.match_stats.process_evaluator import (
     compute_dominance_index,
     evaluate_process,
     ProcessEvalResult,
 )
-from backend.app.services.match_stats.failure_classifier import (
+from app.services.match_stats.failure_classifier import (
     classify_failure,
     compute_learning_weight,
     get_learning_tier,

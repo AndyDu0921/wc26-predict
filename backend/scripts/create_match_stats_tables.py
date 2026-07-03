@@ -166,6 +166,13 @@ def create_tables(db_path: str = None) -> bool:
 
 
 if __name__ == "__main__":
-    db_path = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--db-path" else None
+    # Parse args safely — avoid IndexError with bare argv access
+    db_path = None
+    if len(sys.argv) == 3 and sys.argv[1] == "--db-path":
+        db_path = sys.argv[2]
+    elif len(sys.argv) > 1:
+        print(f"Usage: python {Path(__file__).name} [--db-path PATH]")
+        print(f"  Default DB: {DEFAULT_DB}")
+        sys.exit(1)
     ok = create_tables(db_path)
     sys.exit(0 if ok else 1)
