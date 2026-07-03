@@ -8,8 +8,14 @@ Produces a 0.0-1.0 quality score for each team's stats, used to:
 
 from typing import Dict, Optional
 
+from app.services.match_stats.normalizer import safe_int as _safe_int
 
-def compute_data_quality_score(stats: Dict, side: str = "home") -> float:
+
+def compute_data_quality_score(
+    stats: Dict,
+    side: str = "home",
+    opponent_stats: Optional[Dict] = None,
+) -> float:
     """Compute a quality score (0.0-1.0) for a set of match team stats.
 
     The score starts at 1.0 and is penalized for:
@@ -65,7 +71,40 @@ def compute_data_quality_score(stats: Dict, side: str = "home") -> float:
         except (ValueError, TypeError):
             pass
 
+    # --- Possession consistency (cross-team validation) ---
+    if opponent_stats is not None:
+        own_poss = stats.get("possession_pct")
+        opp_poss = opponent_stats.get("possession_pct")
+        try:
+            possession_factor = validate_possession(
+                float(own_poss) if own_poss is not None else None,
+                float(opp_poss) if opp_poss is not None else None,
+            )
+            if possession_factor < 1.0:
+                score *= possession_factor
+        except (ValueError, TypeError):
+            pass  # possession exists but non-numeric — already penalised above
+
     return max(0.0, min(1.0, score))
+
+
+def compute_match_quality_score(home_stats: Dict, away_stats: Dict) -> float:
+    """Compute a combined quality score for both teams' stats.
+
+    Validates single-team integrity for each side AND cross-team
+    consistency (possession sum ≈ 100%). Returns the lower of the
+    two per-team scores, so a problem on either side gates the match.
+
+    Returns:
+        Quality score between 0.0 and 1.0 (min of home and away scores).
+    """
+    home_score = compute_data_quality_score(
+        home_stats, side="home", opponent_stats=away_stats,
+    )
+    away_score = compute_data_quality_score(
+        away_stats, side="away", opponent_stats=home_stats,
+    )
+    return min(home_score, away_score)
 
 
 def validate_possession(home_pct: Optional[float], away_pct: Optional[float]) -> float:
@@ -92,7 +131,9 @@ def compute_source_consensus_score(
     """Compare two sources for consistency on overlapping fields.
 
     Returns:
-        1.0 if identical or no secondary, lower if discrepancies found.
+        1.0 if sources agree perfectly; 0.85 for single-source (no
+        comparison possible); lower if multi-source data conflicts
+        (conflicting sources are worse than having only one source).
     """
     if secondary_stats is None:
         return 0.85  # Single source — slightly penalized
@@ -112,14 +153,9 @@ def compute_source_consensus_score(
                 pass
 
     if total == 0:
-        return 0.85
-    return 0.85 + 0.15 * (matches / total)
+        return 0.85  # No overlapping fields to compare
 
-
-def _safe_int(value) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return None
+    # Multi-source: base at 0.70, bonus up to 0.30 for agreement.
+    # Conflicting sources (0 matches) → 0.70, which is lower than
+    # the single-source penalty (0.85).  Perfect agreement → 1.00.
+    return 0.70 + 0.30 * (matches / total)

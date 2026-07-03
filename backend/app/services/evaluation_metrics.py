@@ -77,3 +77,115 @@ def evaluate_three_way(
         rps=ranked_probability_score(probs, actual),
         correct=predicted == actual,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Score-level evaluation metrics (V4.7-score)
+#  Wheatcroft (2021, JQAS): Log Score is the recommended proper scoring
+#  rule for football scoreline prediction — local, intuitive, and faster
+#  at discriminating forecast quality than RPS or Brier.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def score_matrix_log_loss(
+    matrix: list[list[float]],
+    home_goals: int,
+    away_goals: int,
+    eps: float = 1e-12,
+) -> float:
+    """Log Score on a score probability matrix.
+
+    Also known as Ignorance Score or Negative Log-Likelihood.  Recommended
+    by Wheatcroft (2021) as the primary proper scoring rule for football
+    scoreline forecasts — it is local (only uses the probability assigned
+    to the actual outcome) and discriminates forecast quality faster than
+    the Brier score.
+
+    Parameters
+    ----------
+    matrix:
+        2-D list where ``matrix[h][a]`` = P(home goals=h, away goals=a).
+    home_goals:
+        Actual home goals scored.
+    away_goals:
+        Actual away goals scored.
+
+    Returns
+    -------
+    float
+        ``-ln(P(actual_score))``.  Lower is better.  Perfect = 0.
+    """
+    if home_goals < len(matrix) and away_goals < len(matrix[0]):
+        p = matrix[home_goals][away_goals]
+    else:
+        p = 0.0
+    p = max(min(float(p), 1.0 - eps), eps)
+    return -math.log(p)
+
+
+def score_matrix_brier(
+    matrix: list[list[float]],
+    home_goals: int,
+    away_goals: int,
+) -> float:
+    """Brier Score on a score probability matrix.
+
+    Treats the full (G+1)×(G+1) matrix as a multi-class prediction where
+    only one cell (the actual score) is 1 and all others are 0.
+
+    ``BS = Σ_{i,j} (p_{ij} - o_{ij})²``
+    where ``o_{ij} = 1`` at the actual score and 0 elsewhere.
+
+    Non-local: rewards probability placed on nearby scorelines even when
+    they did not occur.  Use Log Score as the primary metric.
+    """
+    G = len(matrix) - 1
+    total = 0.0
+    for h in range(G + 1):
+        for a in range(G + 1):
+            target = 1.0 if (h == home_goals and a == away_goals) else 0.0
+            diff = matrix[h][a] - target
+            total += diff * diff
+    return total
+
+
+def score_matrix_top_n_hit(
+    matrix: list[list[float]],
+    home_goals: int,
+    away_goals: int,
+    n: int = 3,
+) -> bool:
+    """Check if the actual score is among the top-N most probable scorelines.
+
+    Parameters
+    ----------
+    matrix:
+        2-D score probability matrix.
+    home_goals, away_goals:
+        Actual score.
+    n:
+        How many top predictions to check (default 3).
+
+    Returns
+    -------
+    bool
+        True if the actual score is in the top-N predictions.
+    """
+    G = len(matrix) - 1
+    flat = []
+    for h in range(G + 1):
+        for a in range(G + 1):
+            flat.append((matrix[h][a], h, a))
+    top_n = set()
+    for _, h, a in sorted(flat, reverse=True)[:n]:
+        top_n.add((h, a))
+    return (home_goals, away_goals) in top_n
+
+
+def score_matrix_exact_hit(
+    matrix: list[list[float]],
+    home_goals: int,
+    away_goals: int,
+) -> bool:
+    """Check if the most probable scoreline matches the actual score."""
+    return score_matrix_top_n_hit(matrix, home_goals, away_goals, n=1)

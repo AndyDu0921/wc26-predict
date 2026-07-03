@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 # ── Constants ───────────────────────────────────────────────────
 
-WC_XG_CALIBRATION_FACTOR = 1.35  # WC xG underestimation correction
-NEGBIN_R = 3.5  # WC Home Var/Mean=1.42, Away Var/Mean=1.41
+WC_XG_CALIBRATION_FACTOR = 1.20  # WC xG calibration (grid search optimal, 2026-07-03)
+NEGBIN_R = 8.0  # Grid search optimal on 10 completed WC26 matches
 NEGBIN_FUSION_WEIGHT = 0.05  # NegBin influence in sequential fusion
 MARKET_BOOST_ATTENUATION = 0.60
 MARKET_BOOST_DC_ENH_DIVERGENCE_PP = 15.0
@@ -23,6 +23,79 @@ MARKET_BOOST_DIVERGENCE_THRESHOLD = 0.15  # model-market divergence triggers boo
 MARKET_BOOST_MAX = 0.20  # max additional boost beyond market_max
 MARKET_BOOST_SLOPE = 1.0  # boost per pp of divergence above threshold
 DRAW_FLOOR = 0.12  # minimum draw probability for WC matches
+
+# ── Market consensus gate (P1-1 Phase 2) ──
+MARKET_CONSENSUS_GATE_ENABLED = True
+MARKET_CONSENSUS_CV_THRESHOLD = 0.02   # CV < 2% = high bookmaker consensus
+MARKET_CONSENSUS_BOOST = 0.05          # market_max bump when consensus is high
+MARKET_CONSENSUS_MAX_CAP = 0.40        # absolute ceiling after consensus boost
+MARKET_CONSENSUS_MIN_BOOKMAKERS = 6    # need at least 6 bookmakers for reliable CV
+
+
+def apply_market_consensus_gate(
+    market_max_weight: float,
+    market_probs: dict[str, float] | None = None,
+) -> tuple[float, dict[str, object]]:
+    """Check market consensus CV and adjust market cap when bookmaker agreement is high.
+
+    When max(cv_home, cv_draw, cv_away) < 2% with at least 6 bookmakers,
+    the market cap is increased by MARKET_CONSENSUS_BOOST (0.05). This
+    addresses the finding that highly-consensus market signals deserve
+    more weight (e.g. 12/12 bookmakers agree within tight spread).
+
+    Returns:
+        (adjusted_market_max, gate_result) — market_max unchanged if no CV data.
+    """
+    if not MARKET_CONSENSUS_GATE_ENABLED:
+        return market_max_weight, {"checked": False, "reason": "gate disabled"}
+
+    if not market_probs:
+        return market_max_weight, {"checked": True, "triggered": False,
+                                    "reason": "no market probs available"}
+
+    cv = market_probs.get("cv")
+    if not cv or not isinstance(cv, dict):
+        return market_max_weight, {"checked": True, "triggered": False,
+                                    "reason": "no CV data in market_probs"}
+
+    sample_count = int(market_probs.get("sample_bookmakers", 0))
+    if sample_count < MARKET_CONSENSUS_MIN_BOOKMAKERS:
+        return market_max_weight, {
+            "checked": True, "triggered": False,
+            "reason": f"insufficient bookmakers ({sample_count} < {MARKET_CONSENSUS_MIN_BOOKMAKERS})",
+            "sample_bookmakers": sample_count,
+        }
+
+    # Use the worst (highest) CV across all three outcomes
+    max_cv = max(
+        float(cv.get("home", 0)),
+        float(cv.get("draw", 0)),
+        float(cv.get("away", 0)),
+    )
+
+    if max_cv >= MARKET_CONSENSUS_CV_THRESHOLD:
+        return market_max_weight, {
+            "checked": True, "triggered": False,
+            "reason": f"CV ({max_cv:.4f}) >= threshold ({MARKET_CONSENSUS_CV_THRESHOLD})",
+            "max_cv": round(max_cv, 6),
+            "sample_bookmakers": sample_count,
+        }
+
+    # High consensus detected — boost market cap
+    adjusted = min(MARKET_CONSENSUS_MAX_CAP, market_max_weight + MARKET_CONSENSUS_BOOST)
+    return adjusted, {
+        "checked": True,
+        "triggered": True,
+        "reason": (
+            f"High market consensus: CV={max_cv:.2%} < {MARKET_CONSENSUS_CV_THRESHOLD:.0%}, "
+            f"{sample_count} bookmakers. market_max {market_max_weight:.2f} → {adjusted:.2f}"
+        ),
+        "max_cv": round(max_cv, 6),
+        "sample_bookmakers": sample_count,
+        "original_market_max": market_max_weight,
+        "adjusted_market_max": adjusted,
+        "boost_applied": round(adjusted - market_max_weight, 4),
+    }
 
 
 # ── Dataclasses ─────────────────────────────────────────────────
@@ -119,7 +192,8 @@ def negbin_pmf(k: int, mu: float, r: float) -> float:
 def overdispersed_scoreline(hxg: float, axg: float, max_g: int = 20) -> dict:
     """NegBin H/D/A probabilities with xG calibration applied.
 
-    Returns dict with 'negbin' (calibrated) and 'poisson' (raw) keys.
+    Returns dict with 'negbin' (calibrated H/D/A), 'poisson' (raw H/D/A),
+    and 'matrix' (NB score matrix as nested list, shape (max_g, max_g)).
     """
     hxg_cal = hxg * WC_XG_CALIBRATION_FACTOR
     axg_cal = axg * WC_XG_CALIBRATION_FACTOR
@@ -135,25 +209,245 @@ def overdispersed_scoreline(hxg: float, axg: float, max_g: int = 20) -> dict:
             elif h == a: pp_d += p
             else: pp_a += p
 
-    # Calibrated NegBin
+    # Calibrated NegBin — build full score matrix alongside H/D/A
     nb_h = nb_d = nb_a = 0.0
+    nb_matrix = []
     for h in range(max_g):
+        row = []
         ph = negbin_pmf(h, hxg_cal, NEGBIN_R)
         for a in range(max_g):
             pa = negbin_pmf(a, axg_cal, NEGBIN_R)
             p = ph * pa
+            row.append(p)
             if h > a: nb_h += p
             elif h == a: nb_d += p
             else: nb_a += p
+        nb_matrix.append(row)
 
     total_nb = nb_h + nb_d + nb_a
+    # Normalise matrix (rows and columns are already consistent with H/D/A sums)
+    if total_nb > 0:
+        for h in range(max_g):
+            for a in range(max_g):
+                nb_matrix[h][a] /= total_nb
+
     return {
         "negbin": {"home_win": nb_h / total_nb, "draw": nb_d / total_nb, "away_win": nb_a / total_nb},
         "poisson": {"home_win": pp_h / (pp_h + pp_d + pp_a), "draw": pp_d / (pp_h + pp_d + pp_a), "away_win": pp_a / (pp_h + pp_d + pp_a)},
+        "matrix": nb_matrix,
     }
 
 
-# ── Fusion helpers ──────────────────────────────────────────────
+def apply_tau_correction(
+    matrix: list[list[float]],
+    hxg: float,
+    axg: float,
+    rho: float,
+) -> list[list[float]]:
+    """Apply Dixon-Coles τ correction to an existing score matrix.
+
+    The τ correction adjusts four low-score cells (0-0, 1-0, 0-1, 1-1)
+    to account for the dependence between home and away goals that
+    independent Poisson/NegBin assumptions miss.
+
+    This is the Michels, Ötting & Karlis (2023/2025 JRSS-C) approach:
+    applying Dixon-Coles τ to Negative Binomial marginals produces a
+    Sarmanov-family bivariate distribution with overdispersion.
+
+    Parameters
+    ----------
+    matrix:
+        2-D list, shape (max_g+1, max_g+1), pre-normalised to sum to 1.
+    hxg:
+        Home expected goals (before calibration factor).
+    axg:
+        Away expected goals (before calibration factor).
+    rho:
+        Dixon-Coles dependence parameter. Typical WC: -0.15 to -0.25.
+        Negative rho → more 0-0/1-1, fewer 1-0/0-1.
+
+    Returns
+    -------
+    list[list[float]]
+        τ-corrected matrix, normalised to sum to 1.
+    """
+    max_g = len(matrix) - 1
+    corrected = [row[:] for row in matrix]  # shallow copy
+
+    # Apply τ factors to cells that exist in the matrix
+    factors = {
+        (0, 0): 1 - (hxg * axg * rho),
+        (0, 1): 1 + (hxg * rho),
+        (1, 0): 1 + (axg * rho),
+        (1, 1): 1 - rho,
+    }
+    for (h, a), factor in factors.items():
+        if h <= max_g and a <= max_g:
+            corrected[h][a] = matrix[h][a] * max(factor, 0.05)  # floor to avoid negative
+
+    # Re-normalise
+    total = sum(sum(row) for row in corrected)
+    if total > 0:
+        for h in range(max_g + 1):
+            for a in range(max_g + 1):
+                corrected[h][a] /= total
+
+    return corrected
+
+
+def negbin_score_matrix(
+    hxg: float,
+    axg: float,
+    max_g: int = 5,
+    r: float | None = None,
+    tau_rho: float | None = None,
+) -> list[list[float]]:
+    """Generate a full score matrix using the Negative Binomial distribution.
+
+    Parameters
+    ----------
+    hxg:
+        Home expected goals (DC model output).
+    axg:
+        Away expected goals (DC model output).
+    max_g:
+        Maximum goals per side. Returns (max_g+1)×(max_g+1) matrix.
+    r:
+        NegBin dispersion parameter.  If None, uses ``NEGBIN_R`` (3.5).
+    tau_rho:
+        If not None, apply Dixon-Coles τ correction with this ρ value.
+        Typical WC ρ ≈ -0.15 to -0.25.  If None, matrix uses raw NB.
+
+    Returns
+    -------
+    list[list[float]]
+        Score probability matrix, shape (max_g+1, max_g+1), sum ≈ 1.0.
+    """
+    if r is None:
+        r = NEGBIN_R
+
+    hxg_cal = hxg * WC_XG_CALIBRATION_FACTOR
+    axg_cal = axg * WC_XG_CALIBRATION_FACTOR
+
+    matrix = [[0.0] * (max_g + 1) for _ in range(max_g + 1)]
+    for h in range(max_g + 1):
+        ph = negbin_pmf(h, hxg_cal, r)
+        for a in range(max_g + 1):
+            pa = negbin_pmf(a, axg_cal, r)
+            matrix[h][a] = ph * pa
+
+    # Normalise
+    total = sum(sum(row) for row in matrix)
+    if total > 0:
+        for h in range(max_g + 1):
+            for a in range(max_g + 1):
+                matrix[h][a] /= total
+
+    # Optional τ correction (Sarmanov-NB model of Michels et al. 2023)
+    if tau_rho is not None:
+        matrix = apply_tau_correction(matrix, hxg_cal, axg_cal, tau_rho)
+
+    return matrix
+
+
+def fuse_score_matrices(
+    matrices: list[list[list[float]]],
+    weights: list[float],
+    final_probs: dict[str, float] | None = None,
+) -> list[list[float]]:
+    """Weighted fusion of multiple score matrices with optional outcome calibration.
+
+    Parameters
+    ----------
+    matrices:
+        List of score matrices, each shape (G+1, G+1), each summing to ≈ 1.
+    weights:
+        Per-matrix fusion weights (will be normalised to sum to 1).
+    final_probs:
+        If provided, the fused matrix is calibrated so its H/D/A bucket sums
+        match these target probabilities.  Keys: ``home_win_prob``, ``draw_prob``,
+        ``away_win_prob``.
+
+    Returns
+    -------
+    list[list[float]]
+        Fused (and optionally calibrated) score matrix.
+    """
+    if not matrices or not weights or len(matrices) != len(weights):
+        raise ValueError("matrices and weights must be non-empty and same length")
+
+    # Normalise weights
+    w_total = sum(weights)
+    if w_total <= 0:
+        raise ValueError("sum of weights must be positive")
+    w = [x / w_total for x in weights]
+
+    # Determine output dimensions from first matrix
+    G = len(matrices[0]) - 1
+
+    # Weighted average
+    fused = [[0.0] * (G + 1) for _ in range(G + 1)]
+    for idx, mat in enumerate(matrices):
+        w_i = w[idx]
+        for h in range(min(len(mat), G + 1)):
+            row = mat[h]
+            for a in range(min(len(row), G + 1)):
+                fused[h][a] += row[a] * w_i
+
+    # Normalise
+    total = sum(sum(row) for row in fused)
+    if total > 0:
+        for h in range(G + 1):
+            for a in range(G + 1):
+                fused[h][a] /= total
+
+    # Outcome-constrained calibration
+    if final_probs is not None:
+        fused = _calibrate_matrix_to_outcomes(fused, final_probs)
+
+    return fused
+
+
+def _calibrate_matrix_to_outcomes(
+    matrix: list[list[float]],
+    final_probs: dict[str, float],
+    eps: float = 1e-12,
+) -> list[list[float]]:
+    """Rescale a score matrix so H/D/A bucket sums match target probabilities.
+
+    Internal helper used by ``fuse_score_matrices()``.  Same algorithm as
+    ``score_matrix_calibrator.py`` but in pure Python (no numpy) so it can
+    live in the zero-IO ``engine`` module.
+    """
+    G = len(matrix) - 1
+    p_home_target = float(final_probs.get("home_win_prob", final_probs.get("home", 0.33)))
+    p_draw_target = float(final_probs.get("draw_prob", final_probs.get("draw", 0.33)))
+    p_away_target = float(final_probs.get("away_win_prob", final_probs.get("away", 0.33)))
+
+    # Bucket sums (before)
+    p_home_before = sum(matrix[h][a] for h in range(G + 1) for a in range(G + 1) if h > a)
+    p_draw_before = sum(matrix[h][a] for h in range(G + 1) for a in range(G + 1) if h == a)
+    p_away_before = sum(matrix[h][a] for h in range(G + 1) for a in range(G + 1) if h < a)
+
+    # Per-bucket scaling
+    calibrated = [row[:] for row in matrix]
+    for h in range(G + 1):
+        for a in range(G + 1):
+            if h > a and p_home_before > eps:
+                calibrated[h][a] *= p_home_target / p_home_before
+            elif h == a and p_draw_before > eps:
+                calibrated[h][a] *= p_draw_target / p_draw_before
+            elif h < a and p_away_before > eps:
+                calibrated[h][a] *= p_away_target / p_away_before
+
+    # Global re-normalisation
+    new_total = sum(sum(row) for row in calibrated)
+    if new_total > eps:
+        for h in range(G + 1):
+            for a in range(G + 1):
+                calibrated[h][a] /= new_total
+
+    return calibrated
 
 def fuse_dc_enhancer_adaptive(
     dc_probs: dict[str, float],

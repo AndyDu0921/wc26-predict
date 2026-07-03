@@ -133,6 +133,7 @@ class PredictionResult:
     # ── Top scores ──
     top_scores: list[dict[str, object]] = field(default_factory=list)
     score_matrix: list[list[float]] = field(default_factory=list)
+    source_score_matrices: dict[str, list[list[float]]] = field(default_factory=dict)
 
     # ── Over/Under distribution ──
     over_under: dict[str, float] = field(default_factory=dict)
@@ -234,6 +235,7 @@ class PredictionResult:
                 "risk_tags": self.risk_tags,
                 "top_scores": self.top_scores,
                 "score_matrix": self.score_matrix,
+                "source_score_matrices": self.source_score_matrices,
                 "over_under": self.over_under,
                 "market_applied": self.market_applied,
                 "market_weight_used": self.market_weight_used,
@@ -309,6 +311,7 @@ class PredictionResult:
             elo_gap=float(elo.get("elo_gap", 0)),
             top_scores=list(pred.get("top_scores", [])),
             score_matrix=list(pred.get("score_matrix", [])),
+            source_score_matrices=dict(pred.get("source_score_matrices", {})),
             over_under=dict(pred.get("over_under", {})),
             confidence=str(pred.get("confidence", "medium")),
             risk_tags=list(pred.get("risk_tags", [])),

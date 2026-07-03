@@ -93,17 +93,19 @@ def get_kappa_for_competition(competition: str | None = None) -> float:
         from pathlib import Path
         db_path = Path(__file__).resolve().parents[2] / "data" / "local_stage2.db"
         conn = sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT config_value FROM model_weight_config WHERE config_key = ?",
-            (key,)
-        )
-        row = cur.fetchone()
-        conn.close()
-        if row:
-            kappa = float(row[0])
-            _KAPPA_CACHE[key] = kappa
-            return kappa
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT config_value FROM model_weight_config WHERE config_key = ?",
+                (key,)
+            )
+            row = cur.fetchone()
+            if row:
+                kappa = float(row[0])
+                _KAPPA_CACHE[key] = kappa
+                return kappa
+        finally:
+            conn.close()
     except Exception:
         logger.warning("Could not read kappa from DB for competition=%s — using default 0.24",
                        competition, exc_info=True)

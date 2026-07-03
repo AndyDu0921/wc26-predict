@@ -56,6 +56,11 @@ ELO_GAP_CLOSE_THRESHOLD = 50       # |gap| below this is "close match"
 TOTAL_XG_LOW_THRESHOLD = 2.35      # total xG below this is "low scoring"
 MARKET_DRAW_DISAGREEMENT = 0.25    # market draw >= this indicates disagreement
 
+# ── Post-calibration correction (Phase 2) ──
+POST_CAL_KO_DRAW_GUARD_ENABLED = True  # Feature flag for Phase 2 correction
+MAX_POST_CAL_BLEND = 0.60              # Max blend toward pre-calibration draw
+POST_CAL_BLEND_RISK_WEIGHT = 0.12      # Blend per risk factor present
+
 # Knockout stage names (case-insensitive prefix match)
 KO_STAGE_PREFIXES = (
     "round of 32", "round of 16", "round of 8",
@@ -164,4 +169,155 @@ def check_ko_draw_guard(
         ),
         "risk_factors": risk_factors,
         "action": "warn_only",
+    }
+
+
+# ── Phase 2: Post-calibration correction ──────────────────────────────
+
+def _safe_get_prob(probs: dict[str, float], *keys: str) -> float:
+    """Extract a probability from a dict, trying multiple key names."""
+    for k in keys:
+        v = probs.get(k)
+        if v is not None:
+            return float(v)
+    return 0.0
+
+
+def _normalize_triplet(
+    home: float, draw: float, away: float,
+) -> tuple[float, float, float]:
+    """Normalize three probabilities to sum to 1.0."""
+    total = home + draw + away
+    if total <= 0:
+        return (1 / 3, 1 / 3, 1 / 3)
+    return (home / total, draw / total, away / total)
+
+
+def enforce_ko_draw_post_calibration(
+    pre_calibration_probs: dict[str, float],
+    post_calibration_probs: dict[str, float],
+    *,
+    is_knockout: bool = False,
+    stage: str | None = None,
+    elo_gap: float | None = None,
+    total_xg: float | None = None,
+    market_draw_prob: float | None = None,
+    model_disagreement: bool = False,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Post-calibration KO draw guard — Phase 2 correction.
+
+    When Isotonic calibration suppresses KO draw probability below the
+    warning threshold, blend back toward the pre-calibration value.
+
+    The blend ratio increases with:
+      - The magnitude of calibration suppression (pre_draw - post_draw)
+      - The number of risk factors present
+
+    Returns:
+        (adjusted_probs, guard_result) — probs unchanged if not triggered.
+    """
+    if not POST_CAL_KO_DRAW_GUARD_ENABLED:
+        return dict(post_calibration_probs), {
+            "checked": False, "triggered": False,
+            "reason": "post-cal guard disabled", "action": "none",
+        }
+
+    # Resolve knockout status
+    if not is_knockout and stage:
+        is_knockout = _is_ko_stage(stage)
+    if not is_knockout:
+        return dict(post_calibration_probs), {
+            "checked": True, "triggered": False,
+            "reason": "not a knockout match", "action": "none",
+        }
+
+    # Extract probabilities (handle both key naming conventions)
+    pre_draw = _safe_get_prob(pre_calibration_probs, "draw_prob", "draw")
+    post_draw = _safe_get_prob(post_calibration_probs, "draw_prob", "draw")
+    post_home = _safe_get_prob(post_calibration_probs, "home_win_prob", "home")
+    post_away = _safe_get_prob(post_calibration_probs, "away_win_prob", "away")
+
+    # Only trigger if calibration *reduced* the draw below threshold
+    if post_draw >= KO_DRAW_FLOOR_WARNING:
+        return dict(post_calibration_probs), {
+            "checked": True, "triggered": False,
+            "reason": f"post-cal draw ({post_draw:.3f}) >= {KO_DRAW_FLOOR_WARNING}",
+            "action": "none",
+        }
+
+    if post_draw >= pre_draw - 0.005:
+        # Calibration didn't meaningfully suppress draw — guard not needed
+        return dict(post_calibration_probs), {
+            "checked": True, "triggered": False,
+            "reason": f"calibration did not suppress draw (pre={pre_draw:.3f} post={post_draw:.3f})",
+            "action": "none",
+        }
+
+    # ── Evaluate risk factors (same as Phase 1) ──
+    risk_factors: list[str] = []
+    if elo_gap is not None and abs(elo_gap) < ELO_GAP_CLOSE_THRESHOLD:
+        risk_factors.append(f"close Elo gap ({abs(elo_gap):.0f})")
+    if total_xg is not None and total_xg < TOTAL_XG_LOW_THRESHOLD:
+        risk_factors.append(f"low total xG ({total_xg:.2f})")
+    if market_draw_prob is not None and market_draw_prob >= MARKET_DRAW_DISAGREEMENT:
+        risk_factors.append(f"market draw higher ({market_draw_prob:.3f})")
+    if model_disagreement:
+        risk_factors.append("high model disagreement")
+
+    if not risk_factors:
+        return dict(post_calibration_probs), {
+            "checked": True, "triggered": False,
+            "reason": "no risk factors present",
+            "action": "none",
+        }
+
+    # ── Compute blend ratio ──
+    # suppression_pp: how much calibration reduced the draw
+    suppression_pp = max(0.0, pre_draw - post_draw)
+    # deficit_pp: how far below the warning threshold
+    deficit_pp = KO_DRAW_FLOOR_WARNING - post_draw
+
+    # Base blend from suppression significance
+    base_blend = min(1.0, suppression_pp / max(deficit_pp, 0.01))
+    # Add risk factor weight
+    risk_blend = min(len(risk_factors) * POST_CAL_BLEND_RISK_WEIGHT, 0.40)
+    # Final blend capped at MAX_POST_CAL_BLEND
+    blend_ratio = min(base_blend * 0.50 + risk_blend, MAX_POST_CAL_BLEND)
+
+    # ── Apply blend ──
+    corrected_draw = post_draw * (1.0 - blend_ratio) + pre_draw * blend_ratio
+    # Clamp to [0.15, 0.22] — don't exceed the warning threshold significantly
+    corrected_draw = max(0.15, min(corrected_draw, KO_DRAW_FLOOR_WARNING + 0.03))
+
+    draw_increase = corrected_draw - post_draw
+
+    # Take deficit 70% from favorite, 30% from underdog
+    if post_home >= post_away:
+        corrected_home = max(0.02, post_home - draw_increase * 0.70)
+        corrected_away = max(0.02, post_away - draw_increase * 0.30)
+    else:
+        corrected_home = max(0.02, post_home - draw_increase * 0.30)
+        corrected_away = max(0.02, post_away - draw_increase * 0.70)
+
+    h, d, a = _normalize_triplet(corrected_home, corrected_draw, corrected_away)
+
+    adjusted = {
+        "home_win_prob": h,
+        "draw_prob": d,
+        "away_win_prob": a,
+    }
+
+    return adjusted, {
+        "checked": True,
+        "triggered": True,
+        "reason": (
+            f"KO post-cal draw guard: {post_draw:.1%} → {d:.1%} "
+            f"(blend={blend_ratio:.0%}, risks: {', '.join(risk_factors)})"
+        ),
+        "risk_factors": risk_factors,
+        "action": "blend_correction",
+        "blend_ratio": round(blend_ratio, 4),
+        "pre_calibration_draw": round(pre_draw, 4),
+        "post_calibration_draw": round(post_draw, 4),
+        "corrected_draw": round(d, 4),
     }

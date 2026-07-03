@@ -62,6 +62,29 @@ class PredictionLearningLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     #         "invalidated" (wrong result later corrected), "superseded" (replaced by newer verified record),
     #         "legacy_untraceable" / "legacy_ambiguous" (old rows excluded from active learning)
 
+    # ── V4.7-score: score-level evaluation metrics ──
+    score_log_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_exact_hit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    score_top3_hit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Per-source score log loss for marginal analysis (which matrix source
+    # contributed most to score prediction accuracy; Wheatcroft 2021)
+    dc_score_log_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    negbin_score_log_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weibull_score_log_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # V4.6-process-eval: learning weight from process evaluation
+    # Controls whether this match can drive parameter changes:
+    #   >=0.70 "full"       — error attribution + signal/market/context + WeightProposal
+    #   0.30-0.70 "diagnostic" — error attribution + logging, no weight changes
+    #   <0.30 "record_only"    — basic error log only, no side effects
+    learning_weight: Mapped[float] = mapped_column(
+        Float, default=1.0, server_default="1.0", nullable=False,
+    )
+    learning_tier: Mapped[str] = mapped_column(
+        String(20), default="full", server_default="full", nullable=False,
+    )
+    # Values: "full", "diagnostic", "record_only"
+
     # Context
     context_tags: Mapped[dict | None] = mapped_column(JSONVariant)
     signal_verdicts: Mapped[dict | None] = mapped_column(JSONVariant)

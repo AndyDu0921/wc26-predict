@@ -33,6 +33,8 @@ class PredictionSnapshot(Base):
 
     expected_goals: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     top_scores: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    fused_score_matrix: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    source_score_matrices: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     elo_ratings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     active_event_ids: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)

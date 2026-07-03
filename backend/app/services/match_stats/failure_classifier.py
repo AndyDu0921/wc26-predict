@@ -118,8 +118,6 @@ def classify_failure(
     else:
         return _result("MODEL_STRUCTURE_ERROR")  # Conservative: assume model issue
 
-    return _result("UNKNOWN")
-
 
 def compute_learning_weight(
     model_failure_type: str,

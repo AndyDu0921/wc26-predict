@@ -48,8 +48,9 @@ class ContextAdjuster:
             try:
                 result = await db.execute(
                     text(
-                        "SELECT recommended_home_adjustment, recommended_draw_adjustment, "
-                        "confidence, total_matches FROM context_performance_matrix "
+                        "SELECT recommended_adjustment, 0.0 AS recommended_draw_adjustment, "
+                        "COALESCE(1.0 - avg_brier_score, 0.5) AS confidence, "
+                        "total_matches FROM context_performance_matrix "
                         "WHERE context_tag = :tag AND total_matches >= :min_n"
                     ),
                     {"tag": tag, "min_n": MIN_SAMPLES},

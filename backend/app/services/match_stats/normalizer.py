@@ -52,6 +52,8 @@ def resolve_field(raw_stats: Dict[str, Any], canonical_name: str) -> Optional[An
     Returns:
         The matched value or None.
     """
+    # O(keys × aliases) — first match wins.  Heuristic is acceptable
+    # because raw provider payloads are small (typically 30-80 keys).
     aliases = FIELD_ALIASES.get(canonical_name, [canonical_name])
     for alias in aliases:
         # Direct key match

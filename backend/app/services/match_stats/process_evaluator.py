@@ -8,6 +8,9 @@ random, or was the model fundamentally wrong about team strengths?
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from app.services.match_stats.normalizer import safe_float as _safe_float
+from app.services.match_stats.normalizer import safe_int as _safe_int
+
 
 @dataclass
 class ProcessEvalResult:
@@ -205,9 +208,17 @@ def evaluate_process(
         result.finishing_delta_away = round(result.actual_away_goals - result.actual_away_xg, 4)
 
     # --- Shot volume deltas ---
+    # NOT_IMPLEMENTED: shot volume prediction requires expected-shot models not yet built.
+    # Currently both read from the same actual stats source; replace pred_home_shots with
+    # snapshot-derived expected shots when available.
     pred_home_shots = home_stats.get("shots_total")
-    act_home_shots = home_stats.get("shots_total")  # We use actual for both
-    # (Shot volume comparison only meaningful with expected shot models; skip for now)
+    act_home_shots = home_stats.get("shots_total")
+    if pred_home_shots is not None and act_home_shots is not None:
+        result.shot_volume_delta_home = int(act_home_shots) - int(pred_home_shots)
+    pred_away_shots = away_stats.get("shots_total")
+    act_away_shots = away_stats.get("shots_total")
+    if pred_away_shots is not None and act_away_shots is not None:
+        result.shot_volume_delta_away = int(act_away_shots) - int(pred_away_shots)
 
     # --- Dominance index ---
     dom = compute_dominance_index(home_stats, away_stats)
@@ -248,21 +259,3 @@ def _winner(home_val, away_val) -> str:
         return "away"
     else:
         return "draw"
-
-
-def _safe_float(value) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int(value) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return None

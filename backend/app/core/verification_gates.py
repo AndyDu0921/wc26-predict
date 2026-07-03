@@ -16,7 +16,6 @@ Usage::
     warnings = preflight_check(
         home_elo=1684.0,
         away_elo=1500.0,
-        market_provider_count=5,
         weibull_available=True,
         venue_confirmed=True,
         injuries_loaded=True,
@@ -31,6 +30,7 @@ Usage::
         probs={"home_win_prob": 0.45, "draw_prob": 0.25, "away_win_prob": 0.30},
         all_components_run=7,
         market_applied=True,
+        market_provider_count=5,
         calibration_applied=True,
         is_knockout=False,
         elo_gap=184,
@@ -74,7 +74,6 @@ def preflight_check(
     *,
     home_elo: float | None = None,
     away_elo: float | None = None,
-    market_provider_count: int = 0,
     weibull_available: bool | None = None,
     venue_confirmed: bool = False,
     injuries_loaded: bool = False,
@@ -87,6 +86,10 @@ def preflight_check(
     Call this before starting a prediction.  Non-fatal by design — warnings
     reduce confidence but don't block the pipeline.  Callers should attach
     failing gates to ``degraded_reasons`` in the PredictionResult.
+
+    NOTE: market_provider_count is NOT checked here — market data is fetched
+    DURING the pipeline, so preflight can't know the count.  Use
+    postflight_check() with the actual count from the pipeline result.
     """
     results: list[GateResult] = []
 
@@ -95,12 +98,7 @@ def preflight_check(
         _check_elo_not_default(home_elo or 0.0, away_elo or 0.0)
     )
 
-    # 2. Market data availability
-    results.append(
-        _check_market_provider_count(market_provider_count)
-    )
-
-    # 3. Weibull component status
+    # 2. Weibull component status
     results.append(
         _check_weibull_status(weibull_available)
     )
@@ -323,6 +321,7 @@ def postflight_check(
     probs: dict[str, float] | None = None,
     all_components_run: int = 0,
     market_applied: bool = False,
+    market_provider_count: int = 0,
     calibration_applied: bool = False,
     is_knockout: bool = False,
     elo_gap: float | None = None,
@@ -348,14 +347,17 @@ def postflight_check(
     # 4. Market boost applied
     results.append(_check_market_applied(market_applied))
 
-    # 5. Calibration applied
+    # 5. Market data provider count (must run AFTER pipeline — count is unknown preflight)
+    results.append(_check_market_provider_count(market_provider_count))
+
+    # 6. Calibration applied
     results.append(_check_calibration_applied(calibration_applied))
 
-    # 6. Probabilities sum to 1
+    # 7. Probabilities sum to 1
     if probs is not None:
         results.append(_check_probs_sum_to_one(probs))
 
-    # 7. Knockout draw underestimation check
+    # 8. Knockout draw underestimation check
     if probs is not None and is_knockout and elo_gap is not None:
         results.append(_check_ko_draw_underestimation(probs, elo_gap))
 
@@ -673,6 +675,192 @@ def _check_snapshot_complete(complete: bool) -> GateResult:
                 "may be missing.  Post-match evaluation may be partial.",
         detail={"complete": False},
     )
+
+
+# ── Snapshot completeness verification ───────────────────────────────
+
+
+# The 7 fusion components expected in every complete prediction snapshot.
+REQUIRED_COMPONENT_KEYS: tuple[str, ...] = (
+    "dixon_coles",
+    "enhancer",
+    "negbin",
+    "weibull",
+    "elo",
+    "pi_rating",
+    "market",
+)
+
+# Alternative key names accepted for each required component.
+_COMPONENT_KEY_ALIASES: dict[str, tuple[str, ...]] = {
+    "dixon_coles": ("dc",),
+    "enhancer": ("enh",),
+    "negbin": ("neg_bin", "negative_binomial"),
+    "weibull": ("weibull_",),
+    "elo": ("elo_rating",),
+    "pi_rating": ("pi", "pi_rating"),
+    "market": ("market_consensus", "market_implied"),
+}
+
+
+def verify_snapshot_completeness(
+    component_probs: dict[str, Any] | None = None,
+    *,
+    home_xg: float | None = None,
+    away_xg: float | None = None,
+    market_blended: bool | None = None,
+    market_weight_used: float | None = None,
+    market_divergence: float | None = None,
+    component_count: int | None = None,
+) -> tuple[bool, list[str], list[GateResult]]:
+    """Verify that a prediction snapshot has all required data for self-evolution.
+
+    Unlike ``_check_snapshot_complete`` which takes a pre-computed boolean,
+    this function INSPECTS the actual snapshot data to determine completeness.
+
+    Checks performed:
+        1. All 7 component probabilities present (DC, Enhancer, NegBin,
+           Weibull, Elo, Pi, Market)
+        2. xG values non-None (home_xg, away_xg)
+        3. Market blending metadata present (market_blended, weight, divergence)
+
+    Returns:
+        (is_complete, missing_fields, gate_results)
+
+    Usage:
+        is_complete, missing, gates = verify_snapshot_completeness(
+            component_probs=snapshot_dict,
+            home_xg=1.2, away_xg=0.8,
+            market_blended=True, market_weight_used=0.30,
+        )
+        if not is_complete:
+            raise RuntimeError(
+                f"Snapshot incomplete — missing: {', '.join(missing)}"
+            )
+    """
+    missing: list[str] = []
+    gates: list[GateResult] = []
+
+    # ── 1. Component probabilities ──
+    if component_probs is None:
+        missing.append("component_probs (entire dict is None)")
+        gates.append(GateResult(
+            gate="snapshot_components",
+            passed=False,
+            severity="error",
+            message="component_probs is None — no model outputs recorded.",
+            detail={"component_probs": None},
+        ))
+    else:
+        # Check each required component key
+        comp_keys_lower = {k.lower(): k for k in component_probs}
+        for req_key in REQUIRED_COMPONENT_KEYS:
+            found = False
+            # Direct match
+            if req_key in component_probs:
+                found = True
+            # Case-insensitive match
+            elif req_key.lower() in comp_keys_lower:
+                found = True
+            # Alias match
+            else:
+                aliases = _COMPONENT_KEY_ALIASES.get(req_key, ())
+                for alias in aliases:
+                    if alias in component_probs or alias.lower() in comp_keys_lower:
+                        found = True
+                        break
+            if not found:
+                missing.append(f"component_probs.{req_key}")
+
+        if missing:
+            gates.append(GateResult(
+                gate="snapshot_components",
+                passed=False,
+                severity="error",
+                message=f"Missing component probabilities: {', '.join(missing)}. "
+                        f"Found: {', '.join(sorted(component_probs.keys()))}.",
+                detail={
+                    "required": list(REQUIRED_COMPONENT_KEYS),
+                    "found": sorted(component_probs.keys()),
+                    "missing": missing.copy(),
+                },
+            ))
+        else:
+            gates.append(GateResult(
+                gate="snapshot_components",
+                passed=True,
+                severity="info",
+                message=f"All {len(REQUIRED_COMPONENT_KEYS)} component probabilities present ✓.",
+            ))
+
+    # ── 2. xG values ──
+    xg_missing: list[str] = []
+    if home_xg is None:
+        xg_missing.append("home_xg")
+    if away_xg is None:
+        xg_missing.append("away_xg")
+    if xg_missing:
+        missing.extend(xg_missing)
+        gates.append(GateResult(
+            gate="snapshot_xg",
+            passed=False,
+            severity="warning",
+            message=f"xG values missing: {', '.join(xg_missing)}.  "
+                    f"Process evaluation requires xG for dominance_index.",
+            detail={"home_xg": home_xg, "away_xg": away_xg, "missing": xg_missing},
+        ))
+    else:
+        gates.append(GateResult(
+            gate="snapshot_xg",
+            passed=True,
+            severity="info",
+            message=f"xG values present (home={home_xg:.2f}, away={away_xg:.2f}) ✓.",
+        ))
+
+    # ── 3. Market blending metadata ──
+    market_missing: list[str] = []
+    if market_blended is None:
+        market_missing.append("market_blended")
+    if market_weight_used is None:
+        market_missing.append("market_weight_used")
+    if market_divergence is None:
+        market_missing.append("market_divergence")
+    if market_missing:
+        missing.extend(market_missing)
+        gates.append(GateResult(
+            gate="snapshot_market_metadata",
+            passed=False,
+            severity="warning",
+            message=f"Market blending metadata missing: {', '.join(market_missing)}.  "
+                    f"Post-match analysis cannot assess market contribution.",
+            detail={
+                "market_blended": market_blended,
+                "market_weight_used": market_weight_used,
+                "market_divergence": market_divergence,
+            },
+        ))
+    else:
+        gates.append(GateResult(
+            gate="snapshot_market_metadata",
+            passed=True,
+            severity="info",
+            message="Market blending metadata present ✓.",
+        ))
+
+    # ── 4. Component count (supplementary check) ──
+    if component_count is not None and component_count < 5:
+        gates.append(GateResult(
+            gate="snapshot_component_count",
+            passed=False,
+            severity="error",
+            message=f"Only {component_count} components ran — snapshot is degraded.",
+            detail={"component_count": component_count, "minimum": 5},
+        ))
+        if "component_count" not in missing:
+            missing.append(f"component_count={component_count} (<5)")
+
+    is_complete = len(missing) == 0
+    return is_complete, missing, gates
 
 
 def _check_learning_log_conflict(conflict: bool) -> GateResult:

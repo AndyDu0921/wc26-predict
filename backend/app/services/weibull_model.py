@@ -194,6 +194,53 @@ class WeibullWrapper:
             logger.warning("Weibull predict failed: %s", e)
             return None
 
+    def predict_score_matrix(
+        self, home_team: str, away_team: str, neutral: bool = True, max_goals: int = 5,
+    ) -> list[list[float]] | None:
+        """Extract the full score probability matrix from the Weibull Copula model.
+
+        The Weibull count + Frank Copula model (Boshnakov et al. 2017, IJF)
+        generates a bivariate joint distribution over home/away goals.  This
+        method extracts the full matrix, not just the H/D/A aggregates.
+
+        Parameters
+        ----------
+        home_team:
+            Home team name.
+        away_team:
+            Away team name.
+        neutral:
+            If True, home advantage is excluded.
+        max_goals:
+            Maximum goals per side in returned matrix.  The penaltyblog
+            model internally computes up to 15 goals; we truncate to
+            ``max_goals`` and re-normalise.
+
+        Returns
+        -------
+        list[list[float]] or None
+            (max_goals+1)×(max_goals+1) matrix, sum ≈ 1.0, or None on failure.
+        """
+        if not self._fitted or self._model is None:
+            return None
+        try:
+            grid = self._model.predict(
+                home_team, away_team, neutral_venue=neutral, max_goals=max_goals,
+            )
+            raw = grid.grid  # numpy 2-D array, shape (max_goals+1, max_goals+1)
+            # Convert to list-of-lists
+            matrix = raw.tolist()
+            # Re-normalise after truncation
+            total = sum(sum(row) for row in matrix)
+            if total > 0:
+                for h in range(len(matrix)):
+                    for a in range(len(matrix[0])):
+                        matrix[h][a] /= total
+            return matrix
+        except Exception as e:
+            logger.warning("Weibull score matrix failed: %s", e)
+            return None
+
     @property
     def is_fitting(self) -> bool:
         """True if a background fit thread is still running."""

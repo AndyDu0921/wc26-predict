@@ -8,6 +8,11 @@ After each match finishes:
 5. Update context performance matrix
 
 All writes are idempotent — re-running for the same match replaces old records.
+
+V4.6-process-eval: learning_weight gates which steps execute
+  weight >= 0.70  → "full"       — all steps + eligible for WeightProposal
+  weight 0.30-0.70 → "diagnostic" — error attribution + logging only
+  weight < 0.30   → "record_only" — write error log, skip signal/market/context updates
 """
 
 from __future__ import annotations
@@ -23,6 +28,11 @@ from app.models.prediction_snapshot import PredictionSnapshot
 from app.models.prediction_run import PredictionRun
 from app.models.prediction_learning_log import PredictionLearningLog
 from app.models.signal_track_record import SignalTrackRecord
+from app.services.evaluation_metrics import (
+    score_matrix_log_loss,
+    score_matrix_exact_hit,
+    score_matrix_top_n_hit,
+)
 from app.models.context_performance_matrix import ContextPerformanceMatrix
 from app.models.market_divergence_log import MarketDivergenceLog
 from app.models.match import Match, MatchResult
@@ -136,6 +146,16 @@ def _lookup_stage_for_match(home_team: str | None, away_team: str | None) -> str
         return ""
 
 
+def _learning_tier(weight: float) -> str:
+    """Map learning_weight to action tier."""
+    if weight >= 0.70:
+        return "full"
+    elif weight >= 0.30:
+        return "diagnostic"
+    else:
+        return "record_only"
+
+
 class LearningEngine:
     """Per-match learning: error attribution, signal tracking, context updates."""
 
@@ -146,6 +166,7 @@ class LearningEngine:
         away_goals: int,
         db: AsyncSession,
         verified_result_id: str | None = None,
+        learning_weight: float = 1.0,
     ) -> PredictionLearningLog:
         """Complete per-match learning cycle.
 
@@ -157,6 +178,11 @@ class LearningEngine:
                 MatchResultVerification.  If None, the learning log is
                 written with status="pending_review" and does NOT affect
                 production weights.
+            learning_weight: 0.0-1.0 from process_evaluator/failure_classifier.
+                Controls which sub-steps execute:
+                  >= 0.70  "full"       — all steps
+                  0.30-0.70 "diagnostic" — attribution + logging only
+                  < 0.30   "record_only" — basic error log only
 
         Returns the created PredictionLearningLog record.
         """
@@ -166,23 +192,49 @@ class LearningEngine:
                 f"has match_id={snapshot.match_id!r}"
             )
 
+        tier = _learning_tier(learning_weight)
         actual_index = _result_index(home_goals, away_goals)
 
-        # 1. Error attribution
+        # 1. Error attribution (always runs — core diagnostic data)
         error_log = await self._attribute_error(
             snapshot, actual_index, db, verified_result_id,
+            learning_weight, tier,
+            home_goals=home_goals, away_goals=away_goals,
         )
 
-        # 2. Signal track record update
-        await self._update_signal_track_records(snapshot, actual_index, db)
+        # ── 1.5 Score calibration drift tracking (V4.7 S2.3) ──
+        # Best-effort: a failure here must never block the main learning flow.
+        self._track_score_calibration(snapshot, home_goals, away_goals)
 
-        # 3. Market divergence log
-        await self._log_market_divergence(snapshot, actual_index, db)
+        # 2. Signal track record update (full tier only)
+        if tier == "full":
+            await self._update_signal_track_records(snapshot, actual_index, db)
+        else:
+            logger.info(
+                "Skipping signal track updates: tier=%s weight=%.2f for %s vs %s",
+                tier, learning_weight, snapshot.home_team, snapshot.away_team,
+            )
 
-        # 4. Context matrix update
-        await self._update_context_matrix(snapshot, actual_index, db)
+        # 3. Market divergence log (full + diagnostic)
+        if tier in ("full", "diagnostic"):
+            await self._log_market_divergence(snapshot, actual_index, db)
+
+        # 4. Context matrix update (full tier only)
+        if tier == "full":
+            await self._update_context_matrix(snapshot, actual_index, db)
+        else:
+            logger.info(
+                "Skipping context matrix update: tier=%s weight=%.2f for %s vs %s",
+                tier, learning_weight, snapshot.home_team, snapshot.away_team,
+            )
 
         await db.flush()
+        logger.info(
+            "Learning complete: %s vs %s, tier=%s, weight=%.2f, Brier=%.3f, dir=%s",
+            snapshot.home_team, snapshot.away_team,
+            tier, learning_weight,
+            error_log.error_magnitude, error_log.error_direction,
+        )
         return error_log
 
     async def _attribute_error(
@@ -191,6 +243,10 @@ class LearningEngine:
         actual_index: int,
         db: AsyncSession,
         verified_result_id: str | None = None,
+        learning_weight: float = 1.0,
+        tier: str = "full",
+        home_goals: int = 0,
+        away_goals: int = 0,
     ) -> PredictionLearningLog:
         """Attribute prediction error using leave-one-out marginal contributions.
 
@@ -199,6 +255,9 @@ class LearningEngine:
 
         positive marginal = component helped (removing it made prediction worse)
         negative marginal = component hurt (removing it made prediction better)
+
+        V4.7-score: Also computes score-level metrics from the fused score
+        matrix and per-source matrices stored in the snapshot.
         """
         final_probs = _coerce_probs(
             snapshot.adjusted_probs or snapshot.baseline_probs or {}
@@ -288,6 +347,53 @@ class LearningEngine:
         enhancer_contrib = None
         elo_contrib = None
 
+        # ── V4.7-score: Score-level evaluation ──
+        # Compute log-loss on the fused score matrix and per-source matrices
+        # to track which model component contributes most to score prediction.
+        score_ll: float | None = None
+        score_exact: bool | None = None
+        score_top3: bool | None = None
+        dc_score_ll: float | None = None
+        negbin_score_ll: float | None = None
+        weibull_score_ll: float | None = None
+
+        # Fused score matrix (stored in snapshot at prediction time)
+        fused_mat = getattr(snapshot, "fused_score_matrix", None)
+        if fused_mat is None:
+            # Fallback: try pipeline_params for legacy snapshots
+            params = snapshot.pipeline_params or {}
+            fused_mat = params.get("fused_score_matrix")
+
+        if fused_mat and isinstance(fused_mat, list) and len(fused_mat) > 0:
+            try:
+                score_ll = score_matrix_log_loss(fused_mat, home_goals, away_goals)
+                score_exact = score_matrix_exact_hit(fused_mat, home_goals, away_goals)
+                score_top3 = score_matrix_top_n_hit(fused_mat, home_goals, away_goals, n=3)
+            except Exception:
+                logger.debug("Score matrix log-loss failed for fused matrix", exc_info=True)
+
+        # Per-source score log loss for marginal analysis (Wheatcroft 2021)
+        source_mats = getattr(snapshot, "source_score_matrices", None)
+        if source_mats is None:
+            params = snapshot.pipeline_params or {}
+            source_mats = params.get("source_score_matrices")
+
+        if source_mats and isinstance(source_mats, dict):
+            try:
+                dc_mat = source_mats.get("dc")
+                if dc_mat and isinstance(dc_mat, list) and len(dc_mat) > 0:
+                    dc_score_ll = score_matrix_log_loss(dc_mat, home_goals, away_goals)
+
+                nb_mat = source_mats.get("negbin")
+                if nb_mat and isinstance(nb_mat, list) and len(nb_mat) > 0:
+                    negbin_score_ll = score_matrix_log_loss(nb_mat, home_goals, away_goals)
+
+                wb_mat = source_mats.get("weibull")
+                if wb_mat and isinstance(wb_mat, list) and len(wb_mat) > 0:
+                    weibull_score_ll = score_matrix_log_loss(wb_mat, home_goals, away_goals)
+            except Exception:
+                logger.debug("Per-source score log-loss failed", exc_info=True)
+
         # Error direction
         pred_home = final_probs["home"]
         pred_draw = final_probs["draw"]
@@ -329,6 +435,15 @@ class LearningEngine:
             elo_marginal=elo_marginal,
             market_marginal=market_marginal,
             signal_marginal=signal_marginal,
+            # V4.7-score: score-level evaluation metrics
+            score_log_loss=score_ll,
+            score_exact_hit=score_exact,
+            score_top3_hit=score_top3,
+            dc_score_log_loss=dc_score_ll,
+            negbin_score_log_loss=negbin_score_ll,
+            weibull_score_log_loss=weibull_score_ll,
+            learning_weight=learning_weight,
+            learning_tier=tier,
             context_tags={
                 "attribution_method": "sequential_leave_one_out_v2",
                 "weight_source": weight_source,
@@ -337,10 +452,48 @@ class LearningEngine:
                     if snapshot.baseline_probs
                     else "final_probability_fallback"
                 ),
+                "learning_tier": tier,
+                "learning_weight": learning_weight,
             },
         )
         db.add(log)
         return log
+
+    @staticmethod
+    def _track_score_calibration(
+        snapshot: PredictionSnapshot,
+        home_goals: int,
+        away_goals: int,
+    ) -> None:
+        """Update score calibration drift tracking (V4.7 S2.3).
+
+        Best-effort only — failures are logged but never propagate.
+        Compares the fused score matrix's per-bucket probability mass against
+        the actual total-goals outcome to detect systematic miscalibration.
+        """
+        try:
+            fused_mat = getattr(snapshot, "fused_score_matrix", None)
+            if fused_mat is None:
+                params = snapshot.pipeline_params or {}
+                fused_mat = params.get("fused_score_matrix")
+
+            if fused_mat is None or not isinstance(fused_mat, list) or len(fused_mat) == 0:
+                logger.debug("No fused score matrix for match %s — skipping calibration drift",
+                             snapshot.match_id)
+                return
+
+            from app.services.score_calibration_tracker import log_score_calibration
+
+            log_score_calibration(
+                match_id=str(snapshot.match_id),
+                home_goals=home_goals,
+                away_goals=away_goals,
+                score_matrix=fused_mat,
+                snapshot_id=str(snapshot.id) if snapshot.id else None,
+            )
+        except Exception:
+            logger.debug("Score calibration tracking skipped for %s vs %s",
+                         snapshot.home_team, snapshot.away_team, exc_info=True)
 
     async def _resolve_learning_status(
         self,

@@ -61,6 +61,8 @@ def save_pre_match_snapshot(
     home_xg: float | None = None,
     away_xg: float | None = None,
     top_scores: list[dict[str, Any]] | None = None,
+    fused_score_matrix: list[list[float]] | None = None,
+    source_score_matrices: dict[str, list[list[float]]] | None = None,
     # ── Fusion metadata ──
     weight_config_label: str = "",
     weight_config: dict[str, Any] | None = None,
@@ -108,22 +110,27 @@ def save_pre_match_snapshot(
     snapshot_id = str(uuid.uuid4())
     freeze_dt = datetime.now(timezone.utc).isoformat()
     if not _is_uuid_like(match_id):
-        resolved = _resolve_match_id_best_effort(
-            home_team=home_team,
-            away_team=away_team,
-            competition=competition,
-            kickoff_at=kickoff_at,
-        )
-        if resolved:
-            match_id = resolved
+        # Accept numeric schedule IDs (e.g. "177") without resolver lookup
+        if _is_numeric_id(match_id):
+            # Numeric ID is valid as-is — wc26_schedule.id
+            pass  # keep match_id unchanged
         else:
-            logger.warning(
-                "PreMatchSnapshot not saved for %s vs %s: missing or invalid match_id=%r",
-                home_team,
-                away_team,
-                match_id,
+            resolved = _resolve_match_id_best_effort(
+                home_team=home_team,
+                away_team=away_team,
+                competition=competition,
+                kickoff_at=kickoff_at,
             )
-            return None
+            if resolved:
+                match_id = resolved
+            else:
+                logger.warning(
+                    "PreMatchSnapshot not saved for %s vs %s: missing or invalid match_id=%r",
+                    home_team,
+                    away_team,
+                    match_id,
+                )
+                return None
 
     # ── Compute input_hash for tamper-evidence / dedup ──
     input_payload = json.dumps({
@@ -142,14 +149,14 @@ def save_pre_match_snapshot(
     }, sort_keys=True, default=str, ensure_ascii=False)
     input_hash = hashlib.sha256(input_payload.encode("utf-8")).hexdigest()
 
-    try:
-        if not DB_PATH.exists():
-            logger.warning(
-                "Database not found at %s — snapshot not saved", DB_PATH
-            )
-            return None
+    if not DB_PATH.exists():
+        logger.warning(
+            "Database not found at %s — snapshot not saved", DB_PATH
+        )
+        return None
 
-        conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
         conn.execute("PRAGMA journal_mode=WAL")
 
         # Ensure table exists (idempotent)
@@ -167,6 +174,7 @@ def save_pre_match_snapshot(
                 news_signal_ids, component_probs,
                 final_home_prob, final_draw_prob, final_away_prob,
                 home_xg, away_xg, top_scores,
+                fused_score_matrix, source_score_matrices,
                 weight_config_label, weight_config, effective_weights,
                 fusion_graph, model_disagreement,
                 market_blended, market_weight_used, market_divergence,
@@ -178,7 +186,7 @@ def save_pre_match_snapshot(
                 prediction_mode, report_markdown, llm_analysis
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 snapshot_id,
                 match_id,
@@ -206,6 +214,8 @@ def save_pre_match_snapshot(
                 home_xg,
                 away_xg,
                 _json_dump(top_scores or []),
+                _json_dump(fused_score_matrix),
+                _json_dump(source_score_matrices),
                 weight_config_label or None,
                 _json_dump(weight_config),
                 _json_dump(effective_weights),
@@ -235,7 +245,6 @@ def save_pre_match_snapshot(
             ),
         )
         conn.commit()
-        conn.close()
 
         logger.info(
             "PreMatchSnapshot saved: %s — %s vs %s [%s] status=%s",
@@ -255,6 +264,8 @@ def save_pre_match_snapshot(
             exc_info=True,
         )
         return None
+    finally:
+        conn.close()
 
 
 def _json_dump(obj: Any) -> str | None:
@@ -275,6 +286,12 @@ def _is_uuid_like(value: str) -> bool:
     """Accept UUIDs stored either dashed or as 32 hex chars."""
     clean = str(value or "").replace("-", "").strip()
     return bool(re.fullmatch(r"[0-9a-fA-F]{32}", clean))
+
+
+def _is_numeric_id(value: str) -> bool:
+    """Accept numeric schedule IDs (e.g. '177' for wc26_schedule.id)."""
+    clean = str(value or "").strip()
+    return bool(re.fullmatch(r"\d+", clean))
 
 
 def _resolve_match_id_best_effort(
@@ -317,10 +334,12 @@ def run_migration() -> bool:
         ("odds_snapshot_id", "TEXT"),
         ("weather_snapshot_id", "TEXT"),
         ("injury_snapshot_id", "TEXT"),
+        ("fused_score_matrix", "TEXT"),
+        ("source_score_matrices", "TEXT"),
     ]
 
+    conn = sqlite3.connect(str(DB_PATH))
     try:
-        conn = sqlite3.connect(str(DB_PATH))
         existing = {r[1] for r in conn.execute("PRAGMA table_info(pre_match_snapshots)")}
 
         added = 0
@@ -335,11 +354,12 @@ def run_migration() -> bool:
         if added:
             conn.commit()
             logger.info("pre_match_snapshots migration: added %d column(s)", added)
-        conn.close()
         return True
     except Exception:
         logger.debug("Migration check skipped — table may not exist yet", exc_info=True)
         return False
+    finally:
+        conn.close()
 
 
 def _ensure_table(conn: sqlite3.Connection) -> None:
@@ -372,6 +392,8 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
             home_xg REAL,
             away_xg REAL,
             top_scores TEXT,
+            fused_score_matrix TEXT,
+            source_score_matrices TEXT,
             weight_config_label TEXT,
             weight_config TEXT,
             effective_weights TEXT,
