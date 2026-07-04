@@ -32,7 +32,7 @@ Only the latest version on the `master` branch receives security updates.
 
 | Version | Supported |
 |:---|:---|
-| V4.5.0-beta (master) | ✅ |
+| V4.7.0-alpha (master) | ✅ |
 | All older versions | ❌ |
 
 ## Security-Related Configuration

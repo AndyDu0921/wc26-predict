@@ -1,6 +1,6 @@
 # WC26 Predict — 完整 PRD、架构文档与解决方案
 
-> **版本**: V4.5.0-beta  
+> **当前代码版本**: V4.7.0-alpha
 > **日期**: 2026-07-01  
 > **作者**: AndyDu  
 > **仓库**: github.com/AndyDu0921/wc26-predict  
@@ -10,12 +10,12 @@
 
 > ⚠️ **准确性警告 (Accuracy Notice)**
 >
-> 本文档在 V4.3.0 S4（commit `9356159`）之前编写，存在以下已知过时声明。请以实际代码为准：
+> 本文档主体包含 V4.3-V4.5 阶段的历史架构说明。当前运行代码以 `backend/app/version.py` 的 `V4.7.0-alpha` 为准；旧版本字符串保留为历史上下文，请以实际代码和 `CHANGELOG.md` 最新章节为准：
 >
 > | 文档声明 | 实际状态 | 说明 |
 > |:---|:---|:---|
 > | **B1**: NegBin 5% 融合只在 CLI，API/Dashboard 路径缺少 | ✅ 已修复 | V4.3.0 S4 (commit `9356159`) 已加入 `predict_match()` 和 `predict_sync()` |
-> | **C5**: README 版本号仍是 V4.2.2 | ✅ 已修复 | README 当前版本 V4.3.0-beta |
+> | **C5**: README 版本号仍是 V4.2.2 | ✅ 已修复 | README 当前版本 V4.7.0-alpha |
 > | **Fix 1 设计**: `engine.py` 为 ~400 行 `PredictionEngine` 类 + `run()` 方法 | ⚠️ 简化实现 | 实际为 147 行纯函数模块（`negbin_pmf`, `overdispersed_scoreline`, `fuse_dc_enhancer_adaptive`, `enforce_draw_floor`）— 无类架构 |
 > | **C3**: `prediction_enhanced.py` 是多余的包装层 | ⚠️ 不准确 | 实际提供 ~250 行实质功能（天气、LLM、市场融合），是 Dashboard 的合法适配器 |
 > | **2.2**: Final 累计准确率 50% | ⚠️ 无依据 | 该数字不存在于赛后 memory 文件中，来源不明 |

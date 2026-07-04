@@ -281,5 +281,129 @@
         "away": 3.8
       }
     ]
+  },
+  "Australia|Egypt": {
+    "captured_at": "2026-07-03T10:09:55.903934+00:00",
+    "bookmakers": [
+      {
+        "name": "bet365",
+        "home": 3.3,
+        "draw": 2.9,
+        "away": 2.45
+      },
+      {
+        "name": "Betfair",
+        "home": 3.5,
+        "draw": 2.8,
+        "away": 2.45
+      },
+      {
+        "name": "WilliamHill",
+        "home": 3.2,
+        "draw": 2.8,
+        "away": 2.4
+      },
+      {
+        "name": "Pinnacle",
+        "home": 3.42,
+        "draw": 2.89,
+        "away": 2.53
+      },
+      {
+        "name": "Unibet",
+        "home": 3.35,
+        "draw": 2.88,
+        "away": 2.45
+      },
+      {
+        "name": "10Bet",
+        "home": 3.25,
+        "draw": 2.92,
+        "away": 2.38
+      },
+      {
+        "name": "1xBet",
+        "home": 3.42,
+        "draw": 3.02,
+        "away": 2.55
+      },
+      {
+        "name": "Betano",
+        "home": 3.45,
+        "draw": 2.92,
+        "away": 2.55
+      },
+      {
+        "name": "Dafabet",
+        "home": 3.2,
+        "draw": 2.95,
+        "away": 2.5
+      },
+      {
+        "name": "Marathonbet",
+        "home": 3.35,
+        "draw": 2.96,
+        "away": 2.51
+      },
+      {
+        "name": "SBO",
+        "home": 3.2,
+        "draw": 2.87,
+        "away": 2.49
+      }
+    ]
+  },
+  "Colombia|Ghana": {
+    "captured_at": "2026-07-03T10:09:55.903934+00:00",
+    "bookmakers": [
+      {
+        "name": "bet365",
+        "home": 1.53,
+        "draw": 3.9,
+        "away": 7.0
+      },
+      {
+        "name": "WilliamHill",
+        "home": 1.55,
+        "draw": 4.0,
+        "away": 7.5
+      },
+      {
+        "name": "Pinnacle",
+        "home": 1.52,
+        "draw": 4.1,
+        "away": 7.82
+      },
+      {
+        "name": "Unibet",
+        "home": 1.57,
+        "draw": 3.9,
+        "away": 7.0
+      },
+      {
+        "name": "10Bet",
+        "home": 1.55,
+        "draw": 4.0,
+        "away": 7.5
+      },
+      {
+        "name": "1xBet",
+        "home": 1.54,
+        "draw": 4.05,
+        "away": 7.4
+      },
+      {
+        "name": "Marathonbet",
+        "home": 1.56,
+        "draw": 3.95,
+        "away": 7.2
+      },
+      {
+        "name": "Betway",
+        "home": 1.53,
+        "draw": 4.0,
+        "away": 7.0
+      }
+    ]
   }
 }

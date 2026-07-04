@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.7.0-alpha] — 2026-07-03
+
+### Added
+- **BacktestGate proposal-only workflow**: model-weight candidates are persisted as auditable proposals and never mutate production weights automatically.
+- **ModelWeightProposal audit table**: Alembic migration + ORM model for weight-candidate evidence.
+- **Stacking safety gates**: the meta-learner now requires all three outcomes (home/draw/away) before fitting or loading an artifact.
+- **Replayable snapshot metadata**: snapshots preserve historical weight config, pre-market probabilities, market weight used, NegBin weight, and calibration state.
+
+### Changed
+- World Cup weight metadata now reports `WORLD_CUP_V4.7.0_ALPHA` / `WORLD_CUP_KNOCKOUT_V4.7.0_ALPHA` without changing the numeric weights.
+- `PredictionSnapshot` and app settings now default model version from `app.version.VERSION`.
+- Core fusion returns NegBin component probabilities directly so async/sync downstream consumers use the same component evidence.
+
+### Fixed
+- Async `PredictionPipeline.predict_match()` now runs Weibull scenario rules after Elo is available; the previous order caused the guard to fall back to full Weibull weight.
+- Async stacking integration now passes canonical component probabilities instead of a component-name list.
+- Invalid or partial stacking artifacts now degrade to uniform fallback instead of emitting incomplete probability dictionaries.
+
+### Verified
+- Backend test suite: `466 passed, 4 skipped`.
+
 ## [4.5.0-beta] — 2026-07-01
 
 ### Added
