@@ -1,8 +1,8 @@
 # Magic Number 中央注册表
 
 > **维护规则**: 每次修改常量 → 必须更新此表。每次新增常量 → 必须在此表注册。
-> **最后更新**: 2026-07-01
-> **对应版本**: V4.5.0-beta
+> **最后更新**: 2026-07-04
+> **对应版本**: V4.8.0-alpha
 
 本文档是 WC26 Predict 系统中所有硬编码常量的单一真相来源。每个值附设定依据、历史来源和修改记录。
 
@@ -14,8 +14,8 @@
 
 | 常量 | 值 | 行号 | 设定依据 | 引入版本 | 修改记录 |
 |:---|:---|:---|:---|:---|:---|
-| `WC_XG_CALIBRATION_FACTOR` | 1.35 | L17 | WC xG 系统性低估 ~35% | V3.9.6 | V3.9.6 从 1.20 调回 1.35 |
-| `NEGBIN_R` | 3.5 | L18 | WC Home Var/Mean≈1.42, Away Var/Mean≈1.41 | V3.9.5 | — |
+| `WC_XG_CALIBRATION_FACTOR` | 1.20 | `core/engine.py` | V4.7-score grid search 当前最优；需继续用严格 walk-forward 复核 | V4.7.0-alpha | V4.7 从过时文档值 1.35 统一为代码事实 1.20 |
+| `NEGBIN_R` | 8.0 | `core/engine.py` | V4.7-score grid search 当前最优；仅作为候选证据，不单独证明上线优势 | V4.7.0-alpha | V4.7 从过时文档值 3.5 统一为代码事实 8.0 |
 | `NEGBIN_FUSION_WEIGHT` | 0.05 | L19 | 保守 5%，仅做微调 | V3.9.5 | — |
 
 ### Market Boost（动态市场影响增强）
@@ -33,6 +33,15 @@
 | 常量 | 值 | 行号 | 设定依据 | 引入版本 | 修改记录 |
 |:---|:---|:---|:---|:---|:---|
 | `DRAW_FLOOR` | 0.12 | L25 | WC 最低平局概率（小组赛基线） | V4.3.1 | — |
+
+### Score Matrix Fusion（V4.7-alpha）
+
+| 常量 | 值 | 设定依据 | 引入版本 |
+|:---|:---|:---|:---|
+| DC score matrix weight | 0.40 | 三源比分矩阵融合中的 DC 基础矩阵权重 | V4.7.0-alpha |
+| NegBin score matrix weight | 0.35 | 过度离散修正矩阵权重；从 DC xG 派生，需注意特征重叠 | V4.7.0-alpha |
+| Weibull score matrix weight | 0.25 | Copula 候选矩阵权重；可用时进入比分矩阵融合 | V4.7.0-alpha |
+| Score matrix max goals | 5 | 与现有 top-score/score-logloss 评估口径保持一致 | V4.7.0-alpha |
 
 ### 自适应 DC 分歧（内联常量）
 
@@ -102,7 +111,7 @@
 | `pi_effective` | **0.1700** (18.9%) | **0.1800** (20.0%) | `0.17` / `0.18` |
 | **∑** | **1.0000** | **1.0000** | 5 个有效权重恒和为 1.0 |
 
-> **解读**: 淘汰赛中 DC 被稀释得更严重（57.6% vs 65.7%），因为 Elo/Pi 权重更高。这解释了为什么淘汰赛预测比小组赛更依赖 Elo+Pi 共识，而非 DC 主导。
+> **解读**: 淘汰赛中 DC 被稀释得更严重（57.6% vs 65.7%），因为 Elo/Pi 权重更高。这解释了为什么淘汰赛预测比小组赛更依赖 Elo+Pi 共识，而非 DC 主导。该解释是结构性权重分析，不等同于准确率结论；准确率结论必须来自 evaluation registry + paired walk-forward。
 
 ### DB 自动优化权重门槛
 
@@ -249,6 +258,29 @@
 | `VERIFICATION_MIN_SOURCES` | 2 | 最少独立源才能达成共识 | R4-C10-fix |
 
 ---
+
+## 十三、V4.8 Accuracy Engine 审计闸门
+
+> 以下常量只控制 shadow 实验、自进化提案和评估审计；不改变生产预测权重，不代表任何候选模型已被证明更准。
+
+### Candidate Experiment (`services/candidate_experiments.py`)
+
+| 常量 | 值 | 位置 | 设定依据 | 引入版本 |
+|:---|:---|:---|:---|:---|
+| `CandidateExperimentConfig.min_sample_count` | 30 | config 默认值 | 少于 30 个 paired strict 样本只允许 smoke / diagnostic，不允许生成上线证据 | V4.8.0-alpha |
+| Supported improvement threshold | `mean_delta <= -0.001` | `_shadow_gate_decision()` | 避免把浮点噪声或近似无变化当成改进 | V4.8.0-alpha |
+| Supported improvement count | `>= 2` 个核心 proper scoring 指标 | `_shadow_gate_decision()` | 候选至少同时改善 Brier / LogLoss / RPS 中两个指标，不能只靠单指标或 direction accuracy | V4.8.0-alpha |
+| CI gate | `ci95 upper <= 0` | `_shadow_gate_decision()` | 配对差值的 95% 置信区间不能跨 0 才算 supported improvement | V4.8.0-alpha |
+| CI multiplier | 1.96 | `_ci95()` | 正态近似 95% 区间；小样本下只作保守 shadow gate，不作显著性宣称 | V4.8.0-alpha |
+| ECE bins | 10 | `_ece()` | 标准十分箱校准粗检；ECE 只作辅助指标，不能单独放行候选 | V4.8.0-alpha |
+| LogLoss epsilon | `1e-12` | `_logloss()` / `_score_logloss_mean()` | 防止 `log(0)`，保持与赛后评估数值稳定策略一致 | V4.8.0-alpha |
+
+### Model Change Proposals (`services/model_change_proposals.py`)
+
+| 常量 | 值 | 位置 | 设定依据 | 引入版本 |
+|:---|:---|:---|:---|:---|
+| `min_active_logs` | 30 | `build_learning_log_weight_proposal()` 默认值 | 少于 30 条 active / diagnostic 学习日志不生成有效权重候选 | V4.8.0-alpha |
+| Marginal action threshold | `±0.002` | `_marginal_recommendations()` | 只把平均边际贡献绝对值超过 0.002 的组件标记为考虑增减，其余保持 hold | V4.8.0-alpha |
 
 ## 十三、淘汰赛特殊参数（手动融合脚本）
 

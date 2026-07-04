@@ -47,6 +47,7 @@ backend/data/lineup_probes/
 backend/data/injury_probes/
 *.bak
 *.db.bak-*
+*.db.backup-*
 *.db.codex-backup-*
 backend/tmp/
 backend/package.json

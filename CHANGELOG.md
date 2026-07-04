@@ -7,11 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.8.0-alpha] — 2026-07-04
+
+### Added
+- **Accuracy Engine v2**: `evaluation_registry.v2` is now the only strict backtest sample gateway, with explicit strict / diagnostic / rejected sample statuses, leakage status, horizon, model version, data availability, and registry hash.
+- **PredictionKernel**: async API, sync CLI, and batch paths now share a pure deterministic fusion kernel for core probability fusion and provenance generation.
+- **Accuracy audit tables**: Alembic migration `e5f6a7b8c9d0` adds `feature_snapshots`, `experiment_runs`, `candidate_predictions`, and `model_change_proposals` without touching production weight tables.
+- **Shadow candidate pool**: dynamic Dixon-Coles, dynamic bivariate Poisson, Bayesian weighted dynamic, covariate ML, Dirichlet calibration, stacking optimizer, and uniform/current baselines can be evaluated offline.
+- **Unified experiment runner**: `run_accuracy_experiments.py` compares champion vs candidate with paired Brier, LogLoss, RPS, score LogLoss, ECE, group metrics, leakage checks, and gate decision.
+- **Proposal-only self-evolution ledger**: `model_change_proposals` records model, calibrator, feature-rule, and weight proposals without applying them to production configuration.
+
+### Changed
+- Version source of truth is now `4.8.0-alpha`; production weight labels remain `WORLD_CUP_V4.7.0_ALPHA` because this release does not change production weights.
+- Legacy backtest/grid/stacking scripts now point to the new accuracy experiment runner for current evidence generation while remaining available for historical reproducibility.
+- Documentation now separates verified local facts from historical V4.3-V4.7 architecture text and avoids unverified accuracy claims.
+
+### Fixed
+- Process-evaluation shot-volume deltas remain unavailable when pre-match expected shots are missing, preventing fake zero-error learning signals.
+- Candidate gates reject metric regressions, identity/no-op candidates, insufficient samples, and candidates whose apparent gains are not supported by paired proper-scoring evidence.
+
+### Verified
+- Backend test suite: `494 passed, 4 skipped`.
+- Evaluation registry v2 dry-run: `78` total local samples, `58` canonical match-result rows, `78` schedule-finished rows, `9` strict eligible samples, `67` diagnostic samples, `2` rejected samples.
+- Local Alembic head: `e5f6a7b8c9d0`.
+- Shadow candidate smoke: no candidate is production-ready because strict sample count is still only `9`; all results remain shadow/proposal-only.
+
 ## [4.7.0-alpha] — 2026-07-03
 
 ### Added
 - **BacktestGate proposal-only workflow**: model-weight candidates are persisted as auditable proposals and never mutate production weights automatically.
 - **ModelWeightProposal audit table**: Alembic migration + ORM model for weight-candidate evidence.
+- **Evaluation registry**: reconciles `matches + match_results`, `wc26_schedule`, pre-match snapshots, prediction snapshots, and process eval rows before any strict backtest.
+- **Shadow candidate experiment runner**: emits paired Brier/LogLoss/RPS/ECE/group metrics and leakage checks without changing production weights or artifacts.
+- **Player availability shadow component**: converts availability records into auditable xG modifier candidates while keeping production probabilities unchanged.
+- **Shared score-matrix fusion helper**: sync and async prediction paths now share the DC + NegBin + Weibull score-matrix fusion logic.
 - **Stacking safety gates**: the meta-learner now requires all three outcomes (home/draw/away) before fitting or loading an artifact.
 - **Replayable snapshot metadata**: snapshots preserve historical weight config, pre-market probabilities, market weight used, NegBin weight, and calibration state.
 
@@ -19,14 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - World Cup weight metadata now reports `WORLD_CUP_V4.7.0_ALPHA` / `WORLD_CUP_KNOCKOUT_V4.7.0_ALPHA` without changing the numeric weights.
 - `PredictionSnapshot` and app settings now default model version from `app.version.VERSION`.
 - Core fusion returns NegBin component probabilities directly so async/sync downstream consumers use the same component evidence.
+- Alembic migrations are idempotent for the observed local SQLite drift state, allowing upgrade from `f7a8b9c0d1e2` to `d4e5f6a7b8c9`.
 
 ### Fixed
 - Async `PredictionPipeline.predict_match()` now runs Weibull scenario rules after Elo is available; the previous order caused the guard to fall back to full Weibull weight.
 - Async stacking integration now passes canonical component probabilities instead of a component-name list.
 - Invalid or partial stacking artifacts now degrade to uniform fallback instead of emitting incomplete probability dictionaries.
+- `process_evaluator` no longer computes shot-volume deltas as actual shots minus actual shots. Missing pre-match expected shots are now recorded as unavailable instead of fake zero error.
 
 ### Verified
-- Backend test suite: `466 passed, 4 skipped`.
+- Backend test suite: `483 passed, 4 skipped`.
+- Evaluation registry dry-run: `78` total local samples, `58` canonical match-result rows, `9` strict eligible backtest samples.
 
 ## [4.5.0-beta] — 2026-07-01
 
