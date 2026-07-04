@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""collect_stacking_training_data.py — Walk-forward collection of all 7 component probs.
+"""Legacy walk-forward collection of stacking component probabilities.
+
+V4.8 note: new candidate evaluation should use ``run_accuracy_experiments.py``
+and ``candidate_experiments.py`` so all experiments share the registry, leakage
+checks, paired proper scoring metrics, and proposal-only gate.  This script is
+retained for historical reproducibility of the A3 stacking artifact format.
 
 Generates (X, y) training pairs for the A3 Stacking Meta-Learner and calibration
 records for the B1 Weighted Conformal Predictor by running a full walk-forward

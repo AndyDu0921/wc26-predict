@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""backtest_full_pipeline.py — Full-pipeline walk-forward backtest.
+"""Legacy full-pipeline walk-forward backtest.
+
+V4.8 note: new experiments should use ``run_accuracy_experiments.py`` so all
+candidate/champion comparisons share the evaluation registry, leakage checks,
+paired metrics, and proposal-only gate.  This script is retained for historical
+reproducibility of the half-life grid results.
 
 Verifies that 180d half-life remains optimal when all downstream
 fusion components (Enhancer → Elo → Pi → DrawFloor) are included.

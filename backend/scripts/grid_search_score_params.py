@@ -1,4 +1,8 @@
-"""V4.7-score: Grid search for optimal score prediction hyperparameters.
+"""Legacy V4.7-score grid search for score prediction hyperparameters.
+
+V4.8 note: use ``run_accuracy_experiments.py`` for new champion/challenger
+comparisons.  This script remains available for reproducing historical score
+matrix parameter searches.
 
 Walk-forward backtest across completed WC26 matches to find the best
 combination of:
