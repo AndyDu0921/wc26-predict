@@ -27,6 +27,9 @@ from app.core.stacking_features import (
 
 logger = logging.getLogger(__name__)
 
+REQUIRED_CLASSES = (0, 1, 2)
+EXPECTED_FEATURE_COUNT = len(STACKING_FEATURE_KEYS) * 3
+
 
 class StackingMetaLearner:
     """Multinomial logistic regression stacking meta-learner.
@@ -64,10 +67,28 @@ class StackingMetaLearner:
         y_np = np.asarray(y, dtype=int)
 
         n_samples = X_np.shape[0]
+        if X_np.ndim != 2 or X_np.shape[1] != EXPECTED_FEATURE_COUNT:
+            logger.info(
+                "StackingMetaLearner.fit: invalid feature shape %s; expected (*, %d)",
+                X_np.shape,
+                EXPECTED_FEATURE_COUNT,
+            )
+            self.is_fitted = False
+            return self
+
         if n_samples < STACKING_MIN_TRAINING_SAMPLES:
             logger.info(
                 "StackingMetaLearner.fit: %d samples < %d minimum — not fitting",
                 n_samples, STACKING_MIN_TRAINING_SAMPLES,
+            )
+            self.is_fitted = False
+            return self
+        observed_classes = tuple(sorted(int(item) for item in set(y_np.tolist())))
+        if observed_classes != REQUIRED_CLASSES:
+            logger.info(
+                "StackingMetaLearner.fit: classes %s do not cover required %s",
+                observed_classes,
+                REQUIRED_CLASSES,
             )
             self.is_fitted = False
             return self
@@ -94,6 +115,12 @@ class StackingMetaLearner:
         self._intercept = model.intercept_.tolist()  # (3,)
         self._classes = [int(c) for c in model.classes_]
         self.is_fitted = True
+        if not self._is_ready():
+            self.is_fitted = False
+            logger.warning(
+                "StackingMetaLearner.fit produced invalid artifact shape/classes; unfitted"
+            )
+            return self
         self.fitted_at = datetime.now(timezone.utc)
         self.training_sample_count = n_samples
 
@@ -130,12 +157,8 @@ class StackingMetaLearner:
               "away_win_prob": float}``.  Falls back to uniform (⅓ each)
             when the model is not fitted.
         """
-        if not self.is_fitted:
-            return {
-                "home_win_prob": 1.0 / 3.0,
-                "draw_prob": 1.0 / 3.0,
-                "away_win_prob": 1.0 / 3.0,
-            }
+        if not self._is_ready():
+            return self._uniform_probs()
 
         X = np.asarray(
             [assemble_feature_vector(component_probs, market_probs)],
@@ -157,12 +180,19 @@ class StackingMetaLearner:
             1: "draw_prob",
             2: "away_win_prob",
         }
-        result: dict[str, float] = {}
+        result: dict[str, float] = {
+            "home_win_prob": 0.0,
+            "draw_prob": 0.0,
+            "away_win_prob": 0.0,
+        }
         for i, cls in enumerate(self._classes):
             key = idx_to_key.get(int(cls), f"class_{cls}")
             result[key] = float(probs_arr[i])
 
-        return result
+        total = sum(result[key] for key in idx_to_key.values())
+        if total <= 0:
+            return self._uniform_probs()
+        return {key: result[key] / total for key in idx_to_key.values()}
 
     # ── Serialization ────────────────────────────────────────────────
 
@@ -199,6 +229,8 @@ class StackingMetaLearner:
         self.fitted_at = datetime.fromisoformat(fitted_at) if fitted_at else None
         self.training_sample_count = int(payload.get("training_sample_count", 0))
         self.feature_names = tuple(payload.get("feature_names", STACKING_FEATURE_KEYS))
+        if not self._is_ready():
+            self.is_fitted = False
 
     # ── Diagnostics ──────────────────────────────────────────────────
 
@@ -211,3 +243,26 @@ class StackingMetaLearner:
             "n_features": len(self.feature_names) * 3,
             "feature_names": list(self.feature_names),
         }
+
+    @staticmethod
+    def _uniform_probs() -> dict[str, float]:
+        return {
+            "home_win_prob": 1.0 / 3.0,
+            "draw_prob": 1.0 / 3.0,
+            "away_win_prob": 1.0 / 3.0,
+        }
+
+    def _is_ready(self) -> bool:
+        if not self.is_fitted:
+            return False
+        if tuple(int(item) for item in self._classes) != REQUIRED_CLASSES:
+            return False
+        try:
+            coef = np.asarray(self._coef, dtype=float)
+            intercept = np.asarray(self._intercept, dtype=float)
+        except (TypeError, ValueError):
+            return False
+        return (
+            coef.shape == (len(REQUIRED_CLASSES), EXPECTED_FEATURE_COUNT)
+            and intercept.shape == (len(REQUIRED_CLASSES),)
+        )

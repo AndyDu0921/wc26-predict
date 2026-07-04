@@ -54,7 +54,6 @@ FRIENDLY_COMPETITION_WEIGHT = 0.5
 from app.core.engine import (
     WC_XG_CALIBRATION_FACTOR, NEGBIN_R, NEGBIN_FUSION_WEIGHT,
     negbin_pmf as _negbin_pmf,
-    overdispersed_scoreline as _overdispersed_scoreline,
     negbin_score_matrix,
     fuse_score_matrices,
     fuse_dc_enhancer_adaptive,
@@ -171,6 +170,119 @@ def _run_postflight_gate(result: PredictionResult, *, is_knockout: bool = False)
                     ))
     except Exception as exc:
         logger.warning("Post-flight gate check failed: %s", exc)
+
+
+def _resolve_weibull_scenario_action(
+    *,
+    weibull_probs: dict[str, float] | None,
+    base_weight: float,
+    elo_gap: float | None,
+    stage: str,
+    market_probs: dict[str, Any] | None,
+    total_xg: float | None,
+    log_label: str = "",
+) -> tuple[dict[str, Any], float]:
+    """Classify Weibull output and return the action plus effective weight."""
+    default = {"scenario": "normal", "action": "normal"}
+    if weibull_probs is None or base_weight <= 0:
+        return default, 0.0
+
+    try:
+        scenario = classify_weibull_scenario(
+            weibull_probs=weibull_probs,
+            elo_gap=elo_gap,
+            is_knockout=_is_ko_stage(stage) if stage else False,
+            market_probs=market_probs,
+            total_xg=total_xg,
+        )
+        action = resolve_weibull_action(scenario, weibull_weight=base_weight)
+        effective_weight = float(action["effective_weight"])
+        if action["action"] in ("skip", "shadow"):
+            logger.info(
+                "Weibull scenario%s: %s -> %s (weight %.4f->%.4f): %s",
+                f" ({log_label})" if log_label else "",
+                scenario["scenario"],
+                action["action"],
+                base_weight,
+                effective_weight,
+                action["reason"],
+            )
+        return action, effective_weight
+    except Exception as exc:
+        logger.warning(
+            "Weibull scenario classification failed%s; using full weight: %s",
+            f" ({log_label})" if log_label else "",
+            exc,
+        )
+        fallback = {
+            "scenario": "normal",
+            "action": "normal",
+            "reason": "classification_failed_using_full_weight",
+            "error": str(exc),
+        }
+        return fallback, float(base_weight)
+
+
+def _extract_component_triplet(probs: dict[str, Any] | None) -> dict[str, float] | None:
+    """Return normalized ``home/draw/away`` probabilities from mixed key styles."""
+    if not isinstance(probs, dict):
+        return None
+
+    def first(*keys: str) -> float | None:
+        for key in keys:
+            if key in probs and probs[key] is not None:
+                return float(probs[key])
+        return None
+
+    home = first("home", "home_win", "home_win_prob", "home_prob")
+    draw = first("draw", "draw_prob")
+    away = first("away", "away_win", "away_win_prob", "away_prob")
+    if home is None or draw is None or away is None:
+        return None
+    home = max(home, 0.0)
+    draw = max(draw, 0.0)
+    away = max(away, 0.0)
+    total = home + draw + away
+    if total <= 0:
+        return None
+    return {
+        "home": home / total,
+        "draw": draw / total,
+        "away": away / total,
+    }
+
+
+def _build_stacking_component_probs(
+    *,
+    dc_pred: dict[str, Any],
+    enhancer_pred: dict[str, Any] | None,
+    elo_pred: Any | None,
+    pi_pred: dict[str, Any] | None,
+    weibull_pred: dict[str, Any] | None,
+    negbin_probs: dict[str, Any] | None,
+    market_probs: dict[str, Any] | None,
+) -> dict[str, dict[str, float]]:
+    """Build canonical component probabilities for the stacking learner."""
+    components: dict[str, dict[str, float]] = {}
+    for name, raw in (
+        ("dixon_coles", dc_pred),
+        ("enhancer", enhancer_pred),
+        ("negbin", negbin_probs),
+        ("weibull", weibull_pred),
+        ("pi_rating", pi_pred),
+        ("market", market_probs),
+    ):
+        triplet = _extract_component_triplet(raw)
+        if triplet is not None:
+            components[name] = triplet
+
+    if elo_pred is not None:
+        components["elo"] = {
+            "home": float(elo_pred.home_win_prob),
+            "draw": float(elo_pred.draw_prob),
+            "away": float(elo_pred.away_win_prob),
+        }
+    return components
 
 
 class PredictionPipeline:
@@ -452,30 +564,6 @@ class PredictionPipeline:
         wb_fitted = self._weibull.fit(df)
         wb_pred = self._weibull.predict(home_team, away_team, is_neutral) if wb_fitted else None
 
-        # ── 5.1 Weibull Scenario Rules (P1-2 Phase 2) ──
-        weibull_scenario_result: dict[str, Any] = {"scenario": "normal", "action": "normal"}
-        weibull_effective_weight: float = wc.weibull
-        if wb_pred is not None:
-            try:
-                _wb_scenario = classify_weibull_scenario(
-                    weibull_probs=wb_pred,
-                    elo_gap=float(elo_pred.rating_gap) if elo_pred else None,
-                    is_knockout=_is_ko_stage(stage) if stage else False,
-                    market_probs=market_probs,
-                    total_xg=float(dc_pred.get("home_xg", 0)) + float(dc_pred.get("away_xg", 0)),
-                )
-                _wb_action = resolve_weibull_action(_wb_scenario, weibull_weight=wc.weibull)
-                weibull_scenario_result = _wb_action
-                weibull_effective_weight = float(_wb_action["effective_weight"])
-                if _wb_action["action"] in ("skip", "shadow"):
-                    logger.info(
-                        "Weibull scenario: %s → %s (weight %.4f→%.4f): %s",
-                        _wb_scenario["scenario"], _wb_action["action"],
-                        wc.weibull, weibull_effective_weight, _wb_action["reason"],
-                    )
-            except Exception as _wb_exc:
-                logger.warning("Weibull scenario classification failed — using full weight: %s", _wb_exc)
-
         # ── 6-9. Core Fusion: DC → Enhancer → NegBin → Weibull → Elo → Pi ──
         # V4.3.0: Unified — delegates to engine.run_core_fusion() (single source of truth).
         # All model-fitting I/O still happens here; only the math is shared.
@@ -489,6 +577,19 @@ class PredictionPipeline:
         elo_pred = self._elo.predict(
             home_team, away_team,
             is_neutral=is_neutral, competition_weight=competition_weight, competition=competition,
+        )
+
+        # ── 5.1 Weibull Scenario Rules (P1-2 Phase 2) ──
+        # Runs after Elo so the scenario guard can use a real Elo gap.
+        # Market data is fetched later in this async path, so market support is
+        # unavailable here; sync follows the same no-market pre-fusion guard.
+        weibull_scenario_result, weibull_effective_weight = _resolve_weibull_scenario_action(
+            weibull_probs=wb_pred,
+            base_weight=wc.weibull,
+            elo_gap=float(elo_pred.rating_gap) if elo_pred else None,
+            stage=stage,
+            market_probs=None,
+            total_xg=float(dc_pred.get("home_xg", 0)) + float(dc_pred.get("away_xg", 0)),
         )
 
         pi_pred = None
@@ -522,7 +623,7 @@ class PredictionPipeline:
         direction_conflict = core.dc_enhancer_direction_conflict
         dc_weight_ef = core.effective_dc_weight
         negbin_applied = core.negbin_applied
-        negbin_probs: dict | None = None
+        negbin_probs: dict | None = core.negbin_probs
 
         # ── 9.5. Match Importance / Tournament Context (V4.2.1) ──
         # Apply motivation adjustment for WC group stage matches.
@@ -692,12 +793,29 @@ class PredictionPipeline:
             market_probs = await market.fetch_market_probs(
                 home_team, away_team, competition_weight, competition=competition
             )
-            # Fallback: web consensus → manual odds when all APIs are down
-            if market_probs is None:
-                from app.services.market.sync_provider import _lookup_web_consensus, _lookup_manual_odds
-                market_probs = _lookup_web_consensus(home_team, away_team)
+            # V4.7.0: Always query web consensus as cross-validation,
+            # not just when the API fails.  When the live API returns only
+            # 1–2 bookmakers (free-tier limitation) the multi-bookmaker
+            # web cache provides a more reliable divergence signal.
+            from app.services.market.sync_provider import _lookup_web_consensus, _lookup_manual_odds
+            web = _lookup_web_consensus(home_team, away_team)
+            if web is not None and web.get("sample_bookmakers", 0) >= 3:
+                api_n = market_probs.get("sample_bookmakers", 1) if market_probs else 0
+                web_n = web.get("sample_bookmakers", 0)
                 if market_probs is None:
-                    market_probs = _lookup_manual_odds(home_team, away_team)
+                    market_probs = web
+                    logger.info(
+                        "Market: web consensus (%d bookmakers) as primary source", web_n,
+                    )
+                elif api_n < web_n:
+                    logger.info(
+                        "Market: upgraded %d→%d bookmakers via web consensus",
+                        api_n, web_n,
+                    )
+                    market_probs = web
+            # Last resort: manual single-bookmaker odds file
+            if market_probs is None:
+                market_probs = _lookup_manual_odds(home_team, away_team)
             market_result = market.calibrate(
                 {"home_win_prob": clean["home_win_prob"],
                  "draw_prob": clean["draw_prob"],
@@ -983,6 +1101,16 @@ class PredictionPipeline:
         if calibration_applied:
             components_used.append("calibration")
 
+        stacking_component_probs = _build_stacking_component_probs(
+            dc_pred=dc_pred,
+            enhancer_pred=enh_raw,
+            elo_pred=elo_pred,
+            pi_pred=pi_pred,
+            weibull_pred=wb_pred,
+            negbin_probs=negbin_probs,
+            market_probs=market_probs,
+        )
+
         # ── 10.8 A3: Stacking Meta-Learner (feature-flagged, V4.5) ──
         stacking_result: dict[str, Any] | None = None
         from app.core.stacking_features import STACKING_META_LEARNER_ENABLED as _sml_enabled
@@ -995,7 +1123,7 @@ class PredictionPipeline:
                 _learner = StackingMetaLearner()
                 _learner.load(_artifact_path)
                 if _learner.is_fitted:
-                    _stacked = _learner.predict_proba(components_used, market_probs)
+                    _stacked = _learner.predict_proba(stacking_component_probs, market_probs)
                     stacking_result = {
                         "applied": True,
                         "pre_stacking_probs": dict(clean),
@@ -1176,11 +1304,7 @@ class PredictionPipeline:
             divergence=divergence,
             weibull_applied=wb_pred is not None,
             negbin_applied=negbin_applied,
-            negbin_probs={
-                "home": float(negbin_probs["home_win"]),
-                "draw": float(negbin_probs["draw"]),
-                "away": float(negbin_probs["away_win"]),
-            } if negbin_probs else None,
+            negbin_probs=negbin_probs if negbin_probs else None,
             elo_detail={
                 "k_factor": elo_pred.k_factor,
                 "home_elo": elo_pred.home_elo,
@@ -1420,32 +1544,19 @@ class PredictionPipeline:
                 "away": elo_pred.away_win_prob,
             }
 
-        # ── 2.4b Weibull Scenario Rules (P1-2 Phase 2) ──
-        # MUST run after Elo to use elo_gap in scenario classification.
-        # market_probs_data is fetched later; Weibull scenario runs without it here.
         market_probs_data: dict[str, Any] | None = None
-        weibull_scenario_result: dict[str, Any] = {"scenario": "normal", "action": "normal"}
-        weibull_effective_weight_sync: float = wc.weibull if has_weibull and wb_pred is not None else 0.0
-        if wb_pred is not None:
-            try:
-                _wb_scenario_sync = classify_weibull_scenario(
-                    weibull_probs=wb_pred,
-                    elo_gap=float(elo_pred.rating_gap) if elo_pred else None,
-                    is_knockout=_is_ko_stage(stage) if stage else False,
-                    market_probs=market_probs_data,
-                    total_xg=float(dc_pred.get("home_xg", 0)) + float(dc_pred.get("away_xg", 0)),
-                )
-                _wb_action_sync = resolve_weibull_action(_wb_scenario_sync, weibull_weight=wc.weibull)
-                weibull_scenario_result = _wb_action_sync
-                weibull_effective_weight_sync = float(_wb_action_sync["effective_weight"])
-                if _wb_action_sync["action"] in ("skip", "shadow"):
-                    logger.info(
-                        "Weibull scenario (sync): %s → %s (weight %.4f→%.4f): %s",
-                        _wb_scenario_sync["scenario"], _wb_action_sync["action"],
-                        wc.weibull, weibull_effective_weight_sync, _wb_action_sync["reason"],
-                    )
-            except Exception as _wb_exc_sync:
-                logger.warning("Weibull scenario classification failed (sync) — using full weight: %s", _wb_exc_sync)
+        # ── 2.4b Weibull Scenario Rules (P1-2 Phase 2) ──
+        # Runs after Elo to use elo_gap. Market data is fetched later, so this
+        # pre-fusion guard intentionally runs without market support.
+        weibull_scenario_result, weibull_effective_weight_sync = _resolve_weibull_scenario_action(
+            weibull_probs=wb_pred,
+            base_weight=wc.weibull if has_weibull and wb_pred is not None else 0.0,
+            elo_gap=float(elo_pred.rating_gap) if elo_pred else None,
+            stage=stage,
+            market_probs=market_probs_data,
+            total_xg=float(dc_pred.get("home_xg", 0)) + float(dc_pred.get("away_xg", 0)),
+            log_label="sync",
+        )
 
         # ── 2.6. Pi-Rating (full+) ──
         has_pi = hasattr(self, "_pi") and self._pi is not None
@@ -1490,15 +1601,8 @@ class PredictionPipeline:
         negbin_applied = core.negbin_applied
 
         # Populate component_probs for downstream consumers (snapshot, learning)
-        if core.negbin_applied:
-            od_sl_sync = _overdispersed_scoreline(
-                float(dc_pred.get("home_xg", 0)), float(dc_pred.get("away_xg", 0)))
-            nb_probs_sync = od_sl_sync["negbin"]
-            component_probs["negbin"] = {
-                "home": nb_probs_sync["home_win"],
-                "draw": nb_probs_sync["draw"],
-                "away": nb_probs_sync["away_win"],
-            }
+        if core.negbin_applied and core.negbin_probs is not None:
+            component_probs["negbin"] = dict(core.negbin_probs)
 
         # FusionGraph: record Weibull/Elo/Pi steps if they were applied
         if has_weibull and core.weibull_applied:
@@ -1892,6 +1996,24 @@ class PredictionPipeline:
                 attempted=False,
                 required=require_full_context,
             )
+
+        # ── V4.7.0: Cross-validate with web consensus (always, not just on failure) ──
+        if market_probs_data is not None:
+            try:
+                from app.services.market.sync_provider import _lookup_web_consensus
+                web_sync = _lookup_web_consensus(home_team, away_team)
+                if web_sync is not None and web_sync.get("sample_bookmakers", 0) >= 3:
+                    api_n = market_probs_data.get("sample_bookmakers", 1)
+                    web_n = web_sync.get("sample_bookmakers", 0)
+                    if api_n < web_n:
+                        logger.info(
+                            "Market sync: cross-validated %d→%d bookmakers via web consensus",
+                            api_n, web_n,
+                        )
+                        market_probs_data = web_sync
+                        market_probs = web_sync  # keep snapshot var in sync
+            except Exception:
+                pass  # Best-effort cross-validation; non-fatal
 
         # ── 10.3 Market consensus gate (P1-1 Phase 2) ──
         market_consensus_result_sync: dict[str, Any] = {"checked": False, "triggered": False}

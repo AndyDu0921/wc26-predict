@@ -285,57 +285,33 @@ async def _fetch_theodds_api(
                     if (home_lower in ev_home or ev_home in home_lower) and (
                         away_lower in ev_away or ev_away in away_lower
                     ):
-                        # Found match — extract best 1X2 odds
+                        # Found match — aggregate every valid 1X2 bookmaker.
                         bookmakers = event.get("bookmakers", [])
                         if not bookmakers:
                             continue
-                        # Use first bookmaker's h2h market
-                        for bk in bookmakers:
-                            for market in bk.get("markets", []):
-                                if market.get("key") == "h2h":
-                                    outcomes = market.get("outcomes", [])
-                                    odds_map = {}
-                                    for o in outcomes:
-                                        odds_map[o.get("name", "")] = float(
-                                            o.get("price", 0)
-                                        )
-                                    home_odds = odds_map.get(
-                                        event.get("home_team", ""), 0
-                                    )
-                                    away_odds = odds_map.get(
-                                        event.get("away_team", ""), 0
-                                    )
-                                    draw_odds = odds_map.get("Draw", 0)
+                        from app.services.market.bookmaker_consensus import (
+                            consensus_from_bookmakers,
+                        )
 
-                                    if (
-                                        home_odds > 1.0
-                                        and draw_odds > 1.0
-                                        and away_odds > 1.0
-                                    ):
-                                        from app.services.market.probability import (
-                                            normalize_1x2_odds,
-                                        )
-
-                                        norm = normalize_1x2_odds(
-                                            home_odds, draw_odds, away_odds
-                                        )
-                                        logger.info(
-                                            f"Market odds from The Odds API ({bk.get('title', '?')}, "
-                                            f"sport={sport}): "
-                                            f"H={norm['home']:.3f} D={norm['draw']:.3f} "
-                                            f"A={norm['away']:.3f}"
-                                        )
-                                        return {
-                                            "home_prob": norm["home"],
-                                            "draw_prob": norm["draw"],
-                                            "away_prob": norm["away"],
-                                            "provider": "the-odds-api",
-                                            "overround": norm["overround"],
-                                            "home_odds": home_odds,
-                                            "draw_odds": draw_odds,
-                                            "away_odds": away_odds,
-                                            "bookmaker": bk.get("title", "unknown"),
-                                        }
+                        consensus = consensus_from_bookmakers(
+                            event,
+                            home_team,
+                            away_team,
+                            provider="the-odds-api",
+                            min_bookmakers=1,
+                        )
+                        if consensus:
+                            consensus["sport_key"] = sport
+                            logger.info(
+                                "Market odds from The Odds API (%d bookmakers, sport=%s): "
+                                "H=%.3f D=%.3f A=%.3f",
+                                consensus.get("sample_bookmakers", 0),
+                                sport,
+                                consensus["home_prob"],
+                                consensus["draw_prob"],
+                                consensus["away_prob"],
+                            )
+                            return consensus
                         match_found = True  # Found the event but couldn't extract odds
 
                 if match_found:

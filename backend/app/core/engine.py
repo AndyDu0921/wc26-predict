@@ -22,6 +22,16 @@ MARKET_BOOST_DC_ENH_DIVERGENCE_PP = 15.0
 MARKET_BOOST_DIVERGENCE_THRESHOLD = 0.15  # model-market divergence triggers boost
 MARKET_BOOST_MAX = 0.20  # max additional boost beyond market_max
 MARKET_BOOST_SLOPE = 1.0  # boost per pp of divergence above threshold
+
+# ── V4.7.0: Progressive market boost thresholds ──
+# Instead of a hard 15pp cliff, the effective threshold adapts to market
+# data quality (bookmaker count + consensus tightness).  Higher-quality
+# market data (multi-bookmaker, low CV) gets a lower threshold so the
+# boost engages earlier.  Low-quality data (single bookmaker) keeps the
+# original 15pp guard.
+MARKET_BOOST_THRESHOLD_HIGH_CONSENSUS = 0.10   # ≥6 bookmakers, CV<6%
+MARKET_BOOST_THRESHOLD_MEDIUM_CONSENSUS = 0.13  # ≥3 bookmakers
+MARKET_BOOST_THRESHOLD_LOW_CONSENSUS = 0.15     # 1-2 bookmakers (original)
 DRAW_FLOOR = 0.12  # minimum draw probability for WC matches
 
 # ── Market consensus gate (P1-1 Phase 2) ──
@@ -53,32 +63,43 @@ def apply_market_consensus_gate(
         return market_max_weight, {"checked": True, "triggered": False,
                                     "reason": "no market probs available"}
 
+    # ── V4.7.0: Support both CV formats ──
+    # API data: {"cv": {"home": X, "draw": Y, "away": Z}}
+    # Web consensus: {"cv_home": X, "cv_draw": Y, "cv_away": Z}
     cv = market_probs.get("cv")
-    if not cv or not isinstance(cv, dict):
+    if cv and isinstance(cv, dict) and all(k in cv for k in ("home", "draw", "away")):
+        cv_home = float(cv["home"])
+        cv_draw = float(cv["draw"])
+        cv_away = float(cv["away"])
+    elif all(k in market_probs for k in ("cv_home", "cv_draw", "cv_away")):
+        cv_home = float(market_probs["cv_home"])
+        cv_draw = float(market_probs["cv_draw"])
+        cv_away = float(market_probs["cv_away"])
+    else:
         return market_max_weight, {"checked": True, "triggered": False,
                                     "reason": "no CV data in market_probs"}
 
-    sample_count = int(market_probs.get("sample_bookmakers", 0))
-    if sample_count < MARKET_CONSENSUS_MIN_BOOKMAKERS:
+    # V4.7.0: Use the larger bookmaker count (API + web consensus merged)
+    api_n = int(market_probs.get("sample_bookmakers", 0))
+    web_n = int(market_probs.get("web_sample_bookmakers", 0))
+    effective_n = max(api_n, web_n)
+
+    if effective_n < MARKET_CONSENSUS_MIN_BOOKMAKERS:
         return market_max_weight, {
             "checked": True, "triggered": False,
-            "reason": f"insufficient bookmakers ({sample_count} < {MARKET_CONSENSUS_MIN_BOOKMAKERS})",
-            "sample_bookmakers": sample_count,
+            "reason": f"insufficient bookmakers ({effective_n} < {MARKET_CONSENSUS_MIN_BOOKMAKERS})",
+            "sample_bookmakers": effective_n,
         }
 
     # Use the worst (highest) CV across all three outcomes
-    max_cv = max(
-        float(cv.get("home", 0)),
-        float(cv.get("draw", 0)),
-        float(cv.get("away", 0)),
-    )
+    max_cv = max(cv_home, cv_draw, cv_away)
 
     if max_cv >= MARKET_CONSENSUS_CV_THRESHOLD:
         return market_max_weight, {
             "checked": True, "triggered": False,
             "reason": f"CV ({max_cv:.4f}) >= threshold ({MARKET_CONSENSUS_CV_THRESHOLD})",
             "max_cv": round(max_cv, 6),
-            "sample_bookmakers": sample_count,
+            "sample_bookmakers": effective_n,
         }
 
     # High consensus detected — boost market cap
@@ -88,10 +109,10 @@ def apply_market_consensus_gate(
         "triggered": True,
         "reason": (
             f"High market consensus: CV={max_cv:.2%} < {MARKET_CONSENSUS_CV_THRESHOLD:.0%}, "
-            f"{sample_count} bookmakers. market_max {market_max_weight:.2f} → {adjusted:.2f}"
+            f"{effective_n} bookmakers. market_max {market_max_weight:.2f} → {adjusted:.2f}"
         ),
         "max_cv": round(max_cv, 6),
-        "sample_bookmakers": sample_count,
+        "sample_bookmakers": effective_n,
         "original_market_max": market_max_weight,
         "adjusted_market_max": adjusted,
         "boost_applied": round(adjusted - market_max_weight, 4),
@@ -109,6 +130,7 @@ class CoreFusionResult:
     effective_dc_weight: float
     negbin_applied: bool
     weibull_applied: bool
+    negbin_probs: dict[str, float] | None = None
 
 
 @dataclass
@@ -120,6 +142,8 @@ class MarketBoostResult:
     market_weight_used: float
     divergence: float
     boost_attenuated: bool
+    threshold_tier: str = "low_consensus"       # V4.7.0: data-quality tier
+    effective_threshold: float = 0.15           # V4.7.0: threshold used
 
 
 # ── Internal helpers ────────────────────────────────────────────
@@ -603,6 +627,7 @@ def run_core_fusion(
 
     # ── Step 3: NegBin 5% (overdispersion correction) ──
     negbin_applied = False
+    negbin_probs_result: dict[str, float] | None = None
     if dc_home_xg > 0 and dc_away_xg > 0:
         try:
             od_sl = overdispersed_scoreline(dc_home_xg, dc_away_xg)
@@ -610,6 +635,11 @@ def run_core_fusion(
             for k in ("home_win_prob", "draw_prob", "away_win_prob"):
                 nb_key = {"home_win_prob": "home_win", "draw_prob": "draw", "away_win_prob": "away_win"}[k]
                 fused[k] = fused[k] * (1 - NEGBIN_FUSION_WEIGHT) + nb_probs[nb_key] * NEGBIN_FUSION_WEIGHT
+            negbin_probs_result = {
+                "home": float(nb_probs["home_win"]),
+                "draw": float(nb_probs["draw"]),
+                "away": float(nb_probs["away_win"]),
+            }
             negbin_applied = True
         except Exception:
             pass  # NegBin is best-effort; failure is non-fatal
@@ -635,6 +665,7 @@ def run_core_fusion(
         effective_dc_weight=dc_w_ef,
         negbin_applied=negbin_applied,
         weibull_applied=weibull_applied,
+        negbin_probs=negbin_probs_result,
     )
 
 
@@ -677,7 +708,30 @@ def apply_market_boost(
         abs(fused.get("away_win_prob", fused.get("away", 0.33)) - market_probs.get("away_prob", 0.25)),
     )
 
-    if model_market_div <= MARKET_BOOST_DIVERGENCE_THRESHOLD:
+    # ── V4.7.0: Data-quality-aware progressive threshold ──
+    # Instead of a hard 15pp cliff, the effective threshold adapts to how
+    # reliable the market data is.  Multi-bookmaker consensus with low CV
+    # (tight agreement) gets a lower threshold — the boost engages earlier.
+    bookmaker_count = int(market_probs.get("sample_bookmakers", 1))
+    cv_home = float(market_probs.get("cv_home",
+                    market_probs.get("cv", {}).get("home", 0.10)))
+    cv_draw = float(market_probs.get("cv_draw",
+                    market_probs.get("cv", {}).get("draw", 0.10)))
+    cv_away = float(market_probs.get("cv_away",
+                    market_probs.get("cv", {}).get("away", 0.10)))
+    cv_max = max(cv_home, cv_draw, cv_away)
+
+    if bookmaker_count >= 6 and cv_max < 0.06:
+        effective_threshold = MARKET_BOOST_THRESHOLD_HIGH_CONSENSUS   # 0.10
+        threshold_tier = "high_consensus"
+    elif bookmaker_count >= 3:
+        effective_threshold = MARKET_BOOST_THRESHOLD_MEDIUM_CONSENSUS  # 0.13
+        threshold_tier = "medium_consensus"
+    else:
+        effective_threshold = MARKET_BOOST_THRESHOLD_LOW_CONSENSUS    # 0.15
+        threshold_tier = "low_consensus"
+
+    if model_market_div <= effective_threshold:
         return MarketBoostResult(
             probs=dict(fused),
             pre_market_probs=snapshot,
@@ -685,10 +739,13 @@ def apply_market_boost(
             market_weight_used=market_max_weight,
             divergence=model_market_div,
             boost_attenuated=False,
+            threshold_tier=threshold_tier,
+            effective_threshold=effective_threshold,
         )
 
-    # Compute boost
-    boost = min(MARKET_BOOST_MAX, (model_market_div - MARKET_BOOST_DIVERGENCE_THRESHOLD) * MARKET_BOOST_SLOPE)
+    # Compute boost (slope anchored at effective_threshold, not hard-coded 0.15)
+    boost = min(MARKET_BOOST_MAX,
+                (model_market_div - effective_threshold) * MARKET_BOOST_SLOPE)
     boost, boost_attenuated = attenuate_market_boost(
         boost,
         dc_enhancer_divergence_pp=dc_enhancer_divergence_pp,
@@ -716,4 +773,6 @@ def apply_market_boost(
         market_weight_used=boosted_weight,
         divergence=model_market_div,
         boost_attenuated=boost_attenuated,
+        threshold_tier=threshold_tier,
+        effective_threshold=effective_threshold,
     )

@@ -377,65 +377,32 @@ class MarketCalibrator:
         if not bookmakers:
             return None
 
-        # Use Pinnacle if available (most efficient market), else first bookmaker
-        pinnacle = None
-        for bm in bookmakers:
-            if bm.get("key") == "pinnacle":
-                pinnacle = bm
-                break
-        bm = pinnacle or bookmakers[0]
-
-        markets = bm.get("markets", [])
-        h2h = None
-        for m in markets:
-            if m.get("key") == "h2h":
-                h2h = m
-                break
-        if not h2h:
-            return None
-
-        outcomes = h2h.get("outcomes", [])
-        prices: dict[str, float] = {}
-        for o in outcomes:
-            name = o.get("name", "")
-            price = o.get("price")
-            if price and name:
-                prices[name] = float(price)
-
-        if len(prices) < 3:
-            return None
-
-        # Match by team name (normalized), not by position
-        home_norm = self._normalize_team(home_team)
-        away_norm = self._normalize_team(away_team)
-        home_price = None
-        draw_price = None
-        away_price = None
-        for name, price in prices.items():
-            norm = self._normalize_team(name)
-            if norm == "draw":
-                draw_price = price
-            elif home_norm in norm or norm in home_norm:
-                home_price = price
-            elif away_norm in norm or norm in away_norm:
-                away_price = price
-
-        if not all([home_price, draw_price, away_price]):
-            # Fallback: first non-draw = home, second = away
-            for name, price in prices.items():
-                lower = name.lower()
-                if lower == "draw":
-                    continue
-                if home_price is None:
-                    home_price = price
-                elif away_price is None:
-                    away_price = price
-            if not all([home_price, draw_price, away_price]):
-                return None
-
-        return self._remove_vig(
-            float(home_price), float(draw_price), float(away_price)
+        from app.services.market.bookmaker_consensus import (
+            consensus_from_bookmakers,
         )
+
+        consensus = consensus_from_bookmakers(
+            match_data,
+            home_team,
+            away_team,
+            provider="the-odds-api",
+            min_bookmakers=1,
+        )
+        if not consensus:
+            return None
+        return {
+            "home_prob": consensus["home_prob"],
+            "draw_prob": consensus["draw_prob"],
+            "away_prob": consensus["away_prob"],
+            "vig": consensus["overround"],
+            "sample_bookmakers": consensus["sample_bookmakers"],
+            "bookmaker": consensus["bookmaker"],
+            "bookmaker_list": consensus["bookmaker_list"],
+            "home_odds": consensus["home_odds"],
+            "draw_odds": consensus["draw_odds"],
+            "away_odds": consensus["away_odds"],
+            "consensus_method": consensus["consensus_method"],
+        }
 
     def _remove_vig(
         self, home_price: float, draw_price: float, away_price: float
