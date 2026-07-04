@@ -76,14 +76,14 @@ class WeightConfig:
 # They match the snapshot.py _get_model_config() logic.
 
 _WORLD_CUP = WeightConfig(
-    version="4.5.0",
+    version="4.7.0-alpha",
     dc=0.90,            # ↑ 0.68→0.90: Enhancer 3/13 dir (23%) systematically biased away/dog;
     enhancer=0.10,      # effective enhancer ≈6.5% after sequential dilution
     elo=0.12,           # 9/13 dir correct (69%), reliable anchor
     pi=0.17,            # 9/13 dir correct (69%), best non-market component
     weibull=0.10,       # (unchanged)
     market_max=0.30,    # 11/13 dir correct (85%), strongest component
-    label="WORLD_CUP_V4.5.0",
+    label="WORLD_CUP_V4.7.0_ALPHA",
 )
 
 # V4.0.4-knockout: Drastically reduce Enhancer influence for WC knockout matches.
@@ -98,14 +98,14 @@ _WORLD_CUP = WeightConfig(
 #   V4.3.0:  DC=48.6%  Enh=22.9%  Wb=7.7%  Elo=13.4%  Pi=9.0%  → Pi ↑ 0.14→0.17
 #   Knockout: DC=57.6%  Enh=16.2%  Wb=6.0%  Elo=14.8%  Pi=5.5%
 _WORLD_CUP_KNOCKOUT = WeightConfig(
-    version="4.5.0-knockout",
+    version="4.7.0-alpha-knockout",
     dc=0.90,            # ↑ 0.78→0.90: par with group; Enhancer bias even more dangerous in KO
     enhancer=0.10,      # effective enhancer ≈5.7% (sequential dilution + higher Elo/Pi)
     elo=0.22,           # ↑ 0.20→0.22: reliable in competitive fixtures
     pi=0.18,            # ↑ 0.15→0.18: Brier 0.29 best in competitive WC
     weibull=0.10,       # (unchanged)
     market_max=0.30,    # (unchanged)
-    label="WORLD_CUP_KNOCKOUT_V4.5.0",
+    label="WORLD_CUP_KNOCKOUT_V4.7.0_ALPHA",
 )
 
 _UCL_FINAL = WeightConfig(

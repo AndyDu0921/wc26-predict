@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.engine import attenuate_market_boost
+from app.core.engine import attenuate_market_boost, run_core_fusion
 
 
 def test_market_boost_attenuates_only_on_both_direction_conflicts():
@@ -55,3 +55,17 @@ def test_market_boost_rejects_invalid_attenuation():
             market_probs={"home": 0.25, "draw": 0.25, "away": 0.50},
             attenuation=1.2,
         )
+
+
+def test_core_fusion_returns_negbin_component_probs_when_applied():
+    result = run_core_fusion(
+        dc_probs={"home_win_prob": 0.45, "draw_prob": 0.30, "away_win_prob": 0.25},
+        dc_home_xg=1.4,
+        dc_away_xg=1.1,
+        dc_base_weight=0.7,
+    )
+
+    assert result.negbin_applied is True
+    assert result.negbin_probs is not None
+    assert set(result.negbin_probs) == {"home", "draw", "away"}
+    assert sum(result.negbin_probs.values()) == pytest.approx(1.0)

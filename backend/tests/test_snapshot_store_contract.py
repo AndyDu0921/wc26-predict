@@ -97,7 +97,19 @@ def test_extract_market_probs_requires_complete_three_way_payload():
 
 def test_snapshot_and_prediction_run_params_share_evaluation_sample():
     sample = {"schema_version": "v1", "candidate_probs": {"uniform_baseline": {"home": 1 / 3, "draw": 1 / 3, "away": 1 / 3}}}
-    pipeline_params = _build_snapshot_pipeline_params({"training_rows": 20}, {"training_rows": 10}, {}, sample)
+    pipeline_params = _build_snapshot_pipeline_params(
+        {
+            "training_rows": 20,
+            "pre_market_probs": {"home": 0.4, "draw": 0.3, "away": 0.3},
+            "market_weight_used": 0.22,
+        },
+        {
+            "training_rows": 10,
+            "weight_config": {"dc": 0.68, "elo": 0.12, "pi": 0.17},
+        },
+        {"market_weight_used": 0.2, "negbin_applied": True},
+        sample,
+    )
     feature_snapshot = _build_prediction_run_feature_snapshot(
         {
             "meta": {
@@ -105,13 +117,27 @@ def test_snapshot_and_prediction_run_params_share_evaluation_sample():
                 "away_team": "Brazil",
                 "competition": "FIFA World Cup 2026",
                 "is_neutral": True,
+                "weight_config": {"dc": 0.68, "elo": 0.12, "pi": 0.17},
             },
-            "pipeline_params": {"training_rows": 20},
+            "prediction": {"market_weight_used": 0.2},
+            "pipeline_params": {
+                "training_rows": 20,
+                "pre_market_probs": {"home": 0.4, "draw": 0.3, "away": 0.3},
+                "market_weight_used": 0.22,
+                "calibration_applied": True,
+            },
         },
         [],
         sample,
     )
 
     assert pipeline_params["evaluation_sample"] is sample
+    assert pipeline_params["weight_config"]["dc"] == 0.68
+    assert pipeline_params["pre_market_probs"]["home"] == 0.4
+    assert pipeline_params["market_weight_used"] == 0.22
+    assert pipeline_params["negbin_weight"] == 0.05
     assert feature_snapshot["evaluation_sample"] is sample
     assert feature_snapshot["training_rows"] == 20
+    assert feature_snapshot["weight_config"]["pi"] == 0.17
+    assert feature_snapshot["market_weight_used"] == 0.22
+    assert feature_snapshot["calibration_applied"] is True

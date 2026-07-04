@@ -72,6 +72,8 @@ def _run_cli_prediction(home: str, away: str, competition: str,
         result = subprocess.run(
             cmd,
             capture_output=True, text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
             cwd=str(BACKEND_DIR),
             env=env,

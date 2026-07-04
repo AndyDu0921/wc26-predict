@@ -21,6 +21,7 @@ from app.models.prediction_learning_log import PredictionLearningLog
 from app.models.signal_track_record import SignalTrackRecord
 from app.models.context_performance_matrix import ContextPerformanceMatrix
 from app.models.match_result_verification import MatchResultVerification
+from app.models.model_weight_proposal import ModelWeightProposal
 
 __all__ = [
     "Base",
@@ -47,4 +48,5 @@ __all__ = [
     "SignalTrackRecord",
     "ContextPerformanceMatrix",
     "MatchResultVerification",
+    "ModelWeightProposal",
 ]

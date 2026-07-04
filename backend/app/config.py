@@ -7,6 +7,8 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.version import VERSION
+
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BACKEND_DIR = ROOT_DIR / "backend"
@@ -78,7 +80,7 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
-    prediction_model_version: str = Field(default="dc_v1", alias="PREDICTION_MODEL_VERSION")
+    prediction_model_version: str = Field(default=VERSION, alias="PREDICTION_MODEL_VERSION")
     embedding_mode: Literal["local", "api"] = Field(default="local", alias="EMBEDDING_MODE")
     default_competition_codes: list[str] = Field(
         default_factory=lambda: ["WC", "QCAF", "QAFC", "QCBL", "QCON", "QOFC", "QUFA", "EC", "PL", "PD", "BL1", "SA", "FL1", "CL"],

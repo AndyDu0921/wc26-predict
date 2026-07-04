@@ -9,6 +9,7 @@ from sqlalchemy import String, Float, JSON, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.version import VERSION
 
 
 class PredictionSnapshot(Base):
@@ -17,7 +18,7 @@ class PredictionSnapshot(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     match_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    model_version: Mapped[str] = mapped_column(String(32), default="1.0.0")
+    model_version: Mapped[str] = mapped_column(String(32), default=VERSION)
     run_type: Mapped[str] = mapped_column(String(32), default="baseline_v0", index=True)
 
     home_team: Mapped[str] = mapped_column(String(200))

@@ -5,10 +5,15 @@ Ticket 1.2: prediction_pipeline contract strengthening.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
-from app.services.prediction_pipeline import PredictionPipeline
+from app.services.prediction_pipeline import (
+    PredictionPipeline,
+    _build_stacking_component_probs,
+    _resolve_weibull_scenario_action,
+)
 from app.services.prediction_result import DegradedReason, PredictionResult, SourceStatus
 from app.services.run_quality import RunQuality
 from app.services.evaluation_sample import EVALUATION_CANDIDATE_LABELS
@@ -25,6 +30,51 @@ class TestPredictionPipeline:
 
     def test_predict_is_async_callable(self) -> None:
         assert asyncio.iscoroutinefunction(PredictionPipeline.predict)
+
+
+class TestPredictionPipelineHelpers:
+    """Verify shared helpers used by async/sync prediction paths."""
+
+    def test_weibull_scenario_can_skip_extreme_ko_draw_after_elo_available(self) -> None:
+        action, weight = _resolve_weibull_scenario_action(
+            weibull_probs={
+                "home_win_prob": 0.25,
+                "draw_prob": 0.45,
+                "away_win_prob": 0.30,
+            },
+            base_weight=0.10,
+            elo_gap=12.0,
+            stage="Round of 16",
+            market_probs=None,
+            total_xg=2.4,
+        )
+
+        assert action["action"] == "skip"
+        assert action["scenario"] == "draw_noise"
+        assert weight == 0.0
+
+    def test_build_stacking_component_probs_uses_canonical_component_keys(self) -> None:
+        components = _build_stacking_component_probs(
+            dc_pred={"home_win_prob": 0.50, "draw_prob": 0.30, "away_win_prob": 0.20},
+            enhancer_pred={"home_win_prob": 0.48, "draw_prob": 0.28, "away_win_prob": 0.24},
+            elo_pred=SimpleNamespace(home_win_prob=0.45, draw_prob=0.30, away_win_prob=0.25),
+            pi_pred={"home_win_prob": 0.43, "draw_prob": 0.31, "away_win_prob": 0.26},
+            weibull_pred={"home_win_prob": 0.47, "draw_prob": 0.29, "away_win_prob": 0.24},
+            negbin_probs={"home": 0.46, "draw": 0.32, "away": 0.22},
+            market_probs={"home_prob": 0.44, "draw_prob": 0.33, "away_prob": 0.23},
+        )
+
+        assert set(components) == {
+            "dixon_coles",
+            "enhancer",
+            "negbin",
+            "weibull",
+            "elo",
+            "pi_rating",
+            "market",
+        }
+        assert components["market"]["draw"] == pytest.approx(0.33)
+        assert sum(components["negbin"].values()) == pytest.approx(1.0)
 
 
 class TestEvaluationSampleContract:
