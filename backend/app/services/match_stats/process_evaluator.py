@@ -43,8 +43,11 @@ class ProcessEvalResult:
     finishing_delta_away: Optional[float] = None
 
     # Shot volume deltas
+    predicted_home_shots: Optional[int] = None
+    predicted_away_shots: Optional[int] = None
     shot_volume_delta_home: Optional[float] = None
     shot_volume_delta_away: Optional[float] = None
+    shot_volume_delta_reason: str = "expected_shots_unavailable"
 
     # Dominance index
     dominance_index_home: Optional[float] = None
@@ -130,6 +133,8 @@ def evaluate_process(
     away_stats: Dict[str, Any],
     outcome_correct: bool,
     predicted_winner: Optional[str] = None,
+    predicted_home_shots: Optional[int] = None,
+    predicted_away_shots: Optional[int] = None,
 ) -> ProcessEvalResult:
     """Run a full process evaluation for one match.
 
@@ -153,6 +158,8 @@ def evaluate_process(
         actual_away_xg=_safe_float(away_stats.get("xg")),
         actual_home_goals=_safe_int(home_stats.get("goals")),
         actual_away_goals=_safe_int(away_stats.get("goals")),
+        predicted_home_shots=_safe_int(predicted_home_shots),
+        predicted_away_shots=_safe_int(predicted_away_shots),
         outcome_correct=outcome_correct,
     )
 
@@ -208,17 +215,19 @@ def evaluate_process(
         result.finishing_delta_away = round(result.actual_away_goals - result.actual_away_xg, 4)
 
     # --- Shot volume deltas ---
-    # NOT_IMPLEMENTED: shot volume prediction requires expected-shot models not yet built.
-    # Currently both read from the same actual stats source; replace pred_home_shots with
-    # snapshot-derived expected shots when available.
-    pred_home_shots = home_stats.get("shots_total")
+    # Only compute when pre-match expected shot volume is available. Earlier
+    # versions used actual shots as both predicted and actual values, which
+    # manufactured a zero-error diagnostic and polluted learning signals.
+    pred_home_shots = result.predicted_home_shots
     act_home_shots = home_stats.get("shots_total")
     if pred_home_shots is not None and act_home_shots is not None:
         result.shot_volume_delta_home = int(act_home_shots) - int(pred_home_shots)
-    pred_away_shots = away_stats.get("shots_total")
+    pred_away_shots = result.predicted_away_shots
     act_away_shots = away_stats.get("shots_total")
     if pred_away_shots is not None and act_away_shots is not None:
         result.shot_volume_delta_away = int(act_away_shots) - int(pred_away_shots)
+    if result.shot_volume_delta_home is not None or result.shot_volume_delta_away is not None:
+        result.shot_volume_delta_reason = "expected_shots_available"
 
     # --- Dominance index ---
     dom = compute_dominance_index(home_stats, away_stats)
