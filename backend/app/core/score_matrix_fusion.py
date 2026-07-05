@@ -42,19 +42,19 @@ def build_score_matrix_fusion(
     source_matrices: dict[str, list[list[float]]] = {"dc": raw_score_matrix}
 
     matrices.append(raw_score_matrix)
-    weights.append(0.40)
+    weights.append(0.45)                    # DC 0.40→0.45: Poisson+τ is reliable baseline
     diagnostics["fusion_sources"].append("dc")
 
     if home_xg > 0 and away_xg > 0:
         nb_mat = negbin_score_matrix(home_xg, away_xg, max_g=max_goals, tau_rho=tau_rho)
         matrices.append(nb_mat)
-        weights.append(0.35)
+        weights.append(0.38)                # NegBin 0.35→0.38: overdispersion correction validated
         source_matrices["negbin"] = nb_mat
         diagnostics["fusion_sources"].append("negbin")
 
     if weibull_score_matrix is not None:
         matrices.append(weibull_score_matrix)
-        weights.append(0.25)
+        weights.append(0.17)                # Weibull 0.25→0.17: bimodal, unreliable for score prediction
         source_matrices["weibull"] = weibull_score_matrix
         diagnostics["fusion_sources"].append("weibull")
 

@@ -51,15 +51,15 @@ from typing import Any
 KO_DRAW_GUARD_ENABLED = True
 
 # ── Thresholds ──
-KO_DRAW_FLOOR_WARNING = 0.22       # draw below this triggers review
+KO_DRAW_FLOOR_WARNING = 0.20       # draw below this triggers review (0.22→0.20: AUS-EGY missed by 0.85pp)
 ELO_GAP_CLOSE_THRESHOLD = 50       # |gap| below this is "close match"
 TOTAL_XG_LOW_THRESHOLD = 2.35      # total xG below this is "low scoring"
 MARKET_DRAW_DISAGREEMENT = 0.25    # market draw >= this indicates disagreement
 
 # ── Post-calibration correction (Phase 2) ──
 POST_CAL_KO_DRAW_GUARD_ENABLED = True  # Feature flag for Phase 2 correction
-MAX_POST_CAL_BLEND = 0.60              # Max blend toward pre-calibration draw
-POST_CAL_BLEND_RISK_WEIGHT = 0.12      # Blend per risk factor present
+MAX_POST_CAL_BLEND = 0.80              # Max blend toward pre-calibration draw (0.60→0.80: more aggressive)
+POST_CAL_BLEND_RISK_WEIGHT = 0.15      # Blend per risk factor present (0.12→0.15)
 
 # Knockout stage names (case-insensitive prefix match)
 KO_STAGE_PREFIXES = (

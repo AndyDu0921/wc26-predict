@@ -87,7 +87,7 @@ def test_guard_triggered_low_xg() -> None:
 def test_guard_triggered_market_disagreement() -> None:
     """Market draw high + model draw low in KO should trigger."""
     result = check_ko_draw_guard(
-        draw_prob=0.20,
+        draw_prob=0.19,        # 0.19 < 0.20 KO_DRAW_FLOOR_WARNING (V4.8.1)
         is_knockout=True,
         market_draw_prob=0.28,
     )

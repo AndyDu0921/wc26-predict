@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run V4.8 shadow accuracy experiments.
+"""Run V4.9 shadow accuracy experiments.
 
 Default behavior is read-only: JSON is printed or written to --output.
 Use --persist to write only audit tables (experiment_runs and
@@ -27,15 +27,16 @@ DEFAULT_CANDIDATES = (
     "uniform_baseline",
     "dynamic_dixon_coles",
     "dynamic_bivariate_poisson",
-    "bayesian_weighted_dynamic",
-    "dirichlet_calibration",
-    "stacking_optimizer",
-    "covariate_ml_baseline",
+    "dynamic_bayesian_weighted_goal_model",
+    "international_covariate_hybrid",
+    "dirichlet_calibration_candidate",
+    "proper_scoring_stacking_candidate",
+    "player_availability_shadow",
 )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run V4.8 shadow accuracy experiments")
+    parser = argparse.ArgumentParser(description="Run V4.9 shadow accuracy experiments")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH))
     parser.add_argument("--competition", default="FIFA World Cup 2026")
     parser.add_argument("--candidates", default=",".join(DEFAULT_CANDIDATES))

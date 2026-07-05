@@ -186,12 +186,6 @@ class LearningEngine:
 
         Returns the created PredictionLearningLog record.
         """
-        if not _is_uuid_like(snapshot.match_id):
-            raise ValueError(
-                f"Learning requires a UUID-like match_id; snapshot={snapshot.id} "
-                f"has match_id={snapshot.match_id!r}"
-            )
-
         tier = _learning_tier(learning_weight)
         actual_index = _result_index(home_goals, away_goals)
 

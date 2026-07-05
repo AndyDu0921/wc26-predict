@@ -1,4 +1,4 @@
-"""Generic V4.8 model-change proposal writer.
+"""Generic V4.9 model-change proposal writer.
 
 The proposal ledger is the self-evolution boundary: the system can suggest
 changes, but this module never applies them to production configuration.
@@ -32,8 +32,7 @@ class ModelChangeProposalCandidate:
     notes: str | None = None
 
     def fingerprint(self) -> str:
-        payload = asdict(self)
-        payload.pop("notes", None)
+        payload = _fingerprint_payload(asdict(self))
         blob = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -55,7 +54,7 @@ def build_proposal_from_experiment(result: dict[str, Any]) -> ModelChangeProposa
         "group_metrics": result.get("group_metrics"),
     }
     return ModelChangeProposalCandidate(
-        proposal_type="model",
+        proposal_type=_proposal_type_for_candidate(candidate_name),
         candidate_name=candidate_name,
         source="shadow_experiment",
         status=status,
@@ -63,6 +62,7 @@ def build_proposal_from_experiment(result: dict[str, Any]) -> ModelChangeProposa
         base_payload={"champion_name": result.get("champion_name", "current_fusion")},
         candidate_payload={
             "candidate_name": candidate_name,
+            "candidate_family": result.get("candidate_family"),
             "experiment_id": result.get("experiment_id"),
             "shadow_only": True,
         },
@@ -76,6 +76,49 @@ def build_proposal_from_experiment(result: dict[str, Any]) -> ModelChangeProposa
             "unavailable_reasons": result.get("unavailable_reasons"),
         },
         notes="Generated from shadow experiment; does not apply production changes.",
+    )
+
+
+def build_data_repair_proposal_from_repair_report(report: dict[str, Any]) -> ModelChangeProposalCandidate:
+    """Build a proposal-only data repair plan from the registry repair report."""
+    repair_summary = dict(report.get("repair_summary") or {})
+    action_counts = dict(repair_summary.get("action_counts") or {})
+    needs_repair = bool(action_counts) or int(repair_summary.get("reported_samples", 0) or 0) > 0
+    gate = {
+        "passed": False,
+        "status": "proposal_data_repair_only" if needs_repair else "proposal_rejected",
+        "reasons": (
+            ["requires_real_pre_kickoff_evidence_before_sample_promotion"]
+            if needs_repair
+            else ["no_registry_repair_action_needed"]
+        ),
+    }
+    return ModelChangeProposalCandidate(
+        proposal_type="data-repair",
+        candidate_name="evaluation_registry_repair_plan",
+        source="evaluation_registry_repair_report",
+        status="proposal_pending_data_repair" if needs_repair else "proposal_rejected",
+        sample_registry_hash=report.get("registry_hash"),
+        base_payload={"summary": report.get("summary")},
+        candidate_payload={
+            "repair_summary": repair_summary,
+            "action_counts": action_counts,
+            "production_mutation": False,
+            "artifact_mutation": False,
+            "historical_report_mutation": False,
+        },
+        metrics={
+            "reported_samples": repair_summary.get("reported_samples"),
+            "potentially_promotable_count": repair_summary.get("potentially_promotable_count"),
+            "must_remain_rejected_count": repair_summary.get("must_remain_rejected_count"),
+        },
+        gate_decision=gate,
+        evidence={
+            "schema_version": report.get("schema_version"),
+            "sample_status_counts": repair_summary.get("sample_status_counts"),
+            "notes": report.get("notes"),
+        },
+        notes="Proposal-only data repair plan; it does not create snapshots, probabilities, artifacts, or reports.",
     )
 
 
@@ -142,6 +185,62 @@ def build_learning_log_weight_proposal(
             "score_metric_rows": sum(1 for row in active_rows if row.get("score_log_loss") is not None),
         },
         notes="Proposal-only marginal review; no production weights were changed.",
+    )
+
+
+def build_registry_feature_rule_proposal(registry: dict[str, Any]) -> ModelChangeProposalCandidate:
+    """Build a data/feature-rule proposal from evaluation registry diagnostics."""
+    summary = dict(registry.get("summary") or {})
+    samples = registry.get("samples") or []
+    leakage_counts = _count_values(samples, "leakage_status")
+    exclusion_counts = _exclusion_reason_counts(samples)
+    strict_count = int(summary.get("strict_count", summary.get("eligible_backtest_count", 0)) or 0)
+    diagnostic_count = int(summary.get("diagnostic_count", 0) or 0)
+    rejected_count = int(summary.get("rejected_count", 0) or 0)
+    needs_repair = (
+        strict_count < 30
+        or diagnostic_count > 0
+        or rejected_count > 0
+        or int(summary.get("source_result_conflicts", 0) or 0) > 0
+    )
+    actions = _registry_repair_actions(summary, leakage_counts, exclusion_counts)
+    gate = {
+        "passed": False,
+        "status": "proposal_data_quality_only" if needs_repair else "proposal_rejected",
+        "reasons": (
+            ["requires_data_repair_before_model_change"]
+            if needs_repair
+            else ["no_registry_quality_action_needed"]
+        ),
+    }
+    return ModelChangeProposalCandidate(
+        proposal_type="feature-rule",
+        candidate_name="evaluation_registry_quality_repair",
+        source="self_evolution_registry",
+        status="proposal_pending_data_repair" if needs_repair else "proposal_rejected",
+        sample_registry_hash=registry.get("registry_hash"),
+        base_payload={"summary": summary},
+        candidate_payload={
+            "recommended_actions": actions,
+            "production_mutation": False,
+            "artifact_mutation": False,
+        },
+        metrics={
+            "strict_count": strict_count,
+            "diagnostic_count": diagnostic_count,
+            "rejected_count": rejected_count,
+            "leakage_status_counts": leakage_counts,
+            "top_exclusion_reasons": exclusion_counts,
+        },
+        gate_decision=gate,
+        evidence={
+            "total_samples": summary.get("total_samples"),
+            "with_pre_match_snapshot": summary.get("with_pre_match_snapshot"),
+            "with_prediction_snapshot": summary.get("with_prediction_snapshot"),
+            "with_process_eval": summary.get("with_process_eval"),
+            "source_result_conflicts": summary.get("source_result_conflicts"),
+        },
+        notes="Proposal-only data quality repair; no production model setting was changed.",
     )
 
 
@@ -217,6 +316,92 @@ def _marginal_recommendations(marginals: dict[str, float | None]) -> list[dict[s
     return recommendations
 
 
+def _proposal_type_for_candidate(candidate_name: str) -> str:
+    lowered = candidate_name.lower()
+    if "dirichlet" in lowered or "calibration" in lowered:
+        return "calibrator"
+    if "stacking" in lowered:
+        return "stacking"
+    if "weight" in lowered and "bayesian_weighted" not in lowered:
+        return "weights"
+    return "model"
+
+
+def _count_values(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = str(row.get(key) or "unknown")
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _exclusion_reason_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        for reason in row.get("exclusion_reasons") or []:
+            text = str(reason)
+            counts[text] = counts.get(text, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _registry_repair_actions(
+    summary: dict[str, Any],
+    leakage_counts: dict[str, int],
+    exclusion_counts: dict[str, int],
+) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    if exclusion_counts.get("missing_pre_match_snapshot", 0) > 0:
+        actions.append(
+            {
+                "action": "backfill_or_import_pre_match_snapshots",
+                "reason": "missing_pre_match_snapshot",
+                "affected_samples": exclusion_counts["missing_pre_match_snapshot"],
+            }
+        )
+    if exclusion_counts.get("snapshot_or_kickoff_time_unknown", 0) > 0:
+        actions.append(
+            {
+                "action": "normalize_snapshot_and_kickoff_timestamps",
+                "reason": "snapshot_or_kickoff_time_unknown",
+                "affected_samples": exclusion_counts["snapshot_or_kickoff_time_unknown"],
+            }
+        )
+    if exclusion_counts.get("missing_current_probabilities", 0) > 0:
+        actions.append(
+            {
+                "action": "materialize_current_probabilities_from_valid_snapshots",
+                "reason": "missing_current_probabilities",
+                "affected_samples": exclusion_counts["missing_current_probabilities"],
+            }
+        )
+    if leakage_counts.get("post_kickoff_snapshot", 0) > 0:
+        actions.append(
+            {
+                "action": "exclude_or_rebuild_post_kickoff_snapshots",
+                "reason": "post_kickoff_snapshot",
+                "affected_samples": leakage_counts["post_kickoff_snapshot"],
+            }
+        )
+    if int(summary.get("source_result_conflicts", 0) or 0) > 0:
+        actions.append(
+            {
+                "action": "reconcile_conflicting_result_sources",
+                "reason": "source_result_conflicts",
+                "affected_samples": int(summary.get("source_result_conflicts", 0) or 0),
+            }
+        )
+    if int(summary.get("with_process_eval", 0) or 0) < int(summary.get("strict_count", 0) or 0):
+        actions.append(
+            {
+                "action": "backfill_process_evaluation_for_strict_samples",
+                "reason": "process_eval_coverage_below_strict_samples",
+                "affected_samples": int(summary.get("strict_count", 0) or 0)
+                - int(summary.get("with_process_eval", 0) or 0),
+            }
+        )
+    return actions
+
+
 def _require_table(conn: sqlite3.Connection) -> None:
     if not _has_table(conn, "model_change_proposals"):
         raise RuntimeError("Missing model_change_proposals table; run Alembic upgrade first")
@@ -231,14 +416,65 @@ def _has_table(conn: sqlite3.Connection, table_name: str) -> bool:
 
 
 def _find_existing_by_fingerprint(conn: sqlite3.Connection, fingerprint: str) -> tuple[Any, ...] | None:
-    for row in conn.execute("SELECT id, evidence FROM model_change_proposals"):
+    for row in conn.execute(
+        """
+        SELECT
+            id, proposal_type, candidate_name, source, status,
+            sample_registry_hash, target_table, target_key,
+            base_payload, candidate_payload, metrics, gate_decision,
+            evidence
+        FROM model_change_proposals
+        """
+    ):
         try:
-            evidence = json.loads(row[1] or "{}")
+            evidence = json.loads(row[12] or "{}")
         except (TypeError, json.JSONDecodeError):
-            continue
+            evidence = {}
         if evidence.get("fingerprint") == fingerprint:
             return row
+        row_payload = {
+            "proposal_type": row[1],
+            "candidate_name": row[2],
+            "source": row[3],
+            "status": row[4],
+            "sample_registry_hash": row[5],
+            "target_table": row[6],
+            "target_key": row[7],
+            "base_payload": _loads(row[8]),
+            "candidate_payload": _loads(row[9]),
+            "metrics": _loads(row[10]),
+            "gate_decision": _loads(row[11]),
+            "evidence": evidence,
+        }
+        blob = json.dumps(_fingerprint_payload(row_payload), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if hashlib.sha256(blob.encode("utf-8")).hexdigest() == fingerprint:
+            return row
     return None
+
+
+def _fingerprint_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    normalized.pop("notes", None)
+    for key in ("base_payload", "candidate_payload", "metrics", "gate_decision", "evidence"):
+        if normalized.get(key) is None:
+            normalized[key] = {}
+    candidate_payload = dict(normalized.get("candidate_payload") or {})
+    candidate_payload.pop("experiment_id", None)
+    if candidate_payload.get("candidate_family") is None:
+        candidate_payload.pop("candidate_family", None)
+    normalized["candidate_payload"] = candidate_payload
+    evidence = dict(normalized.get("evidence") or {})
+    evidence.pop("fingerprint", None)
+    normalized["evidence"] = evidence
+    return normalized
+
+
+def _loads(value: Any) -> dict[str, Any]:
+    try:
+        loaded = json.loads(value or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
 
 
 def _json(value: Any) -> str:

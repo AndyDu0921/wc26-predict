@@ -1,4 +1,4 @@
-"""Pure prediction kernel for V4.8 accuracy-engine experiments.
+"""Pure prediction kernel for V4.9 accuracy-engine experiments.
 
 The kernel owns deterministic fusion math and provenance shaping.  It does
 not read files, call APIs, query databases, write snapshots, or apply model

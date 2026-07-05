@@ -40,6 +40,7 @@ def _create_registry_db(path):
             home_team TEXT,
             away_team TEXT,
             match_date TEXT,
+            kickoff_time TEXT,
             stage TEXT,
             match_status TEXT,
             home_goals INTEGER,
@@ -66,7 +67,10 @@ def _create_registry_db(path):
             home_team TEXT,
             away_team TEXT,
             generated_at TEXT,
-            model_version TEXT
+            model_version TEXT,
+            adjusted_probs TEXT,
+            baseline_probs TEXT,
+            component_probs TEXT
         );
         CREATE TABLE postmatch_process_eval (
             id TEXT PRIMARY KEY,
@@ -92,8 +96,8 @@ def _insert_match(conn, idx, home, away, hg, ag, *, with_schedule=True, with_pro
     conn.execute("INSERT INTO match_results(match_id, home_goals, away_goals) VALUES (?, ?, ?)", (match_id, hg, ag))
     if with_schedule:
         conn.execute(
-            "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, stage, match_status, home_goals, away_goals) "
-            "VALUES (?, ?, ?, ?, ?, 'Group A - Matchday 1', 'FINISHED', ?, ?)",
+        "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, kickoff_time, stage, match_status, home_goals, away_goals) "
+        "VALUES (?, ?, ?, ?, ?, NULL, 'Group A - Matchday 1', 'FINISHED', ?, ?)",
             (f"s{idx}", idx, home, away, match_date, hg, ag),
         )
     conn.execute(
@@ -125,8 +129,8 @@ def test_registry_marks_schedule_only_finished_rows(tmp_path):
     conn = _create_registry_db(db_path)
     _insert_match(conn, 1, "Alpha", "Beta", 2, 0, with_process=True)
     conn.execute(
-        "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, stage, match_status, home_goals, away_goals) "
-        "VALUES ('s_only', 99, 'Gamma', 'Delta', '2026-07-01T20:00:00+00:00', 'Round of 32', 'FINISHED', 1, 0)"
+        "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, kickoff_time, stage, match_status, home_goals, away_goals) "
+        "VALUES ('s_only', 99, 'Gamma', 'Delta', '2026-07-01T20:00:00+00:00', NULL, 'Round of 32', 'FINISHED', 1, 0)"
     )
     conn.commit()
     conn.close()
@@ -141,11 +145,97 @@ def test_registry_marks_schedule_only_finished_rows(tmp_path):
     assert registry["summary"]["strict_count"] == 1
     schedule_only = [row for row in registry["samples"] if row["home_team"] == "Gamma"][0]
     strict = [row for row in registry["samples"] if row["home_team"] == "Alpha"][0]
-    assert "missing_match_result_row" in schedule_only["exclusion_reasons"]
+    assert schedule_only["canonical_result_source"] == "wc26_schedule"
+    assert "missing_canonical_result" not in schedule_only["exclusion_reasons"]
+    assert "missing_pre_match_snapshot" in schedule_only["exclusion_reasons"]
     assert strict["sample_status"] == "strict"
     assert strict["leakage_status"] == "clean"
     assert strict["horizon_bucket"] == "T-24h"
     assert strict["data_availability"]["current_probabilities"] is True
+
+
+def test_registry_accepts_schedule_only_with_kickoff_time_and_pre_snapshot(tmp_path):
+    db_path = tmp_path / "registry.db"
+    conn = _create_registry_db(db_path)
+    conn.execute(
+        "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, kickoff_time, stage, match_status, home_goals, away_goals) "
+        "VALUES ('s_only', 99, 'Gamma', 'Delta', '2026-07-01', '20:00', 'Round of 32', 'FINISHED', 1, 0)"
+    )
+    conn.execute(
+        "INSERT INTO pre_match_snapshots(id, match_id, home_team, away_team, snapshot_at, kickoff_at, "
+        "model_version, weight_config_label, final_home_prob, final_draw_prob, final_away_prob, "
+        "component_probs, fused_score_matrix) VALUES ('p_schedule', 's_only', 'Gamma', 'Delta', "
+        "'2026-07-01T10:00:00+00:00', NULL, '4.8.0-alpha', 'WORLD_CUP_V4.7.0_ALPHA', "
+        "0.7, 0.15, 0.15, ?, ?)",
+        (json.dumps({"dc": {"home": 0.7}}), json.dumps([[0.2, 0.1], [0.3, 0.4]])),
+    )
+    conn.commit()
+    conn.close()
+
+    row = build_evaluation_registry(db_path)["samples"][0]
+
+    assert row["sample_status"] == "strict"
+    assert row["eligible_for_backtest"] is True
+    assert row["canonical_result_source"] == "wc26_schedule"
+    assert row["kickoff_at"] == "2026-07-01T20:00:00"
+    assert row["kickoff_source"] == "wc26_schedule.match_date+kickoff_time"
+    assert row["horizon_bucket"] == "T-24h"
+
+
+def test_registry_uses_pre_kickoff_prediction_snapshot_as_probability_fallback(tmp_path):
+    db_path = tmp_path / "registry.db"
+    conn = _create_registry_db(db_path)
+    conn.execute("INSERT INTO teams(id, name) VALUES ('h1', 'Alpha')")
+    conn.execute("INSERT INTO teams(id, name) VALUES ('a1', 'Beta')")
+    conn.execute(
+        "INSERT INTO matches(id, home_team_id, away_team_id, match_date, competition, stage) "
+        "VALUES ('m1', 'h1', 'a1', '2026-06-15T20:00:00+00:00', 'FIFA World Cup 2026', 'Group A')"
+    )
+    conn.execute("INSERT INTO match_results(match_id, home_goals, away_goals) VALUES ('m1', 1, 0)")
+    conn.execute(
+        "INSERT INTO prediction_snapshots(id, match_id, home_team, away_team, generated_at, model_version, "
+        "adjusted_probs, baseline_probs, component_probs) VALUES "
+        "('ps1', 'm1', 'Alpha', 'Beta', '2026-06-15T10:00:00+00:00', '4.8.0-alpha', ?, NULL, ?)",
+        (json.dumps({"home_win_prob": 0.6, "draw_prob": 0.25, "away_win_prob": 0.15}), json.dumps({"dc": {}})),
+    )
+    conn.commit()
+    conn.close()
+
+    row = build_evaluation_registry(db_path)["samples"][0]
+
+    assert row["sample_status"] == "strict"
+    assert row["pre_match_snapshot_id"] is None
+    assert row["prediction_snapshot_id"] == "ps1"
+    assert row["current_prob_source"] == "prediction_snapshots.adjusted_or_baseline_probs"
+    assert row["current_probs"] == {"home": 0.6, "draw": 0.25, "away": 0.15}
+
+
+def test_registry_rejects_post_kickoff_prediction_snapshot_fallback(tmp_path):
+    db_path = tmp_path / "registry.db"
+    conn = _create_registry_db(db_path)
+    conn.execute("INSERT INTO teams(id, name) VALUES ('h1', 'Alpha')")
+    conn.execute("INSERT INTO teams(id, name) VALUES ('a1', 'Beta')")
+    conn.execute(
+        "INSERT INTO matches(id, home_team_id, away_team_id, match_date, competition, stage) "
+        "VALUES ('m1', 'h1', 'a1', '2026-06-15T20:00:00+00:00', 'FIFA World Cup 2026', 'Group A')"
+    )
+    conn.execute("INSERT INTO match_results(match_id, home_goals, away_goals) VALUES ('m1', 1, 0)")
+    conn.execute(
+        "INSERT INTO prediction_snapshots(id, match_id, home_team, away_team, generated_at, model_version, "
+        "adjusted_probs, baseline_probs, component_probs) VALUES "
+        "('ps1', 'm1', 'Alpha', 'Beta', '2026-06-15T22:00:00+00:00', '4.8.0-alpha', ?, NULL, ?)",
+        (json.dumps({"home": 0.6, "draw": 0.25, "away": 0.15}), json.dumps({"dc": {}})),
+    )
+    conn.commit()
+    conn.close()
+
+    row = build_evaluation_registry(db_path)["samples"][0]
+
+    assert row["sample_status"] == "rejected"
+    assert row["eligible_for_backtest"] is False
+    assert row["prediction_snapshot_id"] == "ps1"
+    assert row["current_probs"] == {"home": 0.6, "draw": 0.25, "away": 0.15}
+    assert "snapshot_after_kickoff" in row["exclusion_reasons"]
 
 
 def test_registry_team_fallback_uses_latest_snapshot_before_match(tmp_path):
@@ -159,8 +249,8 @@ def test_registry_team_fallback_uses_latest_snapshot_before_match(tmp_path):
     )
     conn.execute("INSERT INTO match_results(match_id, home_goals, away_goals) VALUES ('m1', 1, 0)")
     conn.execute(
-        "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, stage, match_status, home_goals, away_goals) "
-        "VALUES ('s1', 1, 'Alpha', 'Beta', '2026-06-15T20:00:00+00:00', 'Group A', 'FINISHED', 1, 0)"
+        "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, kickoff_time, stage, match_status, home_goals, away_goals) "
+        "VALUES ('s1', 1, 'Alpha', 'Beta', '2026-06-15T20:00:00+00:00', NULL, 'Group A', 'FINISHED', 1, 0)"
     )
     for snapshot_id, match_id, snapshot_at, home_prob in (
         ("future", "other-match", "2026-06-16T10:00:00+00:00", 0.10),
@@ -253,8 +343,13 @@ def test_candidate_experiment_outputs_paired_metrics(tmp_path):
 
     assert result["status"] == "completed"
     assert result["n_samples"] == 3
+    assert result["candidate_family"] == "baseline"
+    assert result["sample_quality_summary"]["eligible_samples"] == 3
     assert result["metrics_current"]["brier"] < result["metrics_candidate"]["brier"]
     assert result["paired_deltas"]["brier"]["mean_delta"] > 0
+    assert result["paired_deltas"]["brier"]["ci_method"] == "paired_bootstrap_percentile_v1"
+    assert "sample_registry_summary" in result
+    assert result["group_metrics"]["group_stage"]["metrics"]["brier"]["candidate_minus_current"] > 0
     assert result["gate_decision"]["status"] == "shadow_rejected"
 
 
@@ -288,6 +383,30 @@ def test_shadow_gate_rejects_noop_candidate():
     assert decision["passed"] is False
     assert decision["status"] == "shadow_rejected"
     assert "fewer_than_two_supported_core_metric_improvements" in decision["reasons"]
+
+
+def test_shadow_gate_rejects_key_group_degradation():
+    decision = _shadow_gate_decision(
+        {
+            "brier": {"mean_delta": -0.01, "ci95": [-0.03, -0.001]},
+            "logloss": {"mean_delta": -0.01, "ci95": [-0.03, -0.001]},
+            "rps": {"mean_delta": -0.0005, "ci95": [-0.01, 0.001]},
+        },
+        {
+            "knockout": {
+                "n": 6,
+                "metrics": {
+                    "brier": {"candidate_minus_current": 0.03},
+                    "logloss": {"candidate_minus_current": -0.01},
+                    "rps": {"candidate_minus_current": -0.01},
+                },
+            }
+        },
+    )
+
+    assert decision["passed"] is False
+    assert decision["status"] == "shadow_rejected"
+    assert "knockout_brier_group_degraded" in decision["reasons"]
 
 
 def test_local_learning_log_schema_matches_v47_score_fields():

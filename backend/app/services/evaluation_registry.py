@@ -27,10 +27,12 @@ class EvaluationRegistryRow:
     sample_id: str
     sample_status: str
     canonical_match_id: str | None
+    canonical_result_source: str | None
     home_team: str
     away_team: str
     match_date: str
     kickoff_at: str | None
+    kickoff_source: str | None
     as_of_time: str | None
     horizon_hours: float | None
     horizon_bucket: str
@@ -42,6 +44,7 @@ class EvaluationRegistryRow:
     actual_away_goals: int | None
     schedule_home_goals: int | None
     schedule_away_goals: int | None
+    has_canonical_result: bool
     has_match_result: bool
     has_schedule_result: bool
     has_pre_match_snapshot: bool
@@ -54,6 +57,7 @@ class EvaluationRegistryRow:
     prediction_snapshot_at: str | None
     model_version: str | None
     weight_config_label: str | None
+    current_prob_source: str | None
     component_count: int
     data_completeness_score: float
     data_availability: dict[str, bool]
@@ -146,8 +150,9 @@ def _load_match_results(conn: sqlite3.Connection, competition: str) -> list[sqli
 def _load_schedule_results(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
     if not _has_table(conn, "wc26_schedule"):
         return {}
+    kickoff_select = "kickoff_time" if _has_column(conn, "wc26_schedule", "kickoff_time") else "NULL AS kickoff_time"
     rows = conn.execute(
-        """
+        f"""
         SELECT
             CAST(id AS TEXT) AS schedule_id,
             match_number,
@@ -156,6 +161,7 @@ def _load_schedule_results(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
             home_goals,
             away_goals,
             match_date,
+            {kickoff_select},
             COALESCE(stage, '') AS stage,
             match_status
         FROM wc26_schedule
@@ -186,20 +192,27 @@ def _build_row(
 
     match_id = str(match["match_id"]) if match else None
     schedule_id = str(schedule["schedule_id"]) if schedule else None
+    schedule_match_number = int(schedule["match_number"]) if schedule else None
     actual_home = int(match["home_goals"]) if match else None
     actual_away = int(match["away_goals"]) if match else None
     schedule_home = int(schedule["home_goals"]) if schedule else None
     schedule_away = int(schedule["away_goals"]) if schedule else None
+    canonical_home = actual_home if match else schedule_home
+    canonical_away = actual_away if match else schedule_away
+    canonical_result_source = "match_results" if match else ("wc26_schedule" if schedule else None)
+    kickoff_at, kickoff_source = _resolve_kickoff_at(match, schedule)
 
     pre_snapshot = _latest_pre_match_snapshot(
         conn,
         match_id,
         schedule_id,
+        schedule_match_number,
         home_team,
         away_team,
         match_date,
+        kickoff_at,
     )
-    prediction_snapshot = _latest_prediction_snapshot(conn, match_id, home_team, away_team, match_date)
+    prediction_snapshot = _latest_prediction_snapshot(conn, match_id, home_team, away_team, match_date, kickoff_at)
     process_eval = _has_process_eval(conn, match_id, schedule_id)
 
     current_probs = None
@@ -208,13 +221,16 @@ def _build_row(
     model_version = None
     weight_config_label = None
     snapshot_at = None
-    kickoff_at = None
+    pre_snapshot_at = None
     pre_snapshot_id = None
 
     if pre_snapshot is not None:
         pre_snapshot_id = str(pre_snapshot["id"])
-        snapshot_at = _as_optional_str(pre_snapshot["snapshot_at"])
-        kickoff_at = _as_optional_str(pre_snapshot["kickoff_at"])
+        pre_snapshot_at = _as_optional_str(pre_snapshot["snapshot_at"])
+        snapshot_at = pre_snapshot_at
+        if kickoff_at is None:
+            kickoff_at = _canonical_kickoff_at(_as_optional_str(pre_snapshot["kickoff_at"]))
+            kickoff_source = "pre_match_snapshots.kickoff_at" if kickoff_at else kickoff_source
         model_version = _as_optional_str(pre_snapshot["model_version"])
         weight_config_label = _as_optional_str(pre_snapshot["weight_config_label"])
         current_probs = _current_probs_from_pre_snapshot(pre_snapshot)
@@ -228,13 +244,20 @@ def _build_row(
         prediction_snapshot_at = _as_optional_str(prediction_snapshot["generated_at"])
         if model_version is None:
             model_version = _as_optional_str(prediction_snapshot["model_version"])
+        if snapshot_at is None:
+            snapshot_at = prediction_snapshot_at
+        if current_probs is None:
+            current_probs = _current_probs_from_prediction_snapshot(prediction_snapshot)
+            if current_probs is not None:
+                weight_config_label = weight_config_label or "prediction_snapshot.adjusted_probs"
+        if component_count == 0:
+            component_count = _component_count(_json_loads(_row_get(prediction_snapshot, "component_probs")))
 
     source_conflict = (
         match is not None
         and schedule is not None
         and (actual_home != schedule_home or actual_away != schedule_away)
     )
-    kickoff_at = _canonical_kickoff_at(match_date)
     horizon_hours = _horizon_hours(snapshot_at, kickoff_at)
     horizon_bucket = _horizon_bucket(horizon_hours)
     snapshot_before_kickoff = _snapshot_before_kickoff(snapshot_at, kickoff_at)
@@ -249,6 +272,7 @@ def _build_row(
     data_availability = {
         "match_result": match is not None,
         "schedule_result": schedule is not None,
+        "canonical_result": canonical_home is not None and canonical_away is not None,
         "pre_match_snapshot": pre_snapshot is not None,
         "prediction_snapshot": prediction_snapshot is not None,
         "process_eval": process_eval,
@@ -256,9 +280,9 @@ def _build_row(
         "score_matrix": _valid_matrix(score_matrix),
     }
     exclusions = []
-    if match is None:
-        exclusions.append("missing_match_result_row")
-    if pre_snapshot is None:
+    if canonical_home is None or canonical_away is None:
+        exclusions.append("missing_canonical_result")
+    if pre_snapshot is None and prediction_snapshot is None:
         exclusions.append("missing_pre_match_snapshot")
     if source_conflict:
         exclusions.append("result_conflict_between_sources")
@@ -271,7 +295,7 @@ def _build_row(
     leakage_status = _leakage_status(
         snapshot_before_kickoff=snapshot_before_kickoff,
         source_conflict=source_conflict,
-        has_snapshot=pre_snapshot is not None,
+        has_snapshot=pre_snapshot is not None or prediction_snapshot is not None,
     )
     sample_status = _sample_status(
         eligible=not exclusions,
@@ -282,34 +306,38 @@ def _build_row(
     return EvaluationRegistryRow(
         sample_id=sample_id,
         sample_status=sample_status,
-        canonical_match_id=match_id,
+        canonical_match_id=match_id or schedule_id,
+        canonical_result_source=canonical_result_source,
         home_team=home_team,
         away_team=away_team,
         match_date=match_date,
         kickoff_at=kickoff_at,
+        kickoff_source=kickoff_source,
         as_of_time=snapshot_at,
         horizon_hours=horizon_hours,
         horizon_bucket=horizon_bucket,
         stage=stage,
         match_result_id=match_id,
         schedule_id=schedule_id,
-        schedule_match_number=int(schedule["match_number"]) if schedule else None,
-        actual_home_goals=actual_home,
-        actual_away_goals=actual_away,
+        schedule_match_number=schedule_match_number,
+        actual_home_goals=canonical_home,
+        actual_away_goals=canonical_away,
         schedule_home_goals=schedule_home,
         schedule_away_goals=schedule_away,
+        has_canonical_result=canonical_home is not None and canonical_away is not None,
         has_match_result=match is not None,
         has_schedule_result=schedule is not None,
         has_pre_match_snapshot=pre_snapshot is not None,
         has_prediction_snapshot=prediction_snapshot is not None,
         has_process_eval=process_eval,
         pre_match_snapshot_id=pre_snapshot_id,
-        pre_match_snapshot_at=snapshot_at,
+        pre_match_snapshot_at=pre_snapshot_at,
         pre_match_kickoff_at=kickoff_at,
         prediction_snapshot_id=prediction_snapshot_id,
         prediction_snapshot_at=prediction_snapshot_at,
         model_version=model_version,
         weight_config_label=weight_config_label,
+        current_prob_source=_current_prob_source(pre_snapshot, prediction_snapshot, current_probs),
         component_count=component_count,
         data_completeness_score=completeness,
         data_availability=data_availability,
@@ -327,26 +355,28 @@ def _latest_pre_match_snapshot(
     conn: sqlite3.Connection,
     match_id: str | None,
     schedule_id: str | None,
+    schedule_match_number: int | None,
     home_team: str,
     away_team: str,
     match_date: str,
+    kickoff_at: str | None,
 ) -> sqlite3.Row | None:
     if not _has_table(conn, "pre_match_snapshots"):
         return None
-    ids = [item for item in (match_id, schedule_id) if item]
+    ids = [str(item) for item in (match_id, schedule_id, schedule_match_number) if item is not None]
+    candidates: list[sqlite3.Row] = []
+    seen: set[str] = set()
     if ids:
         placeholders = ",".join("?" for _ in ids)
-        row = conn.execute(
+        rows = conn.execute(
             f"""
             SELECT * FROM pre_match_snapshots
             WHERE CAST(match_id AS TEXT) IN ({placeholders})
             ORDER BY snapshot_at DESC
-            LIMIT 1
             """,
             ids,
-        ).fetchone()
-        if row is not None:
-            return row
+        ).fetchall()
+        _extend_matching_snapshot_rows(candidates, seen, rows, home_team, away_team)
     rows = conn.execute(
         """
         SELECT * FROM pre_match_snapshots
@@ -355,7 +385,8 @@ def _latest_pre_match_snapshot(
         """,
         (home_team, away_team),
     ).fetchall()
-    return _latest_row_before_match(rows, "snapshot_at", match_date)
+    _extend_matching_snapshot_rows(candidates, seen, rows, home_team, away_team)
+    return _choose_snapshot_for_kickoff(candidates, kickoff_at, match_date)
 
 
 def _latest_prediction_snapshot(
@@ -364,21 +395,22 @@ def _latest_prediction_snapshot(
     home_team: str,
     away_team: str,
     match_date: str,
+    kickoff_at: str | None,
 ) -> sqlite3.Row | None:
     if not _has_table(conn, "prediction_snapshots"):
         return None
+    candidates: list[sqlite3.Row] = []
+    seen: set[str] = set()
     if match_id:
-        row = conn.execute(
+        rows = conn.execute(
             """
             SELECT * FROM prediction_snapshots
             WHERE CAST(match_id AS TEXT) = ?
             ORDER BY generated_at DESC
-            LIMIT 1
             """,
             (match_id,),
-        ).fetchone()
-        if row is not None:
-            return row
+        ).fetchall()
+        _extend_matching_snapshot_rows(candidates, seen, rows, home_team, away_team)
     rows = conn.execute(
         """
         SELECT * FROM prediction_snapshots
@@ -387,7 +419,68 @@ def _latest_prediction_snapshot(
         """,
         (home_team, away_team),
     ).fetchall()
-    return _latest_row_before_match(rows, "generated_at", match_date)
+    _extend_matching_snapshot_rows(candidates, seen, rows, home_team, away_team)
+    return _choose_timestamped_row_for_kickoff(candidates, "generated_at", kickoff_at, match_date)
+
+
+def _extend_matching_snapshot_rows(
+    target: list[sqlite3.Row],
+    seen: set[str],
+    rows: list[sqlite3.Row],
+    home_team: str,
+    away_team: str,
+) -> None:
+    for row in rows:
+        row_id = str(row["id"])
+        if row_id in seen or not _same_team_pair(row, home_team, away_team):
+            continue
+        target.append(row)
+        seen.add(row_id)
+
+
+def _same_team_pair(row: sqlite3.Row, home_team: str, away_team: str) -> bool:
+    return _norm(row["home_team"]) == _norm(home_team) and _norm(row["away_team"]) == _norm(away_team)
+
+
+def _choose_snapshot_for_kickoff(
+    rows: list[sqlite3.Row],
+    kickoff_at: str | None,
+    match_date: str,
+) -> sqlite3.Row | None:
+    if not rows:
+        return None
+    kickoff_dt = _parse_dt(kickoff_at)
+    if kickoff_dt is not None:
+        before = [
+            row for row in rows
+            if (row_dt := _parse_dt(_as_optional_str(row["snapshot_at"]))) is not None
+            and row_dt <= kickoff_dt
+        ]
+        if before:
+            return before[0]
+        return rows[0]
+    return _latest_row_before_match(rows, "snapshot_at", match_date)
+
+
+def _choose_timestamped_row_for_kickoff(
+    rows: list[sqlite3.Row],
+    timestamp_column: str,
+    kickoff_at: str | None,
+    match_date: str,
+) -> sqlite3.Row | None:
+    if not rows:
+        return None
+    kickoff_dt = _parse_dt(kickoff_at)
+    if kickoff_dt is not None:
+        before = [
+            row for row in rows
+            if (row_dt := _parse_dt(_as_optional_str(row[timestamp_column]))) is not None
+            and row_dt <= kickoff_dt
+        ]
+        if before:
+            return before[0]
+        return rows[0]
+    return _latest_row_before_match(rows, timestamp_column, match_date)
 
 
 def _latest_row_before_match(
@@ -439,6 +532,46 @@ def _current_probs_from_pre_snapshot(row: sqlite3.Row) -> dict[str, float] | Non
     return {"home": home / total, "draw": draw / total, "away": away / total}
 
 
+def _current_probs_from_prediction_snapshot(row: sqlite3.Row) -> dict[str, float] | None:
+    for column_name in ("adjusted_probs", "baseline_probs"):
+        parsed = _json_loads(_row_get(row, column_name))
+        probs = _current_probs_from_mapping(parsed)
+        if probs is not None:
+            return probs
+    return None
+
+
+def _current_probs_from_mapping(raw: Any) -> dict[str, float] | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        home = float(raw.get("home", raw.get("home_win_prob", raw.get("home_prob"))))
+        draw = float(raw.get("draw", raw.get("draw_prob")))
+        away = float(raw.get("away", raw.get("away_win_prob", raw.get("away_prob"))))
+    except (TypeError, ValueError):
+        return None
+    if min(home, draw, away) < 0:
+        return None
+    total = home + draw + away
+    if total <= 0:
+        return None
+    return {"home": home / total, "draw": draw / total, "away": away / total}
+
+
+def _current_prob_source(
+    pre_snapshot: sqlite3.Row | None,
+    prediction_snapshot: sqlite3.Row | None,
+    current_probs: dict[str, float] | None,
+) -> str | None:
+    if current_probs is None:
+        return None
+    if pre_snapshot is not None:
+        return "pre_match_snapshots.final_probs"
+    if prediction_snapshot is not None:
+        return "prediction_snapshots.adjusted_or_baseline_probs"
+    return "unknown"
+
+
 def _sample_key(home_team: str, away_team: str, match_date: str) -> str:
     date_part = str(match_date)[:10]
     raw = f"{_norm(home_team)}::{_norm(away_team)}::{date_part}"
@@ -476,6 +609,38 @@ def _snapshot_before_kickoff(snapshot_at: str | None, kickoff_at: str | None) ->
     if snap is None or kickoff is None:
         return None
     return snap <= kickoff
+
+
+def _resolve_kickoff_at(
+    match: sqlite3.Row | None,
+    schedule: sqlite3.Row | None,
+) -> tuple[str | None, str | None]:
+    match_kickoff = _canonical_kickoff_at(_as_optional_str(match["match_date"]) if match else None)
+    if match_kickoff:
+        return match_kickoff, "matches.match_date"
+    schedule_kickoff = _schedule_kickoff_at(schedule)
+    if schedule_kickoff:
+        return schedule_kickoff, "wc26_schedule.match_date+kickoff_time"
+    return None, None
+
+
+def _schedule_kickoff_at(schedule: sqlite3.Row | None) -> str | None:
+    if schedule is None:
+        return None
+    match_date = _as_optional_str(schedule["match_date"])
+    kickoff_time = _as_optional_str(schedule["kickoff_time"])
+    if not match_date:
+        return None
+    if _canonical_kickoff_at(match_date):
+        return _canonical_kickoff_at(match_date)
+    if len(match_date.strip()) != 10 or not kickoff_time:
+        return None
+    time_part = kickoff_time.strip()
+    if len(time_part) == 5:
+        time_part = f"{time_part}:00"
+    if len(time_part) != 8:
+        return None
+    return f"{match_date.strip()}T{time_part}"
 
 
 def _canonical_kickoff_at(match_date: str | None) -> str | None:
@@ -564,6 +729,7 @@ def _completeness_score(**flags: bool) -> float:
 def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "total_samples": len(rows),
+        "canonical_result_count": sum(1 for row in rows if row["has_canonical_result"]),
         "match_results_count": sum(1 for row in rows if row["has_match_result"]),
         "schedule_finished_count": sum(1 for row in rows if row["has_schedule_result"]),
         "eligible_backtest_count": sum(1 for row in rows if row["eligible_for_backtest"]),
@@ -591,6 +757,16 @@ def _has_table(conn: sqlite3.Connection, table_name: str) -> bool:
         (table_name,),
     ).fetchone()
     return row is not None
+
+
+def _has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    if not _has_table(conn, table_name):
+        return False
+    return any(row["name"] == column_name for row in conn.execute(f"PRAGMA table_info({table_name})"))
+
+
+def _row_get(row: sqlite3.Row, column_name: str) -> Any:
+    return row[column_name] if column_name in row.keys() else None
 
 
 def _as_optional_str(value: Any) -> str | None:

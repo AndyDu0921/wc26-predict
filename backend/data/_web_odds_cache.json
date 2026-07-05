@@ -405,5 +405,106 @@
         "away": 7.0
       }
     ]
+  },
+  "Canada|Morocco": {
+    "captured_at": "2026-07-04T09:45:00Z",
+    "bookmakers": [
+      {
+        "name": "FanDuel",
+        "region": "US",
+        "home": 5.1,
+        "draw": 3.7,
+        "away": 1.83
+      },
+      {
+        "name": "DraftKings",
+        "region": "US",
+        "home": 5.0,
+        "draw": 3.5,
+        "away": 1.8
+      },
+      {
+        "name": "BetMGM",
+        "region": "US",
+        "home": 4.9,
+        "draw": 3.6,
+        "away": 1.83
+      },
+      {
+        "name": "Caesars",
+        "region": "US",
+        "home": 5.0,
+        "draw": 3.65,
+        "away": 1.8
+      },
+      {
+        "name": "bet365",
+        "region": "UK",
+        "home": 5.25,
+        "draw": 3.6,
+        "away": 1.77
+      },
+      {
+        "name": "BetOnline",
+        "region": "US",
+        "home": 5.65,
+        "draw": 3.64,
+        "away": 1.77
+      },
+      {
+        "name": "William Hill",
+        "region": "UK",
+        "home": 5.0,
+        "draw": 3.5,
+        "away": 1.85
+      },
+      {
+        "name": "PointsBet",
+        "region": "US",
+        "home": 5.4,
+        "draw": 3.75,
+        "away": 1.8
+      },
+      {
+        "name": "Betway",
+        "region": "UK",
+        "home": 5.0,
+        "draw": 3.6,
+        "away": 1.83
+      },
+      {
+        "name": "Betfair",
+        "region": "UK",
+        "home": 5.3,
+        "draw": 3.7,
+        "away": 1.8
+      }
+    ],
+    "source": "web_search_consensus_2026-07-04",
+    "note": "Multi-source web consensus: Morocco ~54% favorite, Draw ~27%, Canada ~19%"
+  },
+  "Paraguay|France": {
+    "home_prob": 0.062,
+    "draw_prob": 0.14,
+    "away_prob": 0.798,
+    "home_odds": 16.0,
+    "draw_odds": 7.0,
+    "away_odds": 1.25,
+    "sample_bookmakers": 8,
+    "bookmakers": [
+      "FanDuel",
+      "DraftKings",
+      "BetMGM",
+      "Caesars",
+      "bet365",
+      "BetOnline",
+      "William Hill",
+      "Betway"
+    ],
+    "source": "web_consensus",
+    "cv_home": 0.038,
+    "cv_draw": 0.018,
+    "cv_away": 0.012,
+    "notes": "France massive favorite (-600 avg). 8-bookmaker consensus. PAR +1500, Draw +600, FRA -600."
   }
 }

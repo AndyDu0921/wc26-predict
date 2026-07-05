@@ -29,6 +29,7 @@ from app.services.model_cache_disk import (
     save_enhancer_to_disk,
 )
 from app.services.pi_ratings import PiRatingWrapper
+from app.services.prediction_kernel_adapter import run_prediction_kernel_from_components
 from app.services.prediction_result import DegradedReason, PredictionResult, SourceStatus
 from app.services.score_matrix_calibrator import SCORE_MATRIX_CALIBRATION_ENABLED
 from app.services.signal_adjuster import SignalAdjuster
@@ -54,17 +55,12 @@ from app.core.engine import (
     negbin_pmf as _negbin_pmf,
     fuse_dc_enhancer_adaptive,
     enforce_draw_floor,
+    DRAW_FLOOR,
+    KO_DRAW_FLOOR,
     run_core_fusion,
     apply_market_boost,
     CoreFusionResult,
     MarketBoostResult,
-)
-from app.core.prediction_kernel import (
-    ComponentPrediction,
-    KernelFeatureSnapshot,
-    MatchContext,
-    PredictionKernel,
-    ProbabilityDistribution,
 )
 
 
@@ -608,59 +604,21 @@ class PredictionPipeline:
                 severity="warning", detail=str(exc),
             ))
 
-        kernel_components = {
-            "dc": ComponentPrediction(
-                name="dc",
-                probs=ProbabilityDistribution.from_mapping(dc_pred),
-                score_matrix=dc_pred.get("score_matrix"),
-                source_status="used",
-            ),
-            "enhancer": ComponentPrediction(
-                name="enhancer",
-                probs=ProbabilityDistribution.from_mapping(enh_raw),
-                source_status="used",
-            ),
-            "elo": ComponentPrediction(
-                name="elo",
-                probs=ProbabilityDistribution.from_mapping({
-                    "home_win_prob": elo_pred.home_win_prob,
-                    "draw_prob": elo_pred.draw_prob,
-                    "away_win_prob": elo_pred.away_win_prob,
-                }),
-                source_status="used",
-            ),
-        }
-        if wb_pred is not None and weibull_effective_weight > 0:
-            kernel_components["weibull"] = ComponentPrediction(
-                name="weibull",
-                probs=ProbabilityDistribution.from_mapping(wb_pred),
-                source_status="used",
-            )
-        if pi_pred:
-            kernel_components["pi"] = ComponentPrediction(
-                name="pi",
-                probs=ProbabilityDistribution.from_mapping(pi_pred),
-                source_status="used",
-            )
-        kernel_result = PredictionKernel().run(
-            context=MatchContext(
-                home_team=home_team,
-                away_team=away_team,
-                competition=competition,
-                stage=stage,
-                is_neutral=is_neutral,
-            ),
-            feature_snapshot=KernelFeatureSnapshot(
-                components=kernel_components,
-                dc_home_xg=float(dc_pred.get("home_xg", 0)),
-                dc_away_xg=float(dc_pred.get("away_xg", 0)),
-                weights={
-                    "dc": wc.dc_enhancer_blend,
-                    "weibull": weibull_effective_weight,
-                    "elo": wc.elo,
-                    "pi": wc.pi if pi_pred else 0.0,
-                },
-            ),
+        kernel_result = run_prediction_kernel_from_components(
+            home_team=home_team,
+            away_team=away_team,
+            competition=competition,
+            stage=stage,
+            is_neutral=is_neutral,
+            dc_pred=dc_pred,
+            dc_weight=wc.dc_enhancer_blend,
+            enhancer_probs=enh_raw,
+            weibull_probs=wb_pred,
+            weibull_weight=weibull_effective_weight,
+            elo_pred=elo_pred,
+            elo_weight=wc.elo,
+            pi_pred=pi_pred,
+            pi_weight=wc.pi if pi_pred else 0.0,
         )
         core = kernel_result.core_fusion
         clean = dict(core.probs)
@@ -922,11 +880,12 @@ class PredictionPipeline:
                     mb_result.divergence * 100, mb_result.market_weight_used,
                 )
 
-        # ── 13.4 Draw floor (V4.2.1) ──
+        # ── 13.4 Draw floor (V4.8.1: KO-aware) ──
         if is_wc_comp:
-            clean, draw_floor_applied = self._enforce_draw_floor(clean)
+            draw_floor = KO_DRAW_FLOOR if (stage and _is_ko_stage(stage)) else DRAW_FLOOR
+            clean, draw_floor_applied = self._enforce_draw_floor(clean, floor=draw_floor)
             if draw_floor_applied:
-                logger.info("Draw floor applied: draw bumped to 12%%")
+                logger.info("Draw floor applied: draw bumped to %.0f%%", draw_floor * 100)
 
         # ── 13.5 Isotonic calibration (R4-C7: was disabled stub) ──
         # Calibrates the final probability vector after market blending.
@@ -1569,62 +1528,22 @@ class PredictionPipeline:
                     severity="warning", detail=str(exc),
                 ))
 
-        # ── 3. Core Fusion: NegBin → Weibull → Elo → Pi (V4.8 kernel) ──
-        kernel_components_sync = {
-            "dc": ComponentPrediction(
-                name="dc",
-                probs=ProbabilityDistribution.from_mapping(dc_pred),
-                score_matrix=dc_pred.get("score_matrix"),
-                source_status="used",
-            )
-        }
-        if has_enhancer:
-            kernel_components_sync["enhancer"] = ComponentPrediction(
-                name="enhancer",
-                probs=ProbabilityDistribution.from_mapping(enh_probs_std),
-                source_status="used",
-            )
-        if wb_pred is not None and weibull_effective_weight_sync > 0:
-            kernel_components_sync["weibull"] = ComponentPrediction(
-                name="weibull",
-                probs=ProbabilityDistribution.from_mapping(wb_pred),
-                source_status="used",
-            )
-        if has_elo and elo_pred is not None:
-            kernel_components_sync["elo"] = ComponentPrediction(
-                name="elo",
-                probs=ProbabilityDistribution.from_mapping({
-                    "home_win_prob": elo_pred.home_win_prob,
-                    "draw_prob": elo_pred.draw_prob,
-                    "away_win_prob": elo_pred.away_win_prob,
-                }),
-                source_status="used",
-            )
-        if has_pi and pi_pred_for_core is not None:
-            kernel_components_sync["pi"] = ComponentPrediction(
-                name="pi",
-                probs=ProbabilityDistribution.from_mapping(pi_pred_for_core),
-                source_status="used",
-            )
-        kernel_result_sync = PredictionKernel().run(
-            context=MatchContext(
-                home_team=home_team,
-                away_team=away_team,
-                competition=competition,
-                stage=stage,
-                is_neutral=effective_is_neutral,
-            ),
-            feature_snapshot=KernelFeatureSnapshot(
-                components=kernel_components_sync,
-                dc_home_xg=float(dc_pred.get("home_xg", 0)),
-                dc_away_xg=float(dc_pred.get("away_xg", 0)),
-                weights={
-                    "dc": wc.dc,
-                    "weibull": weibull_effective_weight_sync,
-                    "elo": wc.elo if has_elo else 0.0,
-                    "pi": wc.pi if has_pi and pi_pred_for_core is not None else 0.0,
-                },
-            ),
+        # ── 3. Core Fusion: NegBin → Weibull → Elo → Pi (shared kernel) ──
+        kernel_result_sync = run_prediction_kernel_from_components(
+            home_team=home_team,
+            away_team=away_team,
+            competition=competition,
+            stage=stage,
+            is_neutral=effective_is_neutral,
+            dc_pred=dc_pred,
+            dc_weight=wc.dc,
+            enhancer_probs=enh_probs_std if has_enhancer else None,
+            weibull_probs=wb_pred,
+            weibull_weight=weibull_effective_weight_sync,
+            elo_pred=elo_pred if has_elo else None,
+            elo_weight=wc.elo if has_elo else 0.0,
+            pi_pred=pi_pred_for_core if has_pi else None,
+            pi_weight=wc.pi if has_pi and pi_pred_for_core is not None else 0.0,
         )
         core = kernel_result_sync.core_fusion
         fused = dict(core.probs)

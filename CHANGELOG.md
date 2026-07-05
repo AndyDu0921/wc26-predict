@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.9.0-alpha] — 2026-07-05
+
+### Added
+- **Accuracy Data OS repair report**: `evaluation_registry_repair_report.v1` produces deterministic repair actions for diagnostic/rejected samples without creating snapshots, probabilities, artifacts, or reports.
+- **Structured pre-match intelligence layer**: `information_state_signals.v1` converts local player availability evidence into source/time/confidence-scored shadow signals and excludes future evidence from strict features.
+- **FeatureSnapshot v2**: strict feature payloads now include information-state signals, player availability shadow payloads, schedule context, and data quality fields while still excluding actual goals.
+- **V4.9 shadow candidate names**: dynamic Bayesian weighted goal model, international covariate hybrid, Dirichlet calibration candidate, and proper-scoring stacking candidate are available as shadow/proposal-only candidates.
+- **Data-repair proposal type**: `model_change_proposals` can now record `data-repair`, `calibrator`, and `stacking` proposal categories separately from ordinary model proposals.
+- **Legacy experiment wrappers**: old full-pipeline backtest, score grid, and stacking collection scripts now delegate to the unified accuracy experiment runner and no longer overwrite old artifacts.
+
+### Changed
+- Version source of truth is now `4.9.0-alpha`.
+- Candidate experiment output includes `candidate_family` and `sample_quality_summary` so proposal review can distinguish model, calibration, stacking, and data-quality failures.
+- `run_accuracy_experiments.py` defaults to the V4.9 candidate names while retaining backward-compatible candidate aliases.
+- Feature snapshot materialization persisted 25 new V4.9 strict audit rows; `feature_snapshots` now contains 66 audit rows.
+- Proposal generation is idempotent and inserted one new data-repair proposal; `model_change_proposals` now contains 12 rows.
+
+### Verified
+- Backend test suite: `516 passed, 4 skipped`.
+- Evaluation registry repair smoke: `81` total samples, `25` strict, `46` diagnostic, `10` rejected; `46` diagnostic samples are potentially promotable only with real pre-kickoff evidence.
+- Default shadow experiment smoke still rejects all candidates because strict eligible sample count is `25 < 30`.
+- Low-threshold engineering smoke confirms dynamic candidates run end-to-end, but this is not production evidence.
+- Legacy wrappers for `backtest_full_pipeline.py`, `grid_search_score_params.py`, and `collect_stacking_training_data.py` execute through the unified runner.
+
 ## [4.8.0-alpha] — 2026-07-04
 
 ### Added
@@ -16,21 +40,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shadow candidate pool**: dynamic Dixon-Coles, dynamic bivariate Poisson, Bayesian weighted dynamic, covariate ML, Dirichlet calibration, stacking optimizer, and uniform/current baselines can be evaluated offline.
 - **Unified experiment runner**: `run_accuracy_experiments.py` compares champion vs candidate with paired Brier, LogLoss, RPS, score LogLoss, ECE, group metrics, leakage checks, and gate decision.
 - **Proposal-only self-evolution ledger**: `model_change_proposals` records model, calibrator, feature-rule, and weight proposals without applying them to production configuration.
+- **Feature snapshot materializer**: `materialize_feature_snapshots.py` persists pre-result feature payloads for strict registry samples without storing actual goals or changing production state.
 
 ### Changed
-- Version source of truth is now `4.8.0-alpha`; production weight labels remain `WORLD_CUP_V4.7.0_ALPHA` because this release does not change production weights.
+- Version source of truth is now `4.8.0-alpha`; current WC weight labels are group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`. Generic self-evolution proposals do not auto-apply production weights.
 - Legacy backtest/grid/stacking scripts now point to the new accuracy experiment runner for current evidence generation while remaining available for historical reproducibility.
 - Documentation now separates verified local facts from historical V4.3-V4.7 architecture text and avoids unverified accuracy claims.
+- Schedule-only finished rows with no source conflict can now supply canonical results; kickoff time resolves from `wc26_schedule.match_date + kickoff_time` when `matches.match_date` is unavailable.
 
 ### Fixed
 - Process-evaluation shot-volume deltas remain unavailable when pre-match expected shots are missing, preventing fake zero-error learning signals.
 - Candidate gates reject metric regressions, identity/no-op candidates, insufficient samples, and candidates whose apparent gains are not supported by paired proper-scoring evidence.
+- Legacy memory backfill no longer creates placeholder `prediction_runs` by default; synthetic placeholder runs require the explicit `--allow-placeholder-runs` escape hatch.
 
 ### Verified
-- Backend test suite: `494 passed, 4 skipped`.
-- Evaluation registry v2 dry-run: `78` total local samples, `58` canonical match-result rows, `78` schedule-finished rows, `9` strict eligible samples, `67` diagnostic samples, `2` rejected samples.
+- Backend test suite: `508 passed, 4 skipped`.
+- Evaluation registry v2 dry-run: `81` total local samples, `81` canonical result rows, `58` match-result rows, `81` schedule-finished rows, `25` strict eligible samples, `46` diagnostic samples, `10` rejected samples.
+- Feature snapshot materialization: `25` strict pre-result payloads built; persistence is idempotent (`inserted=0, skipped=25` after the latest rerun). The table currently contains `41` rows because earlier V4.8 materializations are retained as audit history.
 - Local Alembic head: `e5f6a7b8c9d0`.
-- Shadow candidate smoke: no candidate is production-ready because strict sample count is still only `9`; all results remain shadow/proposal-only.
+- Shadow candidate smoke: no candidate is production-ready on the current `25` strict samples. Dynamic DC, dynamic bivariate Poisson, and Bayesian weighted dynamic remain `shadow_needs_more_evidence`; player availability worsened Brier/LogLoss/RPS in shadow and is rejected.
 
 ## [4.7.0-alpha] — 2026-07-03
 

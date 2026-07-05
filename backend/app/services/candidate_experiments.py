@@ -16,7 +16,7 @@ from uuid import uuid4
 import numpy as np
 
 from app.services.evaluation_registry import build_evaluation_registry
-from app.services.shadow_candidate_models import build_shadow_candidate_prediction
+from app.services.shadow_candidate_models import build_shadow_candidate_prediction, candidate_family
 
 
 OUTCOMES = ("home", "draw", "away")
@@ -48,8 +48,11 @@ def run_candidate_experiment(
             "experiment_id": str(uuid4()),
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "candidate_name": cfg.candidate_name,
+            "candidate_family": candidate_family(cfg.candidate_name),
             "champion_name": cfg.champion_name,
             "sample_registry_hash": registry["registry_hash"],
+            "sample_registry_summary": registry["summary"],
+            "sample_quality_summary": _sample_quality_summary(registry["samples"]),
             "status": "rejected",
             "reason": f"eligible sample count {len(eligible)} < {cfg.min_sample_count}",
             "n_samples": len(eligible),
@@ -101,8 +104,11 @@ def run_candidate_experiment(
             "experiment_id": str(uuid4()),
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "candidate_name": cfg.candidate_name,
+            "candidate_family": candidate_family(cfg.candidate_name),
             "champion_name": cfg.champion_name,
             "sample_registry_hash": registry["registry_hash"],
+            "sample_registry_summary": registry["summary"],
+            "sample_quality_summary": _sample_quality_summary(registry["samples"]),
             "status": "rejected",
             "reason": f"paired sample count {len(paired_rows)} < {cfg.min_sample_count}",
             "n_samples": len(paired_rows),
@@ -129,15 +135,18 @@ def run_candidate_experiment(
     paired_deltas = _paired_deltas(paired_rows)
     group_metrics = _group_metrics(paired_rows)
     status = "completed"
-    gate_decision = _shadow_gate_decision(paired_deltas)
+    gate_decision = _shadow_gate_decision(paired_deltas, group_metrics)
 
     return {
         "schema_version": "candidate_experiment.v2",
         "experiment_id": str(uuid4()),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "candidate_name": cfg.candidate_name,
+        "candidate_family": candidate_family(cfg.candidate_name),
         "champion_name": cfg.champion_name,
         "sample_registry_hash": registry["registry_hash"],
+        "sample_registry_summary": registry["summary"],
+        "sample_quality_summary": _sample_quality_summary(registry["samples"]),
         "status": status,
         "n_samples": len(paired_rows),
         "candidate_availability": candidate_availability,
@@ -167,6 +176,29 @@ def _candidate_prediction_rows(paired_rows: list[dict[str, Any]]) -> list[dict[s
             }
         )
     return payload
+
+
+def _sample_quality_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    eligible = [row for row in rows if row.get("eligible_for_backtest")]
+    return {
+        "total_samples": len(rows),
+        "eligible_samples": len(eligible),
+        "strict_samples": sum(1 for row in rows if row.get("sample_status") == "strict"),
+        "diagnostic_samples": sum(1 for row in rows if row.get("sample_status") == "diagnostic"),
+        "rejected_samples": sum(1 for row in rows if row.get("sample_status") == "rejected"),
+        "clean_leakage_samples": sum(1 for row in rows if row.get("leakage_status") == "clean"),
+        "current_probability_samples": sum(1 for row in rows if isinstance(row.get("current_probs"), dict)),
+        "score_matrix_samples": sum(
+            1 for row in rows if bool((row.get("data_availability") or {}).get("score_matrix"))
+        ),
+        "process_eval_samples": sum(
+            1 for row in rows if bool((row.get("data_availability") or {}).get("process_eval"))
+        ),
+        "avg_data_completeness_score": _mean([
+            float(row.get("data_completeness_score") or 0.0)
+            for row in rows
+        ]),
+    }
 
 
 def _actual_index(home_goals: int | None, away_goals: int | None) -> int | None:
@@ -214,7 +246,9 @@ def _paired_deltas(paired_rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         metric: {
             "mean_delta": _mean(values),
-            "ci95": _ci95(values),
+            "ci95": _bootstrap_ci95(values),
+            "ci_method": "paired_bootstrap_percentile_v1",
+            "n": len(values),
             "lower_is_better": True,
         }
         for metric, values in metric_deltas.items()
@@ -232,22 +266,30 @@ def _group_metrics(paired_rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not rows:
             result[key] = {"n": 0}
             continue
-        result[key] = {
-            "n": len(rows),
-            "current_brier": _mean([_brier(row["current_probs"], row["actual_idx"]) for row in rows]),
-            "candidate_brier": _mean([_brier(row["candidate_probs"], row["actual_idx"]) for row in rows]),
-            "candidate_minus_current_brier": _mean(
-                [
-                    _brier(row["candidate_probs"], row["actual_idx"])
-                    - _brier(row["current_probs"], row["actual_idx"])
-                    for row in rows
-                ]
-            ),
-        }
+        result[key] = {"n": len(rows), "metrics": _group_metric_block(rows)}
     return result
 
 
-def _shadow_gate_decision(paired_deltas: dict[str, Any]) -> dict[str, Any]:
+def _group_metric_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    metrics = {}
+    for metric_name, fn in (("brier", _brier), ("logloss", _logloss), ("rps", _rps)):
+        current_values = [fn(row["current_probs"], row["actual_idx"]) for row in rows]
+        candidate_values = [fn(row["candidate_probs"], row["actual_idx"]) for row in rows]
+        deltas = [candidate - current for candidate, current in zip(candidate_values, current_values)]
+        metrics[metric_name] = {
+            "current": _mean(current_values),
+            "candidate": _mean(candidate_values),
+            "candidate_minus_current": _mean(deltas),
+            "ci95": _bootstrap_ci95(deltas),
+            "ci_method": "paired_bootstrap_percentile_v1",
+        }
+    return metrics
+
+
+def _shadow_gate_decision(
+    paired_deltas: dict[str, Any],
+    group_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     worsened = [
         metric for metric, payload in paired_deltas.items()
         if float(payload["mean_delta"]) > 0
@@ -280,11 +322,31 @@ def _shadow_gate_decision(paired_deltas: dict[str, Any]) -> dict[str, Any]:
             "passed": False,
             "reasons": ["fewer_than_two_supported_core_metric_improvements"],
         }
+    degraded_groups = _degraded_groups(group_metrics or {})
+    if degraded_groups:
+        return {
+            "status": "shadow_rejected",
+            "passed": False,
+            "reasons": [f"{item}_group_degraded" for item in degraded_groups],
+        }
     return {
         "status": "shadow_candidate_only",
         "passed": True,
         "reasons": ["two_plus_supported_core_metric_improvements", "manual_review_required"],
     }
+
+
+def _degraded_groups(group_metrics: dict[str, Any]) -> list[str]:
+    degraded = []
+    for group_name, payload in group_metrics.items():
+        if int(payload.get("n", 0) or 0) < 5:
+            continue
+        metrics = payload.get("metrics") or {}
+        for metric_name in ("brier", "logloss", "rps"):
+            metric = metrics.get(metric_name) or {}
+            if float(metric.get("candidate_minus_current", 0.0) or 0.0) > 0.02:
+                degraded.append(f"{group_name}_{metric_name}")
+    return degraded
 
 
 def _leakage_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -359,16 +421,19 @@ def _mean(values: list[float] | list[int]) -> float:
     return round(float(np.mean(values)), 6) if values else 0.0
 
 
-def _ci95(values: list[float]) -> list[float]:
+def _bootstrap_ci95(values: list[float]) -> list[float]:
     if not values:
         return [0.0, 0.0]
     arr = np.array(values, dtype=float)
     if len(arr) == 1:
         val = float(arr[0])
         return [round(val, 6), round(val, 6)]
-    half_width = 1.96 * float(arr.std(ddof=1)) / math.sqrt(len(arr))
-    mean = float(arr.mean())
-    return [round(mean - half_width, 6), round(mean + half_width, 6)]
+    seed = int(abs(float(arr.mean())) * 1_000_000) + len(arr) * 7919
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(arr), size=(2000, len(arr)))
+    boot_means = arr[idx].mean(axis=1)
+    low, high = np.percentile(boot_means, [2.5, 97.5])
+    return [round(float(low), 6), round(float(high), 6)]
 
 
 def _is_knockout(stage: str) -> bool:

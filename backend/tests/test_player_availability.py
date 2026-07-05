@@ -75,3 +75,34 @@ def test_goalkeeper_absence_increases_opponent_shadow_xg():
     assert snapshot.away_xg_modifier == 0.0
     assert snapshot.adjustments[0].opponent_xg_modifier > 0
     assert snapshot.source_status["status"] == "used"
+
+
+def test_player_shadow_filters_records_after_as_of_time():
+    snapshot = build_player_availability_shadow(
+        "Brazil",
+        "Japan",
+        as_of_time="2026-06-27T12:00:00+00:00",
+        injury_records=[
+            {
+                "player_name": "Future Update",
+                "team_name": "Brazil",
+                "status": "out",
+                "confidence": 1.0,
+                "source": "manual",
+                "last_updated": "2026-06-28T00:00:00+00:00",
+            }
+        ],
+        player_catalog=[
+            {
+                "player_name": "Future Update",
+                "team_name": "Brazil",
+                "position": "Forward",
+                "importance_level": "key",
+            }
+        ],
+    )
+
+    assert snapshot.home_xg_modifier == 0.0
+    assert snapshot.away_xg_modifier == 0.0
+    assert snapshot.adjustments == []
+    assert snapshot.source_status["excluded_future_records"] == 1

@@ -172,3 +172,23 @@ class BacktestGate:
         db.add(record)
         await db.flush()
         return record
+
+    @staticmethod
+    def knockout_mode() -> "BacktestGate":
+        """Factory for knockout-stage BacktestGate with relaxed parameters.
+
+        KO stage has fewer samples (8-16 matches) than group stage (48+).
+        Relaxing the gate allows the self-evolution system to make small,
+        evidence-backed adjustments during knockout tournaments.
+
+        IMPORTANT: These parameters should be restored to defaults after
+        the knockout stage ends.
+
+        Returns:
+            BacktestGate configured for knockout tournament evaluation.
+        """
+        return BacktestGate(
+            min_sample_count=8,     # 30→8: KO rounds have 8-16 samples
+            max_weight_delta=0.05,  # 0.03→0.05: allow slightly larger adjustments
+            min_improvement=0.002,  # 0.001→0.002: require stronger evidence
+        )

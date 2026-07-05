@@ -183,7 +183,7 @@ class TestFailureClassifier:
             data_quality_score=0.85,
         )
         assert result["model_failure_type"] == "LUCKY_RESULT"
-        assert result["base_learning_weight"] == 0.30
+        assert result["base_learning_weight"] == 0.50  # V4.8.1: 0.30→0.50 for KO context
 
     def test_unlucky_result(self):
         result = classify_failure(

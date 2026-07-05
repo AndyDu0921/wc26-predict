@@ -6,6 +6,7 @@ Usage:
     python scripts/backfill_postmatch_evals.py --from-memory   # 5 manual reviews → DB
     python scripts/backfill_postmatch_evals.py --auto          # auto-backfill V3.8+ snapshots
     python scripts/backfill_postmatch_evals.py --all           # both modes
+    python scripts/backfill_postmatch_evals.py --allow-placeholder-runs  # legacy escape hatch
 """
 import sys, json, uuid, os
 from datetime import datetime, timezone
@@ -278,6 +279,7 @@ def main():
     from_memory = "--from-memory" in sys.argv or "--all" in sys.argv
     auto_mode = "--auto" in sys.argv or "--all" in sys.argv
     rebuild_cal = "--rebuild-calibrator" in sys.argv or "--all" in sys.argv
+    allow_placeholder_runs = "--allow-placeholder-runs" in sys.argv
 
     if not (from_memory or auto_mode or rebuild_cal or dry_run):
         print("Usage: backfill_postmatch_evals.py [--dry-run] [--from-memory] [--auto] [--rebuild-calibrator] [--all]")
@@ -286,6 +288,7 @@ def main():
         print("  --auto                Auto-backfill V3.8+ snapshots")
         print("  --rebuild-calibrator  Rebuild calibrator_wc.json from all WC evals")
         print("  --all                 All modes")
+        print("  --allow-placeholder-runs  Legacy only: create placeholder prediction_runs when missing")
         return 1
 
     results = {"memory": {"found": 0, "created": 0, "skipped": 0, "no_snapshot": 0},
@@ -320,8 +323,17 @@ def main():
             # Find prediction_run
             prun_id = find_prediction_run(snap)
             if not prun_id:
-                # Create a minimal prediction_run if none exists
-                print(f"  INFO: {home} vs {away} — creating prediction_run placeholder")
+                if not allow_placeholder_runs:
+                    print(
+                        f"  SKIP: {home} vs {away} — no prediction_run; "
+                        "placeholder runs are disabled by default"
+                    )
+                    results["memory"]["skipped"] += 1
+                    continue
+
+                # Legacy escape hatch only. V4.8 learning/evaluation paths must
+                # prefer real pre-match snapshots over synthetic probabilities.
+                print(f"  LEGACY: {home} vs {away} — creating prediction_run placeholder")
                 if not dry_run:
                     import sqlite3
                     db_path = str(BACKEND_DIR / "data" / "local_stage2.db")
@@ -339,7 +351,7 @@ def main():
                              input_feature_snapshot, approved_signals, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        prun_id, snap["match_id"], "post_match_backfill",
+                        prun_id, snap["match_id"], "legacy_placeholder_backfill",
                         snap.get("model_version", "unknown"),
                         snap.get("match_time") or now,  # as_of_time
                         0.5, 0.25, 0.25,  # placeholder probs

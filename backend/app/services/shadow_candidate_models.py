@@ -1,4 +1,4 @@
-"""Shadow-only candidate probability models for V4.8 experiments.
+"""Shadow-only candidate probability models for V4.9 experiments.
 
 These candidates are deliberately lightweight and auditable.  They are not
 production models and do not mutate artifacts or weights.
@@ -15,6 +15,8 @@ from typing import Any
 
 import numpy as np
 
+from app.services.player_availability import build_player_availability_shadow
+
 
 SUPPORTED_SHADOW_CANDIDATES = {
     "uniform_baseline",
@@ -22,9 +24,37 @@ SUPPORTED_SHADOW_CANDIDATES = {
     "dynamic_dixon_coles",
     "dynamic_bivariate_poisson",
     "bayesian_weighted_dynamic",
+    "dynamic_bayesian_weighted_goal_model",
     "covariate_ml_baseline",
+    "international_covariate_hybrid",
     "dirichlet_calibration",
+    "dirichlet_calibration_candidate",
     "stacking_optimizer",
+    "proper_scoring_stacking_candidate",
+    "player_availability_shadow",
+}
+
+CANDIDATE_ALIASES = {
+    "dynamic_bayesian_weighted_goal_model": "bayesian_weighted_dynamic",
+    "international_covariate_hybrid": "covariate_ml_baseline",
+    "dirichlet_calibration_candidate": "dirichlet_calibration",
+    "proper_scoring_stacking_candidate": "stacking_optimizer",
+}
+
+CANDIDATE_FAMILIES = {
+    "uniform_baseline": "baseline",
+    "current_fusion": "champion",
+    "dynamic_dixon_coles": "dynamic_goal_model",
+    "dynamic_bivariate_poisson": "dynamic_goal_model",
+    "bayesian_weighted_dynamic": "dynamic_goal_model",
+    "dynamic_bayesian_weighted_goal_model": "dynamic_goal_model",
+    "covariate_ml_baseline": "covariate_hybrid",
+    "international_covariate_hybrid": "covariate_hybrid",
+    "dirichlet_calibration": "calibrator",
+    "dirichlet_calibration_candidate": "calibrator",
+    "stacking_optimizer": "stacking",
+    "proper_scoring_stacking_candidate": "stacking",
+    "player_availability_shadow": "player_availability",
 }
 
 
@@ -61,24 +91,35 @@ def build_shadow_candidate_prediction(
     """Build a shadow candidate probability distribution for one sample."""
     if candidate_name not in SUPPORTED_SHADOW_CANDIDATES:
         return ShadowCandidateResult(candidate_name, False, reason="unsupported_candidate")
-    if candidate_name == "uniform_baseline":
+    canonical_name = CANDIDATE_ALIASES.get(candidate_name, candidate_name)
+    if canonical_name == "uniform_baseline":
         return ShadowCandidateResult(
             candidate_name,
             True,
             probs={"home": 1 / 3, "draw": 1 / 3, "away": 1 / 3},
             reason="uniform_reference",
+            payload={"candidate_family": candidate_family(candidate_name), "shadow_only": True},
         )
-    if candidate_name == "current_fusion":
+    if canonical_name == "current_fusion":
         current = row.get("current_probs")
         if not isinstance(current, dict):
             return ShadowCandidateResult(candidate_name, False, reason="missing_current_probs")
-        return ShadowCandidateResult(candidate_name, True, probs=_normalize(current), reason="identity_champion")
+        return ShadowCandidateResult(
+            candidate_name,
+            True,
+            probs=_normalize(current),
+            reason="identity_champion",
+            payload={"candidate_family": candidate_family(candidate_name), "shadow_only": True},
+        )
+
+    if canonical_name == "player_availability_shadow":
+        return _player_availability_shadow(candidate_name, row, db_path=db_path)
 
     kickoff = _parse_dt(row.get("kickoff_at") or row.get("match_date"))
     if kickoff is None:
         return ShadowCandidateResult(candidate_name, False, reason="kickoff_time_unavailable")
 
-    if candidate_name in {
+    if canonical_name in {
         "dynamic_dixon_coles",
         "dynamic_bivariate_poisson",
         "bayesian_weighted_dynamic",
@@ -89,16 +130,20 @@ def build_shadow_candidate_prediction(
                 candidate_name,
                 False,
                 reason=f"insufficient_history_{len(history)}",
-                payload={"history_count": len(history)},
+                payload={
+                    "history_count": len(history),
+                    "candidate_family": candidate_family(candidate_name),
+                    "shadow_only": True,
+                },
             )
         lambdas = _dynamic_lambdas(
             history,
             home_team=str(row["home_team"]),
             away_team=str(row["away_team"]),
             as_of=kickoff,
-            bayesian=candidate_name == "bayesian_weighted_dynamic",
+            bayesian=canonical_name == "bayesian_weighted_dynamic",
         )
-        if candidate_name == "dynamic_bivariate_poisson":
+        if canonical_name == "dynamic_bivariate_poisson":
             probs = _bivariate_poisson_probs(
                 lambdas["home_xg"],
                 lambdas["away_xg"],
@@ -106,23 +151,84 @@ def build_shadow_candidate_prediction(
             )
         else:
             probs = _independent_poisson_probs(lambdas["home_xg"], lambdas["away_xg"])
-        return ShadowCandidateResult(candidate_name, True, probs=probs, reason="computed_from_pre_match_history", payload=lambdas)
-
-    if candidate_name == "dirichlet_calibration":
-        return _dirichlet_like_calibration(candidate_name, row, registry_rows or [])
-
-    if candidate_name == "stacking_optimizer":
-        return _stacking_optimizer(candidate_name, row, registry_rows or [])
-
-    if candidate_name == "covariate_ml_baseline":
+        lambdas["candidate_family"] = candidate_family(candidate_name)
+        lambdas["canonical_candidate_name"] = canonical_name
+        lambdas["shadow_only"] = True
         return ShadowCandidateResult(
             candidate_name,
-            False,
-            reason="requires_feature_snapshot_training_set",
-            payload={"minimum_feature_snapshots": 50},
+            True,
+            probs=probs,
+            reason="computed_from_pre_match_history",
+            payload=lambdas,
         )
 
+    if canonical_name == "dirichlet_calibration":
+        return _dirichlet_like_calibration(candidate_name, row, registry_rows or [])
+
+    if canonical_name == "stacking_optimizer":
+        return _stacking_optimizer(candidate_name, row, registry_rows or [])
+
+    if canonical_name == "covariate_ml_baseline":
+        return _covariate_hybrid_candidate(candidate_name, row, db_path=db_path, registry_rows=registry_rows or [])
+
     return ShadowCandidateResult(candidate_name, False, reason="not_implemented")
+
+
+def candidate_family(candidate_name: str) -> str:
+    return CANDIDATE_FAMILIES.get(candidate_name, "unknown")
+
+
+def _player_availability_shadow(
+    candidate_name: str,
+    row: dict[str, Any],
+    *,
+    db_path: str | Path,
+) -> ShadowCandidateResult:
+    current = row.get("current_probs")
+    if not isinstance(current, dict):
+        return ShadowCandidateResult(candidate_name, False, reason="missing_current_probs")
+    probs = _normalize(current)
+    snapshot = build_player_availability_shadow(
+        str(row["home_team"]),
+        str(row["away_team"]),
+        db_path=db_path,
+        as_of_time=str(row.get("as_of_time") or row.get("kickoff_at") or row.get("match_date") or ""),
+    )
+    payload = snapshot.to_dict()
+    if not snapshot.adjustments:
+        payload["probability_adjustment"] = {"home": 0.0, "draw": 0.0, "away": 0.0}
+        payload["candidate_family"] = candidate_family(candidate_name)
+        payload["shadow_only"] = True
+        return ShadowCandidateResult(
+            candidate_name,
+            True,
+            probs=probs,
+            reason="no_player_availability_effect",
+            payload=payload,
+        )
+
+    xg_delta = float(snapshot.home_xg_modifier) - float(snapshot.away_xg_modifier)
+    tilt = _clamp(xg_delta * 0.18, -0.08, 0.08)
+    adjusted = {
+        "home": max(probs["home"] + tilt, 1e-6),
+        "draw": max(probs["draw"] - abs(tilt) * 0.20, 1e-6),
+        "away": max(probs["away"] - tilt, 1e-6),
+    }
+    payload["xg_delta_home_minus_away"] = round(xg_delta, 6)
+    payload["candidate_family"] = candidate_family(candidate_name)
+    payload["shadow_only"] = True
+    payload["probability_adjustment"] = {
+        "home": round(adjusted["home"] - probs["home"], 6),
+        "draw": round(adjusted["draw"] - probs["draw"], 6),
+        "away": round(adjusted["away"] - probs["away"], 6),
+    }
+    return ShadowCandidateResult(
+        candidate_name,
+        True,
+        probs=_normalize(adjusted),
+        reason="shadow_player_availability_adjustment",
+        payload=payload,
+    )
 
 
 def _load_history(db_path: str | Path, *, before: datetime) -> list[HistoricalMatch]:
@@ -178,7 +284,7 @@ def _dynamic_lambdas(
     away_team: str,
     as_of: datetime,
     bayesian: bool,
-) -> dict[str, float]:
+) -> dict[str, Any]:
     half_life_days = 180.0
     weighted = []
     for match in history:
@@ -206,6 +312,9 @@ def _dynamic_lambdas(
         "history_count": len(history),
         "half_life_days": half_life_days,
         "bayesian_shrinkage": bayesian,
+        "evolution_method": "weighted_bayesian_time_decay" if bayesian else "weighted_time_decay",
+        "home_team_profile": home_profile,
+        "away_team_profile": away_profile,
     }
 
 
@@ -304,7 +413,11 @@ def _dirichlet_like_calibration(
             candidate_name,
             False,
             reason=f"insufficient_prior_paired_samples_{len(previous)}",
-            payload={"minimum_samples": 30},
+            payload={
+                "minimum_samples": 30,
+                "candidate_family": candidate_family(candidate_name),
+                "shadow_only": True,
+            },
         )
     # Conservative multiclass calibration proxy: learn only a scalar shrinkage
     # toward uniform from prior log-loss, never a full Dirichlet parameter set.
@@ -319,7 +432,12 @@ def _dirichlet_like_calibration(
         True,
         probs=_normalize(calibrated),
         reason="scalar_multiclass_shrinkage_from_prior_samples",
-        payload={"prior_samples": len(previous), "shrinkage": shrink},
+        payload={
+            "prior_samples": len(previous),
+            "shrinkage": shrink,
+            "candidate_family": candidate_family(candidate_name),
+            "shadow_only": True,
+        },
     )
 
 
@@ -334,14 +452,79 @@ def _stacking_optimizer(
             candidate_name,
             False,
             reason=f"insufficient_prior_stacking_samples_{len(previous)}",
-            payload={"minimum_samples": 50},
+            payload={
+                "minimum_samples": 50,
+                "candidate_family": candidate_family(candidate_name),
+                "shadow_only": True,
+            },
         )
     return ShadowCandidateResult(
         candidate_name,
         False,
         reason="component_level_training_payload_unavailable",
-        payload={"prior_samples": len(previous)},
+        payload={
+            "prior_samples": len(previous),
+            "candidate_family": candidate_family(candidate_name),
+            "shadow_only": True,
+        },
     )
+
+
+def _covariate_hybrid_candidate(
+    candidate_name: str,
+    row: dict[str, Any],
+    *,
+    db_path: str | Path,
+    registry_rows: list[dict[str, Any]],
+) -> ShadowCandidateResult:
+    feature_count = _feature_snapshot_count(db_path)
+    previous = _previous_paired_rows(row, registry_rows)
+    payload = {
+        "candidate_family": candidate_family(candidate_name),
+        "minimum_feature_snapshots": 50,
+        "feature_snapshot_count": feature_count,
+        "minimum_prior_paired_samples": 50,
+        "prior_paired_samples": len(previous),
+        "shadow_only": True,
+    }
+    if feature_count < 50:
+        return ShadowCandidateResult(
+            candidate_name,
+            False,
+            reason=f"insufficient_feature_snapshots_{feature_count}",
+            payload=payload,
+        )
+    if len(previous) < 50:
+        return ShadowCandidateResult(
+            candidate_name,
+            False,
+            reason=f"insufficient_prior_paired_samples_{len(previous)}",
+            payload=payload,
+        )
+    return ShadowCandidateResult(
+        candidate_name,
+        False,
+        reason="covariate_training_pipeline_not_materialized",
+        payload=payload,
+    )
+
+
+def _feature_snapshot_count(db_path: str | Path) -> int:
+    path = Path(db_path)
+    if not path.exists():
+        return 0
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(path))
+        row = conn.execute(
+            "SELECT COUNT(*) FROM feature_snapshots",
+        ).fetchone()
+        return int(row[0] or 0)
+    except sqlite3.Error:
+        return 0
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _previous_paired_rows(row: dict[str, Any], registry_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

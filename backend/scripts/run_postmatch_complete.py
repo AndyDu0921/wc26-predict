@@ -21,10 +21,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import io
+import json
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid5, NAMESPACE_URL
 
 import httpx
 
@@ -60,6 +62,91 @@ PIPELINE_STEPS = [
     "generate_analysis",
     "output_report",
 ]
+
+
+def _verification_match_uuid(match_id: str) -> UUID:
+    """Return a stable UUID for result-verification rows.
+
+    Historical WC26 schedule rows can use integer/string IDs (for example
+    ``195``).  The verification table is UUID-oriented, so non-UUID IDs are
+    mapped to a deterministic UUID while the learning log keeps the original
+    snapshot match_id.
+    """
+    text = match_id.strip()
+    try:
+        return UUID(text)
+    except ValueError:
+        return uuid5(NAMESPACE_URL, f"wc26-predict:match:{text}")
+
+
+def _json_load(raw):
+    if raw in (None, ""):
+        return None
+    if isinstance(raw, (dict, list)):
+        return raw
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+async def _fallback_pre_match_snapshot(db, match_id: str) -> PredictionSnapshot | None:
+    """Build a detached PredictionSnapshot from the latest pre_match_snapshot."""
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT *
+                FROM pre_match_snapshots
+                WHERE CAST(match_id AS TEXT) = :mid
+                ORDER BY snapshot_at DESC
+                LIMIT 1
+                """
+            ),
+            {"mid": match_id},
+        )
+    ).mappings().first()
+    if row is None:
+        return None
+    component_probs = _json_load(row.get("component_probs")) or {}
+    return PredictionSnapshot(
+        id=str(row["id"]),
+        match_id=str(row["match_id"]),
+        generated_at=row.get("snapshot_at"),
+        model_version=row.get("model_version") or row.get("code_version") or "pre_match_snapshot_fallback",
+        run_type="pre_match_snapshot_fallback",
+        home_team=row["home_team"],
+        away_team=row["away_team"],
+        competition=row.get("competition") or "FIFA World Cup 2026",
+        match_time=row.get("kickoff_at"),
+        baseline_probs={
+            "home": float(row["final_home_prob"]),
+            "draw": float(row["final_draw_prob"]),
+            "away": float(row["final_away_prob"]),
+        },
+        adjusted_probs={
+            "home": float(row["final_home_prob"]),
+            "draw": float(row["final_draw_prob"]),
+            "away": float(row["final_away_prob"]),
+        },
+        component_probs=component_probs,
+        market_probs=component_probs.get("market") if isinstance(component_probs, dict) else None,
+        expected_goals={"home": row.get("home_xg"), "away": row.get("away_xg")},
+        top_scores=_json_load(row.get("top_scores")),
+        fused_score_matrix=_json_load(row.get("fused_score_matrix")),
+        source_score_matrices=_json_load(row.get("source_score_matrices")),
+        confidence=row.get("confidence"),
+        missing_inputs=_json_load(row.get("missing_inputs")) or [],
+        pipeline_params={
+            "weight_config": _json_load(row.get("weight_config")),
+            "weight_config_label": row.get("weight_config_label"),
+            "effective_weights": _json_load(row.get("effective_weights")),
+            "market_weight_used": row.get("market_weight_used"),
+            "pre_match_snapshot_id": row.get("id"),
+            "snapshot_fallback": True,
+        },
+        report_markdown=row.get("report_markdown"),
+    )
 
 
 def _lookup_process_eval_weight(
@@ -132,6 +219,7 @@ async def run_complete_postmatch(
     Returns a dict with per-step status and final summary.
     """
     match_uuid = match_id.replace("-", "").strip()
+    verification_match_id = _verification_match_uuid(match_uuid)
     pipeline_status = {step: "pending" for step in PIPELINE_STEPS}
     pipeline_data: dict = {}
 
@@ -154,7 +242,7 @@ async def run_complete_postmatch(
         # Source 1: match_results table (tier 3)
         await verification_service.add_source_result(
             db=db,
-            match_id=UUID(match_uuid),
+            match_id=verification_match_id,
             home_goals=home_score,
             away_goals=away_score,
             source_name="match_results_import",
@@ -190,7 +278,7 @@ async def run_complete_postmatch(
                         source_label = verify_source_name or "url_verified"
                         await verification_service.add_source_result(
                             db=db,
-                            match_id=UUID(match_uuid),
+                            match_id=verification_match_id,
                             home_goals=home_score,
                             away_goals=away_score,
                             source_name=source_label,
@@ -214,7 +302,7 @@ async def run_complete_postmatch(
             tier_label = "tier 4" if trust_db_score else "tier 6"
             await verification_service.add_source_result(
                 db=db,
-                match_id=UUID(match_uuid),
+                match_id=verification_match_id,
                 home_goals=home_score,
                 away_goals=away_score,
                 source_name=second_name,
@@ -225,7 +313,7 @@ async def run_complete_postmatch(
             print(f"  + Source 2: {second_name} ({tier_label}, DB-trusted ✅)" if trust_db_score else f"  + Source 2: user_provided ({tier_label}, NOT independently verified ⚠)")
 
         # Build consensus
-        consensus = await verification_service.build_consensus(db, UUID(match_uuid))
+        consensus = await verification_service.build_consensus(db, verification_match_id)
 
         if consensus is None or not consensus.is_verified:
             pipeline_status["verify_score"] = "FAILED"
@@ -277,6 +365,8 @@ async def run_complete_postmatch(
             .limit(1)
         )
         snapshot = snap_result.scalar_one_or_none()
+        if snapshot is None:
+            snapshot = await _fallback_pre_match_snapshot(db, match_uuid)
 
         if snapshot is None:
             pipeline_status["find_snapshot"] = "FAILED"
@@ -293,6 +383,8 @@ async def run_complete_postmatch(
         pipeline_data["snapshot"] = snapshot
         print(f"  ✅ Found: {snapshot.home_team} vs {snapshot.away_team} "
               f"@ {snapshot.generated_at}")
+        if snapshot.run_type == "pre_match_snapshot_fallback":
+            print("     source: pre_match_snapshots fallback")
 
         # Remove old learning log if exists (idempotent re-run)
         existing = await db.execute(
@@ -393,6 +485,14 @@ async def run_complete_postmatch(
         await db.execute(
             text("UPDATE matches SET status = 'finished' WHERE id = :mid"),
             {"mid": match_uuid},
+        )
+        await db.execute(
+            text(
+                "UPDATE wc26_schedule "
+                "SET match_status = 'FINISHED', home_goals = :hg, away_goals = :ag "
+                "WHERE CAST(id AS TEXT) = :mid"
+            ),
+            {"mid": match_uuid, "hg": home_score, "ag": away_score},
         )
 
         pipeline_status["update_match_results"] = "passed"

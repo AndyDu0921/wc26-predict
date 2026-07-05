@@ -5,9 +5,9 @@
 > 2026 世界杯概率预测研究系统。目标只有一个：在可审计、可复现、无数据泄漏的前提下，把预测做得更准。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-V4.8.0_alpha-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/phase-V4.8_Accuracy_Engine-orange?style=flat-square" alt="phase">
-  <img src="https://img.shields.io/badge/backend_tests-494_passed_4_skipped-success?style=flat-square" alt="backend tests">
+  <img src="https://img.shields.io/badge/version-V4.9.0_alpha-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/phase-V4.9_Accuracy_Data_OS-orange?style=flat-square" alt="phase">
+  <img src="https://img.shields.io/badge/backend_tests-516_passed_4_skipped-success?style=flat-square" alt="backend tests">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/model_loading-disk_cache_only-brightgreen?style=flat-square" alt="model loading">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
@@ -19,17 +19,17 @@
 
 ### 当前结论
 
-WC26 Predict 现在处在 **V4.8 Accuracy Engine** 阶段：先统一评估样本、预测内核、shadow 实验和 proposal-only 自进化，再讨论任何生产级模型替换。
+WC26 Predict 现在处在 **V4.9 Accuracy Data OS** 阶段：先补齐可回放赛前数据、结构化情报、shadow 候选实验和 proposal-only 自进化，再讨论任何生产级模型替换。
 
-**V4.8.0-alpha（2026-07-04）当前状态：**
+**V4.9.0-alpha（2026-07-05）当前状态：**
 
-- **测试状态**：`494 passed, 4 skipped`（2026-07-04，本地后端全量测试）
-- **代码版本**：`4.8.0-alpha`；**权重版本仍为** `WORLD_CUP_V4.7.0_ALPHA` — 本轮不改生产权重。
-- **本地样本口径**：evaluation registry 显示 `78` 个 schedule-finished 样本、`58` 个 canonical `matches + match_results` 样本、`9` 个 strict eligible backtest 样本；任何准确率结论必须先说明采用哪个口径。
+- **测试状态**：`516 passed, 4 skipped`（2026-07-05，本地后端全量测试）
+- **代码版本**：`4.9.0-alpha`；当前代码中的 WC 权重标签为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；`model_change_proposals` 不会自动改生产权重。
+- **本地样本口径**：evaluation registry 显示 `81` 个 canonical result 样本（`58` 个来自 `matches + match_results`，无冲突 `wc26_schedule` 可补齐其余结果）、`25` 个 strict eligible backtest 样本；任何准确率结论必须先说明采用哪个口径。
 - **预测流水线**：DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market（7 级顺序融合）+ 战意因子 + 平局下限 12% + 分歧自适应 + 动态市场提升 + DC半衰期学习(180d最优) + A3 Stacking元学习器(21维特征) + B1加权共形预测(α=0.1)
-- **复盘数据完整性**：当前 `postmatch_process_eval` 为 `13` 场、`match_team_statistics` 为 `26` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
-- **新功能**：V4.8 Accuracy Engine：evaluation registry v2、PredictionKernel、统一 shadow experiment runner、动态 Poisson 候选、proposal-only `model_change_proposals`、registry 诊断脚本。
-- **已知风险**：strict 样本仍只有 `9` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
+- **复盘数据完整性**：当前 `postmatch_process_eval` 为 `16` 场、`match_team_statistics` 为 `26` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
+- **新功能**：V4.9 Accuracy Data OS：evaluation registry repair report、结构化赛前情报信号、FeatureSnapshot v2、候选模型家族标识、data-repair/calibrator/stacking proposal 类型、旧 backtest/grid/stacking 脚本统一 wrapper。
+- **已知风险**：strict 样本仍只有 `25` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
 
 ### 系统目标
 
@@ -77,7 +77,7 @@ backend/app/services/weights.py          权重配置 (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           模型工件 (calibrator, ratings)
 backend/model_artifacts/dc_cache/        模型磁盘缓存 (DC + Enhancer)
 backend/scripts/             CLI 脚本 (预测、复盘、模拟、训练)
-backend/tests/               测试 (494 passed, 4 skipped)
+backend/tests/               测试 (516 passed, 4 skipped)
 backend/dashboard/           Streamlit 本地研究工作台 (9 页面)
 backend/data/                SQLite 数据库 + 数据文件
 reports/                     预测报告
@@ -145,7 +145,7 @@ cd backend
 
 # 1. 运行测试
 python -m pytest tests/ -q --tb=short
-# 预期: 494 passed, 4 skipped
+# 预期: 516 passed, 4 skipped
 
 # 2. 检查 API 健康状态
 python -c "from app.main import app; print('FastAPI app loaded OK')"
@@ -258,10 +258,11 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### 版本历史
 
-当前主版本：**V4.8.0-alpha**
+当前主版本：**V4.9.0-alpha**
 
 | 版本 | 日期 | 关键变更 |
 |------|------|---------|
+| **V4.9.0-alpha** | 2026-07-05 | Accuracy Data OS: registry repair report + structured pre-match signals + FeatureSnapshot v2 + candidate families + data-repair proposals + legacy experiment wrappers |
 | **V4.8.0-alpha** | 2026-07-04 | Accuracy Engine: registry v2 + PredictionKernel + shadow candidate experiments + generic proposal ledger |
 | **V4.7.0-alpha** | 2026-07-03 | 三源比分矩阵融合 + 学习引擎比分归因 + BacktestGate proposal-only 权重候选 + snapshot 可回放元数据 + stacking 安全门 |
 | **V4.5.0-beta** | 2026-07-01 | A3 Stacking元学习器(7组件×3结果=21维LR) + B1加权共形预测(α=0.1 halflife=30d) + DC半衰期学习(180d最优) + 全文档化魔数注册表 |
@@ -294,19 +295,19 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### Current Status
 
-WC26 Predict is in the **V4.8 Accuracy Engine** phase: unify evaluation samples, prediction kernel, shadow experiments, and proposal-only self-evolution before any production model replacement.
+WC26 Predict is in the **V4.9 Accuracy Data OS** phase: improve replayable pre-match data, structured information-state signals, shadow candidate experiments, and proposal-only self-evolution before any production model replacement.
 
-**V4.8.0-alpha (2026-07-04) State:**
+**V4.9.0-alpha (2026-07-05) State:**
 
-- **Tests**: `494 passed, 4 skipped` (local backend full suite, 2026-07-04)
-- **Code version**: `4.8.0-alpha`; **weights remain** `WORLD_CUP_V4.7.0_ALPHA` because this round does not change production weights.
-- **Local sample registry**: `78` schedule-finished samples, `58` canonical `matches + match_results` samples, `9` strict eligible backtest samples. Accuracy claims must state the sample definition.
+- **Tests**: `516 passed, 4 skipped` (local backend full suite, 2026-07-05)
+- **Code version**: `4.9.0-alpha`; current WC weight labels are group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`; `model_change_proposals` never auto-apply production weights.
+- **Local sample registry**: `81` canonical result samples (`58` from `matches + match_results`, with non-conflicting `wc26_schedule` fallback for the rest), `25` strict eligible backtest samples. Accuracy claims must state the sample definition.
 - **Fusion chain**: DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market (7-stage sequential fusion) + motivation factor + 12% draw floor + adaptive divergence guard + dynamic market boost + DC half-life learning (180d optimal) + A3 Stacking meta-learner (21-dim features) + B1 Weighted Conformal Prediction (α=0.1)
-- **Post-match data completeness**: `postmatch_process_eval` currently covers `13` matches and `match_team_statistics` has `26` rows. Strict backtests must not mix all schedule-finished rows without registry filtering.
-- **New**: V4.8 Accuracy Engine: evaluation registry v2, PredictionKernel, unified shadow experiment runner, dynamic Poisson candidates, proposal-only `model_change_proposals`, and registry diagnostics.
-- **Known risk**: NegBin-DC feature overlap (NegBin derived from DC xG); A3 did not outperform sequential fusion in walk-forward CV (+0.058 Brier delta)
-- **Self-evolution**: Pi weight 0.12 → 0.17 (67% direction correct in latest panel, best non-market component)
-- **Known issues**: Enhancer systematically biased toward underdogs (23% cumulative direction correct), divergence guard (dc=0.68) effectively suppresses impact
+- **Post-match data completeness**: `postmatch_process_eval` currently covers `16` matches and `match_team_statistics` has `26` rows. Strict backtests must not mix all schedule-finished rows without registry filtering.
+- **New**: V4.9 Accuracy Data OS: evaluation registry repair reports, structured pre-match information-state signals, FeatureSnapshot v2, candidate family metadata, data-repair/calibrator/stacking proposal types, and legacy experiment wrappers.
+- **Known risk**: strict evidence is still limited to `25` samples; dynamic candidates remain shadow-only until paired proper-scoring gates pass.
+- **Self-evolution**: proposal-only. The system can write `model_change_proposals`, but no proposal is auto-applied to production weights, calibrators, or artifacts.
+- **Known issues**: diagnostic/rejected samples are mostly missing pre-match snapshots, timestamp evidence, or current probabilities; data repair has higher priority than adding more production models.
 
 ### Project Goals
 
@@ -354,7 +355,7 @@ backend/app/services/weights.py          Weight config (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           Model artifacts (calibrator, ratings)
 backend/model_artifacts/dc_cache/        Disk-cached models (DC + Enhancer)
 backend/scripts/             CLI scripts (predict, review, simulate, train)
-backend/tests/               Tests (494 passed, 4 skipped)
+backend/tests/               Tests (516 passed, 4 skipped)
 backend/dashboard/           Streamlit research dashboard (9 pages)
 backend/data/                SQLite database + data files
 reports/                     Prediction reports
@@ -422,7 +423,7 @@ cd backend
 
 # 1. Run tests
 python -m pytest tests/ -q --tb=short
-# Expected: 494 passed, 4 skipped
+# Expected: 516 passed, 4 skipped
 
 # 2. Check API health
 python -c "from app.main import app; print('FastAPI app loaded OK')"
@@ -532,10 +533,11 @@ See [`docs/COMPLIANCE_AND_OUTPUT_POLICY.md`](docs/COMPLIANCE_AND_OUTPUT_POLICY.m
 
 ### Version History
 
-Current version: **V4.8.0-alpha**
+Current version: **V4.9.0-alpha**
 
 | Version | Date | Key Changes |
 |------|------|---------|
+| **V4.9.0-alpha** | 2026-07-05 | Accuracy Data OS: registry repair report + structured pre-match signals + FeatureSnapshot v2 + candidate families + data-repair proposals + legacy experiment wrappers |
 | **V4.8.0-alpha** | 2026-07-04 | Accuracy Engine: registry v2 + PredictionKernel + shadow candidate experiments + generic proposal ledger |
 | **V4.7.0-alpha** | 2026-07-03 | Score-matrix fusion + score-level learning attribution + BacktestGate proposal-only weight candidates + replayable snapshot metadata + stacking safety gates |
 | **V4.5.0-beta** | 2026-07-01 | A3 Stacking meta-learner (7 components × 3 outcomes = 21-dim LR) + B1 Weighted Conformal Prediction (α=0.1 halflife=30d) + DC half-life learning (180d optimal) + complete magic number registry |

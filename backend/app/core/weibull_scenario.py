@@ -17,9 +17,10 @@ Action 1 — ``"keep"`` (强队碾压极端值):
     Weibull extreme home/away probability backed by large Elo gap, market
     agreement, and high xG — the model correctly identifies a mismatch.
 
-Action 2 — ``"skip"`` (平局极端噪声):
+Action 2 — ``"shadow"`` (平局极端噪声 → V4.8.1: downgraded from skip):
     Weibull extreme draw probability in a knockout match without fundamental
-    support — likely noise, discard Weibull output.
+    support — preserve at reduced weight (KO draw rate 25% makes this
+    pattern diagnostically valuable).
 
 Action 3 — ``"shadow"`` (与市场冲突):
     Weibull extreme conflicts with tight market consensus — apply but flag
@@ -214,10 +215,17 @@ def resolve_weibull_action(
             "scenario": scenario,
         }
     elif scenario == "draw_noise":
+        # V4.8.1: KO draw rate is 25% (4/16) — Weibull draw signals should be
+        # preserved as reference (shadow mode) rather than zeroed out (skip).
+        # The old "skip" behavior was too aggressive for KO where draws are common.
+        shadow_weight = min(
+            weibull_weight * (1.0 - WEIBULL_SHADOW_WEIGHT_REDUCTION),
+            WEIBULL_MAX_SCENARIO_WEIGHT,
+        )
         return {
-            "action": "skip",
-            "effective_weight": 0.0,
-            "reason": scenario_result.get("reason", "Draw noise: skip Weibull entirely"),
+            "action": "shadow",
+            "effective_weight": round(shadow_weight, 4),
+            "reason": scenario_result.get("reason", "Draw noise: shadow Weibull at reduced weight"),
             "scenario": scenario,
         }
     elif scenario == "market_conflict":

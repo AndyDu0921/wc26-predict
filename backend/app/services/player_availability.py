@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +89,7 @@ def build_player_availability_shadow(
     injury_records: list[InjuryRecord | dict[str, Any]] | None = None,
     player_catalog: list[dict[str, Any]] | None = None,
     db_path: str | Path | None = None,
+    as_of_time: str | None = None,
 ) -> PlayerAvailabilitySnapshot:
     """Build a shadow xG adjustment payload from availability records."""
     records = injury_records
@@ -111,10 +113,15 @@ def build_player_availability_shadow(
             },
         )
 
+    as_of_dt = _parse_dt(as_of_time)
+    coerced = [_coerce_record(record) for record in records]
+    relevant_all = [
+        record for record in coerced
+        if record.get("team_name", "").lower() in {home_team.lower(), away_team.lower()}
+    ]
     relevant = [
-        _coerce_record(record)
-        for record in records
-        if _coerce_record(record).get("team_name", "").lower() in {home_team.lower(), away_team.lower()}
+        record for record in relevant_all
+        if _available_as_of(record, as_of_dt)
     ]
     if not relevant:
         return PlayerAvailabilitySnapshot(
@@ -127,6 +134,8 @@ def build_player_availability_shadow(
                 "status": "unavailable",
                 "reason": "no_relevant_availability_records",
                 "loaded_records": len(records),
+                "relevant_records_before_asof_filter": len(relevant_all),
+                "excluded_future_records": len(relevant_all),
                 "shadow_only": True,
             },
         )
@@ -196,6 +205,8 @@ def build_player_availability_shadow(
             "reason": "shadow_adjustments_computed" if adjustments else "no_adjustments",
             "loaded_records": len(records),
             "relevant_records": len(relevant),
+            "excluded_future_records": len(relevant_all) - len(relevant),
+            "as_of_time": as_of_time,
             "shadow_only": True,
         },
     )
@@ -237,8 +248,16 @@ def _coerce_record(record: InjuryRecord | dict[str, Any]) -> dict[str, Any]:
             "status": record.status,
             "confidence": record.confidence,
             "source": record.source,
+            "last_updated": record.last_updated,
         }
     return dict(record)
+
+
+def _available_as_of(record: dict[str, Any], as_of: datetime | None) -> bool:
+    if as_of is None:
+        return True
+    updated = _parse_dt(record.get("last_updated"))
+    return updated is None or updated <= as_of
 
 
 def _importance_level(record: dict[str, Any], player_meta: dict[str, Any]) -> str:
@@ -269,6 +288,21 @@ def _position_group(raw: Any) -> str:
 
 def _norm(raw: Any) -> str:
     return " ".join(str(raw or "").strip().lower().split())
+
+
+def _parse_dt(raw: Any) -> datetime | None:
+    if not raw:
+        return None
+    text = str(raw).strip().replace("Z", "+00:00")
+    if len(text) == 10:
+        text = f"{text}T00:00:00+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _clamp(value: float, low: float, high: float) -> float:

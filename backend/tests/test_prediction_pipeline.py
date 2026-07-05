@@ -35,7 +35,9 @@ class TestPredictionPipeline:
 class TestPredictionPipelineHelpers:
     """Verify shared helpers used by async/sync prediction paths."""
 
-    def test_weibull_scenario_can_skip_extreme_ko_draw_after_elo_available(self) -> None:
+    def test_weibull_scenario_shadows_extreme_ko_draw_instead_of_skip(self) -> None:
+        """V4.8.1: KO extreme draw is now 'shadow' (reduced weight) not 'skip' (zero).
+        KO draw rate is 25% (4/16) — Weibull draw signals should be preserved as reference."""
         action, weight = _resolve_weibull_scenario_action(
             weibull_probs={
                 "home_win_prob": 0.25,
@@ -49,9 +51,9 @@ class TestPredictionPipelineHelpers:
             total_xg=2.4,
         )
 
-        assert action["action"] == "skip"
+        assert action["action"] == "shadow"
         assert action["scenario"] == "draw_noise"
-        assert weight == 0.0
+        assert weight == 0.05  # min(0.10 * 0.50, 0.05) = 0.05
 
     def test_build_stacking_component_probs_uses_canonical_component_keys(self) -> None:
         components = _build_stacking_component_probs(

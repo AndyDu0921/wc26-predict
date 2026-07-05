@@ -24,11 +24,11 @@ LEARNING_WEIGHT_BY_LABEL: Dict[str, float] = {
     "GOOD_PREDICTION": 1.00,
     "MODEL_STRUCTURE_ERROR": 1.00,   # Most valuable signal — model was wrong
     "MARKET_UNDERWEIGHTED": 0.90,    # Strong signal for weight adjustment
-    "WEIBULL_EXTREME_ERROR": 0.80,
+    "WEIBULL_EXTREME_ERROR": 0.90,   # 0.80→0.90: KO extreme bias is diagnostically valuable
     "PI_OVERREACTION": 0.70,
     "MODEL_INPUT_ERROR": 0.50,       # Fix the input, not the model
+    "LUCKY_RESULT": 0.50,            # 0.30→0.50: KO "luck" often reflects real uncaptured competitive factors
     "UNLUCKY_RESULT": 0.30,          # Model was right, result was random
-    "LUCKY_RESULT": 0.30,            # Model was wrong but got lucky
     "EVENT_DISTORTED": 0.20,         # Red card/penalty — low signal
     "DATA_QUALITY_FAILURE": 0.00,    # Garbage in, don't learn
     "UNKNOWN": 0.00,                 # Requires manual review

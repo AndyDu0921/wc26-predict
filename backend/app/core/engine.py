@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 # ── Constants ───────────────────────────────────────────────────
 
-WC_XG_CALIBRATION_FACTOR = 1.20  # WC xG calibration (grid search optimal, 2026-07-03)
+WC_XG_CALIBRATION_FACTOR = 1.35  # WC xG calibration (1.20→1.35: KO stage 50-80% underestimation, 2026-07-04 R32 review)
 NEGBIN_R = 8.0  # Grid search optimal on 10 completed WC26 matches
 NEGBIN_FUSION_WEIGHT = 0.05  # NegBin influence in sequential fusion
 MARKET_BOOST_ATTENUATION = 0.60
@@ -32,13 +32,14 @@ MARKET_BOOST_SLOPE = 1.0  # boost per pp of divergence above threshold
 MARKET_BOOST_THRESHOLD_HIGH_CONSENSUS = 0.10   # ≥6 bookmakers, CV<6%
 MARKET_BOOST_THRESHOLD_MEDIUM_CONSENSUS = 0.13  # ≥3 bookmakers
 MARKET_BOOST_THRESHOLD_LOW_CONSENSUS = 0.15     # 1-2 bookmakers (original)
-DRAW_FLOOR = 0.12  # minimum draw probability for WC matches
+DRAW_FLOOR = 0.12  # minimum draw probability for WC group-stage matches
+KO_DRAW_FLOOR = 0.18  # minimum draw probability for KO matches (12→18: 4/4 KO draws missed, 2026-07-04 R32 review)
 
 # ── Market consensus gate (P1-1 Phase 2) ──
 MARKET_CONSENSUS_GATE_ENABLED = True
-MARKET_CONSENSUS_CV_THRESHOLD = 0.02   # CV < 2% = high bookmaker consensus
-MARKET_CONSENSUS_BOOST = 0.05          # market_max bump when consensus is high
-MARKET_CONSENSUS_MAX_CAP = 0.40        # absolute ceiling after consensus boost
+MARKET_CONSENSUS_CV_THRESHOLD = 0.03   # CV < 3% = high bookmaker consensus (0.02→0.03: slightly relaxed)
+MARKET_CONSENSUS_BOOST = 0.08          # market_max bump when consensus is high (0.05→0.08: stronger boost)
+MARKET_CONSENSUS_MAX_CAP = 0.45        # absolute ceiling after consensus boost (0.40→0.45)
 MARKET_CONSENSUS_MIN_BOOKMAKERS = 6    # need at least 6 bookmakers for reliable CV
 
 
