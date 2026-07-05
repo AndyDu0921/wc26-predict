@@ -26,7 +26,6 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid5, NAMESPACE_URL
 
 import httpx
 
@@ -62,21 +61,6 @@ PIPELINE_STEPS = [
     "generate_analysis",
     "output_report",
 ]
-
-
-def _verification_match_uuid(match_id: str) -> UUID:
-    """Return a stable UUID for result-verification rows.
-
-    Historical WC26 schedule rows can use integer/string IDs (for example
-    ``195``).  The verification table is UUID-oriented, so non-UUID IDs are
-    mapped to a deterministic UUID while the learning log keeps the original
-    snapshot match_id.
-    """
-    text = match_id.strip()
-    try:
-        return UUID(text)
-    except ValueError:
-        return uuid5(NAMESPACE_URL, f"wc26-predict:match:{text}")
 
 
 def _is_uuid_like(raw: str) -> bool:
@@ -227,7 +211,7 @@ async def run_complete_postmatch(
     Returns a dict with per-step status and final summary.
     """
     match_uuid = match_id.replace("-", "").strip()
-    verification_match_id = _verification_match_uuid(match_uuid)
+    verification_match_id = match_uuid
     pipeline_status = {step: "pending" for step in PIPELINE_STEPS}
     pipeline_data: dict = {}
 

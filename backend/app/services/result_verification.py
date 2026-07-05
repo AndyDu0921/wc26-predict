@@ -62,6 +62,21 @@ def _source_family(source_name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", source_name.lower())
 
 
+def _match_id_key(match_id: str | UUID) -> str:
+    """Return the real string key stored in ``matches.id``.
+
+    Historical match rows usually store UUIDs as 32-char hex strings, while
+    WC26 schedule-backed rows can use numeric strings such as ``"195"``.
+    """
+    if isinstance(match_id, UUID):
+        return match_id.hex
+    text = str(match_id).strip()
+    try:
+        return UUID(text).hex
+    except (TypeError, ValueError):
+        return text
+
+
 def _is_trusted_independent_source(row: MatchResultVerification) -> bool:
     """Return whether a source row can count toward verified consensus."""
     if row.source_tier >= SourceTier.OTHER:
@@ -87,7 +102,7 @@ def _independent_trusted_rows(
 @dataclass
 class ConsensusResult:
     """Result of a consensus-building operation."""
-    match_id: UUID
+    match_id: str
     home_goals: int
     away_goals: int
     source_count: int
@@ -110,7 +125,7 @@ class ResultVerificationService:
     @staticmethod
     async def add_source_result(
         db: AsyncSession,
-        match_id: UUID,
+        match_id: str,
         home_goals: int,
         away_goals: int,
         source_name: str,
@@ -122,7 +137,7 @@ class ResultVerificationService:
 
         Args:
             db: Active async database session.
-            match_id: UUID of the match in the matches table.
+            match_id: ID of the match in the matches table.
             home_goals, away_goals: Score claimed by this source.
             source_name: Human-readable source identifier (e.g. "AFA", "ESPN").
             source_tier: 1–6 per SourceTier constants.
@@ -135,16 +150,17 @@ class ResultVerificationService:
         Raises:
             ValueError: If match_status is not a recognised finished status.
         """
+        match_key = _match_id_key(match_id)
         normalized_status = match_status.strip()
         if normalized_status not in _FINISHED_STATUSES:
             raise ValueError(
-                f"Rejecting source claim for match {match_id}: "
+                f"Rejecting source claim for match {match_key}: "
                 f"match_status='{match_status}' is not a finished status. "
                 f"Accepted: {sorted(_FINISHED_STATUSES)}"
             )
 
         record = MatchResultVerification(
-            match_id=match_id,
+            match_id=match_key,
             home_goals=home_goals,
             away_goals=away_goals,
             source_name=source_name,
@@ -157,14 +173,14 @@ class ResultVerificationService:
         await db.flush()
         logger.info(
             "Recorded source claim: match=%s source=%s score=%d-%d status=%s",
-            match_id, source_name, home_goals, away_goals, normalized_status,
+            match_key, source_name, home_goals, away_goals, normalized_status,
         )
         return record
 
     @staticmethod
     async def build_consensus(
         db: AsyncSession,
-        match_id: UUID,
+        match_id: str,
     ) -> ConsensusResult | None:
         """Build consensus from all non-consensus source rows for this match.
 
@@ -174,17 +190,18 @@ class ResultVerificationService:
 
         Args:
             db: Active async database session.
-            match_id: UUID of the match to build consensus for.
+            match_id: ID of the match to build consensus for.
 
         Returns:
             ConsensusResult if at least one source row exists, else None.
             is_verified=True only when 2+ trusted independent sources agree.
         """
+        match_key = _match_id_key(match_id)
         # Read all non-consensus source rows for this match
         result = await db.execute(
             select(MatchResultVerification).where(
                 and_(
-                    MatchResultVerification.match_id == match_id,
+                    MatchResultVerification.match_id == match_key,
                     MatchResultVerification.is_consensus == False,  # noqa: E712
                     MatchResultVerification.consensus_for_id.is_(None),
                 )
@@ -218,7 +235,7 @@ class ResultVerificationService:
         if not is_verified:
             source_names = sorted({r.source_name for r in trusted_group or best_group})
             return ConsensusResult(
-                match_id=match_id,
+                match_id=match_key,
                 home_goals=best_score[0],
                 away_goals=best_score[1],
                 source_count=source_count,
@@ -229,7 +246,7 @@ class ResultVerificationService:
         # Create consensus row
         source_names = sorted({r.source_name for r in trusted_group})
         consensus = MatchResultVerification(
-            match_id=match_id,
+            match_id=match_key,
             home_goals=best_score[0],
             away_goals=best_score[1],
             source_name="|".join(source_names),
@@ -251,11 +268,11 @@ class ResultVerificationService:
         await db.flush()
         logger.info(
             "Consensus built: match=%s score=%d-%d sources=%d verified=True",
-            match_id, best_score[0], best_score[1], source_count,
+            match_key, best_score[0], best_score[1], source_count,
         )
 
         return ConsensusResult(
-            match_id=match_id,
+            match_id=match_key,
             home_goals=best_score[0],
             away_goals=best_score[1],
             source_count=source_count,
@@ -267,22 +284,23 @@ class ResultVerificationService:
     @staticmethod
     async def is_verified(
         db: AsyncSession,
-        match_id: UUID,
+        match_id: str,
     ) -> tuple[bool, UUID | None]:
         """Check if a verified consensus exists for this match.
 
         Args:
             db: Active async database session.
-            match_id: UUID of the match.
+            match_id: ID of the match.
 
         Returns:
             (True, consensus_id) if a verified consensus exists,
             (False, None) otherwise.
         """
+        match_key = _match_id_key(match_id)
         result = await db.execute(
             select(MatchResultVerification).where(
                 and_(
-                    MatchResultVerification.match_id == match_id,
+                    MatchResultVerification.match_id == match_key,
                     MatchResultVerification.is_consensus == True,  # noqa: E712
                 )
             )
@@ -302,17 +320,18 @@ class ResultVerificationService:
     @staticmethod
     async def get_conflicts(
         db: AsyncSession,
-        match_id: UUID,
+        match_id: str,
     ) -> list[dict[str, object]]:
         """Return conflicting score claims for a match.
 
         A conflict exists when multiple score groups have source rows
         and no consensus has been reached yet.
         """
+        match_key = _match_id_key(match_id)
         result = await db.execute(
             select(MatchResultVerification).where(
                 and_(
-                    MatchResultVerification.match_id == match_id,
+                    MatchResultVerification.match_id == match_key,
                     MatchResultVerification.is_consensus == False,  # noqa: E712
                     MatchResultVerification.consensus_for_id.is_(None),
                 )
