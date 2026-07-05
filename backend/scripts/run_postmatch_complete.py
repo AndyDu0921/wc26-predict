@@ -79,6 +79,14 @@ def _verification_match_uuid(match_id: str) -> UUID:
         return uuid5(NAMESPACE_URL, f"wc26-predict:match:{text}")
 
 
+def _is_uuid_like(raw: str) -> bool:
+    try:
+        UUID(str(raw))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def _json_load(raw):
     if raw in (None, ""):
         return None
@@ -266,27 +274,47 @@ async def run_complete_postmatch(
                     )
                 if resp.status_code == 200:
                     page_text = resp.text[:50000]
-                    score_patterns = re.findall(
-                        rf'(\d+)\s*[-–:]\s*(\d+)',
-                        page_text,
-                    )
+                    score_patterns = re.findall(r"(\d+)\s*[-–:]\s*(\d+)", page_text)
                     url_matched = any(
                         int(h) == home_score and int(a) == away_score
                         for h, a in score_patterns
                     )
+                    if not url_matched:
+                        try:
+                            payload = resp.json()
+                        except Exception:
+                            payload = None
+                        if isinstance(payload, dict):
+                            fifa_home = (
+                                (payload.get("HomeTeam") or {}).get("Score")
+                                if isinstance(payload.get("HomeTeam"), dict)
+                                else None
+                            )
+                            fifa_away = (
+                                (payload.get("AwayTeam") or {}).get("Score")
+                                if isinstance(payload.get("AwayTeam"), dict)
+                                else None
+                            )
+                            if fifa_home is not None and fifa_away is not None:
+                                url_matched = int(fifa_home) == home_score and int(fifa_away) == away_score
                     if url_matched:
                         source_label = verify_source_name or "url_verified"
+                        source_tier = (
+                            SourceTier.OFFICIAL_COMPETITION
+                            if "fifa" in source_label.lower()
+                            else SourceTier.REPUTABLE_MEDIA
+                        )
                         await verification_service.add_source_result(
                             db=db,
                             match_id=verification_match_id,
                             home_goals=home_score,
                             away_goals=away_score,
                             source_name=source_label,
-                            source_tier=SourceTier.REPUTABLE_MEDIA,
+                            source_tier=source_tier,
                             match_status="Finished",
                             notes=f"URL-verified: {verify_url}",
                         )
-                        print(f"  + Source 2: {source_label} (tier 4, URL-verified ✅)")
+                        print(f"  + Source 2: {source_label} (tier {source_tier}, URL-verified ✅)")
                         second_source_added = True
                     else:
                         print(f"  ⚠ URL fetched but score {home_score}-{away_score} not found")
@@ -353,18 +381,20 @@ async def run_complete_postmatch(
             match_uuid_hyphenated = match_uuid
 
         from sqlalchemy import or_
-        snap_result = await db.execute(
-            select(PredictionSnapshot)
-            .where(
-                or_(
-                    PredictionSnapshot.match_id.like(f"{match_uuid}%"),
-                    PredictionSnapshot.match_id.like(f"{match_uuid_hyphenated}%"),
+        snapshot = None
+        if _is_uuid_like(match_uuid):
+            snap_result = await db.execute(
+                select(PredictionSnapshot)
+                .where(
+                    or_(
+                        PredictionSnapshot.match_id.like(f"{match_uuid}%"),
+                        PredictionSnapshot.match_id.like(f"{match_uuid_hyphenated}%"),
+                    )
                 )
+                .order_by(PredictionSnapshot.generated_at.desc())
+                .limit(1)
             )
-            .order_by(PredictionSnapshot.generated_at.desc())
-            .limit(1)
-        )
-        snapshot = snap_result.scalar_one_or_none()
+            snapshot = snap_result.scalar_one_or_none()
         if snapshot is None:
             snapshot = await _fallback_pre_match_snapshot(db, match_uuid)
 
