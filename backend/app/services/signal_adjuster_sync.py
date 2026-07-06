@@ -46,6 +46,7 @@ ADJUSTMENT_MAX: dict[str, float] = {
 def load_approved_signals(
     home_team: str,
     away_team: str,
+    match_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Load APPROVED + enters_model=1 signals relevant to either team.
 
@@ -84,6 +85,17 @@ def load_approved_signals(
 
         placeholders = ",".join("?" for _ in team_ids)
 
+        scope_clause = (
+            "AND (ns.conflict_group_id IS NULL OR ns.conflict_group_id = '' "
+            "OR ns.conflict_group_id = ?)"
+            if match_id
+            else "AND (ns.conflict_group_id IS NULL OR ns.conflict_group_id = '')"
+        )
+        params = []
+        if match_id:
+            params.append(f"wc26:{match_id}")
+        params.extend(team_ids)
+
         rows = conn.execute(
             f"""SELECT ns.id, ns.signal_type, ns.impact_direction, ns.confidence,
                        ns.summary_zh, ns.player_name, ns.claim, ns.source_reliability,
@@ -94,10 +106,12 @@ def load_approved_signals(
                 WHERE (ns.review_status = 'approved' OR ns.review_status = 'APPROVED')
                   AND ns.enters_model = 1
                   AND ns.evidence_id IS NOT NULL
+                  AND (ns.effective_until IS NULL OR ns.effective_until > CURRENT_TIMESTAMP)
+                  {scope_clause}
                   AND (ns.team_id IN ({placeholders})
                        OR ns.team_id IS NULL)
                 ORDER BY ns.confidence DESC""",
-            team_ids,
+            params,
         ).fetchall()
 
         conn.close()
@@ -132,6 +146,7 @@ def apply_signal_adjustments(
     away_prob: float,
     home_team: str,
     away_team: str,
+    match_id: str | None = None,
     signals: list[dict[str, Any]] | None = None,
 ) -> tuple[float, float, float, list[str]]:
     """Apply approved news signals as probability adjustments.
@@ -147,7 +162,7 @@ def apply_signal_adjustments(
     risk_tags: list[str] = []
 
     if signals is None:
-        signals = load_approved_signals(home_team, away_team)
+        signals = load_approved_signals(home_team, away_team, match_id=match_id)
 
     if not signals:
         return home_prob, draw_prob, away_prob, risk_tags

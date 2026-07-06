@@ -1,7 +1,7 @@
 # Magic Number 中央注册表
 
 > **维护规则**: 每次修改常量 → 必须更新此表。每次新增常量 → 必须在此表注册。
-> **最后更新**: 2026-07-05
+> **最后更新**: 2026-07-06
 > **对应版本**: V4.9.0-alpha
 
 本文档是 WC26 Predict 系统中所有硬编码常量的单一真相来源。每个值附设定依据、历史来源和修改记录。
@@ -45,14 +45,17 @@
 | `MARKET_CONSENSUS_MAX_CAP` | 0.45 | L42 | 共识 boost 后市场影响绝对上限 | V4.8.1-alpha | — |
 | `MARKET_CONSENSUS_MIN_BOOKMAKERS` | 6 | L43 | 至少 6 家 bookmaker 才触发高共识 gate | V4.8.1-alpha | — |
 
-### Score Matrix Fusion（V4.7-alpha）
+### Score Matrix Fusion（V4.9-alpha）
 
 | 常量 | 值 | 设定依据 | 引入版本 |
 |:---|:---|:---|:---|
-| DC score matrix weight | 0.40 | 三源比分矩阵融合中的 DC 基础矩阵权重 | V4.7.0-alpha |
-| NegBin score matrix weight | 0.35 | 过度离散修正矩阵权重；从 DC xG 派生，需注意特征重叠 | V4.7.0-alpha |
-| Weibull score matrix weight | 0.25 | Copula 候选矩阵权重；可用时进入比分矩阵融合 | V4.7.0-alpha |
+| DC score matrix weight | 0.45 | 三源比分矩阵融合中的 DC 基础矩阵权重；当前代码事实 | V4.9.0-alpha |
+| NegBin score matrix weight | 0.38 | 过度离散修正矩阵权重；从 DC xG 派生，需注意特征重叠 | V4.9.0-alpha |
+| Weibull score matrix weight | 0.17 | 仅当 score matrix quality gate 通过时参与融合；异常时 shadow-only | V4.9.0-alpha |
 | Score matrix max goals | 5 | 与现有 top-score/score-logloss 评估口径保持一致 | V4.7.0-alpha |
+| Weibull max cell probability gate | 0.16 | 单格概率超过 16% 判为异常稀疏/畸高，保留审计但不参与 fused score matrix | V4.9.0-alpha |
+| Weibull nonzero share gate | 0.50 | 非零格子占比低于 50% 判为过度稀疏 | V4.9.0-alpha |
+| Weibull xG direction gate | abs(xG gap) >= 0.25 | Top score 方向与 xG 明显冲突时 shadow-only | V4.9.0-alpha |
 
 ### 自适应 DC 分歧（内联常量）
 

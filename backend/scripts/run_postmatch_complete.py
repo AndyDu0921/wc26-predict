@@ -82,6 +82,137 @@ def _json_load(raw):
         return None
 
 
+def _prob_triplet(payload: dict | None) -> tuple[float, float, float] | None:
+    if not isinstance(payload, dict):
+        return None
+    home = payload.get("home", payload.get("home_prob", payload.get("home_win_prob")))
+    draw = payload.get("draw", payload.get("draw_prob"))
+    away = payload.get("away", payload.get("away_prob", payload.get("away_win_prob")))
+    if home is None or draw is None or away is None:
+        return None
+    return float(home), float(draw), float(away)
+
+
+def _normalize_component_probs(
+    component_probs: dict | None,
+    market_probs: dict | None = None,
+) -> dict:
+    """Normalize historical component keys for review and attribution.
+
+    Older snapshots store Dixon-Coles as ``dixon_coles`` and Pi as
+    ``pi_rating``. Post-match reporting and the learning engine expect the
+    canonical aliases, so we keep the original payload and add aliases.
+    """
+    normalized = dict(component_probs or {})
+    if "dc" not in normalized and "dixon_coles" in normalized:
+        normalized["dc"] = normalized["dixon_coles"]
+    if "pi" not in normalized and "pi_rating" in normalized:
+        normalized["pi"] = normalized["pi_rating"]
+    if market_probs and "market" not in normalized:
+        normalized["market"] = market_probs
+    return normalized
+
+
+def _component_review_rows(
+    component_probs: dict,
+    actual_idx: int,
+    actual_vec: list[int],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for label, key in [
+        ("DC", "dc"),
+        ("Enhancer", "enhancer"),
+        ("DC+Enhancer", "dixon_coles+enhancer"),
+        ("NegBin", "negbin"),
+        ("Weibull", "weibull"),
+        ("Elo", "elo"),
+        ("Pi", "pi"),
+        ("Market", "market"),
+    ]:
+        probs = _prob_triplet(component_probs.get(key))
+        if probs is None:
+            continue
+        l_h, l_d, l_a = probs
+        fav_idx = max(range(3), key=lambda i: [l_h, l_d, l_a][i])
+        brier = sum((p - a) ** 2 for p, a in zip([l_h, l_d, l_a], actual_vec))
+        rows.append({
+            "label": label,
+            "home": l_h,
+            "draw": l_d,
+            "away": l_a,
+            "fav_idx": fav_idx,
+            "fav": ["H", "D", "A"][fav_idx],
+            "dir_correct": fav_idx == actual_idx,
+            "brier": brier,
+        })
+    return rows
+
+
+def _component_markdown(rows: list[dict[str, object]]) -> str:
+    lines = []
+    for row in rows:
+        lines.append(
+            f"| {str(row['label']):12s} | "
+            f"{float(row['home'])*100:5.1f}% / "
+            f"{float(row['draw'])*100:5.1f}% / "
+            f"{float(row['away'])*100:5.1f}% | "
+            f"{row['fav']} | {'✅' if row['dir_correct'] else '❌'} | "
+            f"{float(row['brier']):.4f} |"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_metric(value, digits: int = 3) -> str:
+    if value is None:
+        return "N/A"
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
+def _lookup_process_eval_detail(home_team: str, away_team: str) -> dict[str, object]:
+    learning_weight, tier, failure_type, process_label = _lookup_process_eval_weight(
+        home_team,
+        away_team,
+    )
+    detail: dict[str, object] = {
+        "learning_weight": learning_weight,
+        "learning_tier": tier,
+        "failure_type": failure_type,
+        "process_label": process_label,
+        "base_learning_weight": None,
+        "learning_data_quality": None,
+        "snapshot_factor": 1.0,
+    }
+    try:
+        import sqlite3
+        db_path = BACKEND_DIR / "data" / "local_stage2.db"
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute(
+            """
+            SELECT ppe.learning_weight, ppe.model_failure_type, ppe.process_label, ppe.notes
+            FROM postmatch_process_eval ppe
+            JOIN wc26_schedule s ON s.id = ppe.match_id
+            WHERE s.home_team = ? AND s.away_team = ?
+            ORDER BY ppe.created_at DESC LIMIT 1
+            """,
+            (home_team, away_team),
+        ).fetchone()
+        conn.close()
+        if row and row[3]:
+            notes = json.loads(row[3])
+            base = notes.get("base_learning_weight")
+            if base is not None:
+                base_f = float(base)
+                detail["base_learning_weight"] = base_f
+                if base_f > 0:
+                    detail["learning_data_quality"] = round(float(row[0]) / base_f, 4)
+    except Exception:
+        pass
+    return detail
+
+
 async def _fallback_pre_match_snapshot(db, match_id: str) -> PredictionSnapshot | None:
     """Build a detached PredictionSnapshot from the latest pre_match_snapshot."""
     row = (
@@ -100,7 +231,11 @@ async def _fallback_pre_match_snapshot(db, match_id: str) -> PredictionSnapshot 
     ).mappings().first()
     if row is None:
         return None
-    component_probs = _json_load(row.get("component_probs")) or {}
+    odds_snapshot = _json_load(row.get("odds_snapshot")) or {}
+    component_probs = _normalize_component_probs(
+        _json_load(row.get("component_probs")) or {},
+        odds_snapshot,
+    )
     return PredictionSnapshot(
         id=str(row["id"]),
         match_id=str(row["match_id"]),
@@ -136,6 +271,8 @@ async def _fallback_pre_match_snapshot(db, match_id: str) -> PredictionSnapshot 
             "market_weight_used": row.get("market_weight_used"),
             "pre_match_snapshot_id": row.get("id"),
             "snapshot_fallback": True,
+            "fused_score_matrix": _json_load(row.get("fused_score_matrix")),
+            "source_score_matrices": _json_load(row.get("source_score_matrices")),
         },
         report_markdown=row.get("report_markdown"),
     )
@@ -365,20 +502,21 @@ async def run_complete_postmatch(
             match_uuid_hyphenated = match_uuid
 
         from sqlalchemy import or_
-        snapshot = None
+        snap_conditions = [PredictionSnapshot.match_id == match_uuid]
         if _is_uuid_like(match_uuid):
-            snap_result = await db.execute(
-                select(PredictionSnapshot)
-                .where(
-                    or_(
-                        PredictionSnapshot.match_id.like(f"{match_uuid}%"),
-                        PredictionSnapshot.match_id.like(f"{match_uuid_hyphenated}%"),
-                    )
-                )
-                .order_by(PredictionSnapshot.generated_at.desc())
-                .limit(1)
+            snap_conditions.extend(
+                [
+                    PredictionSnapshot.match_id.like(f"{match_uuid}%"),
+                    PredictionSnapshot.match_id.like(f"{match_uuid_hyphenated}%"),
+                ]
             )
-            snapshot = snap_result.scalar_one_or_none()
+        snap_result = await db.execute(
+            select(PredictionSnapshot)
+            .where(or_(*snap_conditions))
+            .order_by(PredictionSnapshot.generated_at.desc())
+            .limit(1)
+        )
+        snapshot = snap_result.scalar_one_or_none()
         if snapshot is None:
             snapshot = await _fallback_pre_match_snapshot(db, match_uuid)
 
@@ -394,23 +532,39 @@ async def run_complete_postmatch(
             }
 
         pipeline_status["find_snapshot"] = "passed"
+        snapshot.component_probs = _normalize_component_probs(
+            snapshot.component_probs or {},
+            snapshot.market_probs or {},
+        )
         pipeline_data["snapshot"] = snapshot
         print(f"  ✅ Found: {snapshot.home_team} vs {snapshot.away_team} "
               f"@ {snapshot.generated_at}")
         if snapshot.run_type == "pre_match_snapshot_fallback":
             print("     source: pre_match_snapshots fallback")
 
-        # Remove old learning log if exists (idempotent re-run)
+        # Remove old learning log if exists (idempotent re-run).
+        # Backfilled standard snapshots can point back to the original
+        # pre_match_snapshots row; clean both ids so re-running does not leave
+        # duplicate learning records for the same prediction evidence.
+        learning_log_snapshot_ids = [snapshot.id]
+        params = snapshot.pipeline_params or {}
+        if isinstance(params, dict):
+            source_snapshot_id = (
+                params.get("source_snapshot_id")
+                or params.get("pre_match_snapshot_id")
+            )
+            if source_snapshot_id and source_snapshot_id not in learning_log_snapshot_ids:
+                learning_log_snapshot_ids.append(str(source_snapshot_id))
         existing = await db.execute(
             select(PredictionLearningLog).where(
-                PredictionLearningLog.snapshot_id == snapshot.id
+                PredictionLearningLog.snapshot_id.in_(learning_log_snapshot_ids)
             )
         )
         if existing.scalar_one_or_none() is not None:
             print(f"  → Removing old learning log for clean re-run")
             await db.execute(
                 delete(PredictionLearningLog).where(
-                    PredictionLearningLog.snapshot_id == snapshot.id
+                    PredictionLearningLog.snapshot_id.in_(learning_log_snapshot_ids)
                 )
             )
             await db.flush()
@@ -531,6 +685,10 @@ async def run_complete_postmatch(
                     getattr(snapshot, 'away_team', ''),
                 )
             )
+            pipeline_data["learning_weight_detail"] = _lookup_process_eval_detail(
+                getattr(snapshot, 'home_team', ''),
+                getattr(snapshot, 'away_team', ''),
+            )
             error_log = await engine.process_match_result(
                 snapshot,
                 home_score,
@@ -609,17 +767,25 @@ async def run_complete_postmatch(
 
         # Per-component breakdown
         print(f"\n  Component-level review:")
-        for layer in ["dc", "enhancer", "elo"]:
-            cp = component.get(layer, {})
-            if cp:
-                l_h = cp.get("home", 0.33)
-                l_d = cp.get("draw", 0.33)
-                l_a = cp.get("away", 0.33)
-                l_fav = max(range(3), key=lambda i: [l_h, l_d, l_a][i])
-                l_dir = "✅" if l_fav == actual_idx else "❌"
-                l_brier = sum((p - a)**2 for p, a in zip([l_h, l_d, l_a], actual_vec))
-                print(f"     {layer:12s}: {l_h*100:5.1f}%/{l_d*100:5.1f}%/{l_a*100:5.1f}%  "
-                      f"fav={'HDA'[l_fav]} dir={l_dir} brier={l_brier:.4f}")
+        component_rows = _component_review_rows(component, actual_idx, actual_vec)
+        pipeline_data["component_review_rows"] = component_rows
+        learning_log_for_context = pipeline_data.get("learning_log")
+        if learning_log_for_context is not None:
+            base_context = learning_log_for_context.context_tags or {}
+            learning_log_for_context.context_tags = {
+                **base_context,
+                "component_attribution": component_rows,
+            }
+        for row in component_rows:
+            print(
+                f"     {str(row['label']):12s}: "
+                f"{float(row['home'])*100:5.1f}%/"
+                f"{float(row['draw'])*100:5.1f}%/"
+                f"{float(row['away'])*100:5.1f}%  "
+                f"fav={row['fav']} "
+                f"dir={'✅' if row['dir_correct'] else '❌'} "
+                f"brier={float(row['brier']):.4f}"
+            )
 
         # ═══════════════════════════════════════════════════════════
         # STEP 7: Output report
@@ -655,28 +821,30 @@ async def run_complete_postmatch(
         report_path = reports_dir / report_filename
 
         # Collect component-level detail
-        component_lines = []
         component_probs = snapshot.component_probs or {}
-        for layer in ["dc", "enhancer", "weibull", "elo", "pi", "market"]:
-            cp = component_probs.get(layer, {})
-            if not cp:
-                continue
-            l_h = cp.get("home", cp.get("home_win_prob", 0.33))
-            l_d = cp.get("draw", cp.get("draw_prob", 0.33))
-            l_a = cp.get("away", cp.get("away_win_prob", 0.33))
-            l_fav_idx = max(range(3), key=lambda i: [l_h, l_d, l_a][i])
-            l_fav = ['H', 'D', 'A'][l_fav_idx]
-            l_dir = "✅" if l_fav_idx == actual_idx else "❌"
-            l_brier = sum((p - a)**2 for p, a in zip([l_h, l_d, l_a], actual_vec))
-            component_lines.append(
-                f"| {layer:12s} | {l_h*100:5.1f}% / {l_d*100:5.1f}% / {l_a*100:5.1f}% "
-                f"| {l_fav} | {l_dir} | {l_brier:.4f} |"
-            )
+        component_rows = pipeline_data.get("component_review_rows") or _component_review_rows(
+            component_probs,
+            actual_idx,
+            actual_vec,
+        )
+        component_markdown = _component_markdown(component_rows)
 
         # Collect learning insights
         learning_log = pipeline_data.get("learning_log")
+        learning_weight_detail = pipeline_data.get("learning_weight_detail") or _lookup_process_eval_detail(
+            home_team,
+            away_team,
+        )
         learning_section = ""
         if learning_log and not dry_run:
+            base_lw = learning_weight_detail.get("base_learning_weight")
+            quality_lw = learning_weight_detail.get("learning_data_quality")
+            snapshot_factor = learning_weight_detail.get("snapshot_factor", 1.0)
+            formula = (
+                f"{float(base_lw):.2f} × {float(quality_lw):.2f} × {float(snapshot_factor):.2f}"
+                if base_lw is not None and quality_lw is not None
+                else "N/A"
+            )
             learning_section = f"""
 ## 📈 Learning Engine
 
@@ -685,9 +853,12 @@ async def run_complete_postmatch(
 | Brier Score | {learning_log.error_magnitude:.4f} |
 | Direction | {learning_log.error_direction} |
 | Status | {learning_log.status} |
-| DC Marginal | {learning_log.dc_marginal:.4f} |
-| Enhancer Marginal | {learning_log.enhancer_marginal:.4f} |
-| Elo Marginal | {learning_log.elo_marginal:.4f} |
+| Failure Type | {learning_weight_detail.get('failure_type') or 'N/A'} |
+| Learning Weight | {learning_log.learning_weight:.4f} |
+| Learning Formula | {formula} |
+| DC Marginal | {_fmt_metric(learning_log.dc_marginal, 4)} |
+| Enhancer Marginal | {_fmt_metric(learning_log.enhancer_marginal, 4)} |
+| Elo Marginal | {_fmt_metric(learning_log.elo_marginal, 4)} |
 """
 
         # Build full report
@@ -716,7 +887,7 @@ async def run_complete_postmatch(
 
 | Component | Probabilities (H/D/A) | Fav | Dir | Brier |
 |:---|---:|:---:|:---:|---:|
-{chr(10).join(component_lines)}
+{component_markdown}
 
 ---
 
@@ -724,10 +895,11 @@ async def run_complete_postmatch(
 
 | Metric | Prediction | Actual |
 |:---|---:|---:|
-| Home xG | {pred_hxg if pred_hxg is not None else 'N/A'} | {home_xg if home_xg is not None else 'N/A'} |
-| Away xG | {pred_axg if pred_axg is not None else 'N/A'} | {away_xg if away_xg is not None else 'N/A'} |
+| Home xG | {_fmt_metric(pred_hxg)} | {_fmt_metric(home_xg)} |
+| Away xG | {_fmt_metric(pred_axg)} | {_fmt_metric(away_xg)} |
 
-**Data Completeness**: {'Full' if not missing_stats else f'Partial — missing: {", ".join(missing_stats)}'}
+**Stats Completeness**: {'Full' if not missing_stats else f'Partial — missing: {", ".join(missing_stats)}'}
+**Learning Data Quality**: {learning_weight_detail.get('learning_data_quality') if learning_weight_detail.get('learning_data_quality') is not None else 'N/A'}
 {learning_section}
 ---
 
@@ -746,6 +918,22 @@ async def run_complete_postmatch(
         memory_filename = f"wc-postmatch-{home_team.replace(' ', '')}-{away_team.replace(' ', '')}-{match_date_str}.md"
         memory_path = memory_dir / memory_filename
 
+        component_memory = "\n".join(
+            f"- **{row['label']}**: {row['fav']} / "
+            f"{'correct' if row['dir_correct'] else 'wrong'} / "
+            f"Brier {float(row['brier']):.4f}"
+            for row in component_rows
+        )
+        lw_detail = learning_weight_detail
+        lw_formula = "N/A"
+        if lw_detail.get("base_learning_weight") is not None and lw_detail.get("learning_data_quality") is not None:
+            lw_formula = (
+                f"{float(lw_detail['base_learning_weight']):.2f} × "
+                f"{float(lw_detail['learning_data_quality']):.2f} × "
+                f"{float(lw_detail.get('snapshot_factor', 1.0)):.2f} = "
+                f"{float(lw_detail['learning_weight']):.4f}"
+            )
+
         memory_md = f"""---
 name: wc-postmatch-{home_team.replace(' ', '').lower()}-{away_team.replace(' ', '').lower()}-{match_date_str}
 description: "Post-match: {home_team} {home_score}-{away_score} {away_team}"
@@ -758,7 +946,14 @@ metadata:
 - **Brier**: {brier:.4f}
 - **Direction**: {'correct' if dir_correct else 'wrong'}
 - **Prediction**: {pred_h*100:.1f}% / {pred_d*100:.1f}% / {pred_a*100:.1f}% (favored: {pred_fav})
-- **Data quality**: {'full' if not missing_stats else 'partial'}
+- **Stats completeness**: {'full' if not missing_stats else 'partial'}
+- **Failure type**: {lw_detail.get('failure_type') or 'N/A'}
+- **Learning weight**: {lw_formula}
+- **xG**: predicted {_fmt_metric(pred_hxg)}-{_fmt_metric(pred_axg)}, actual {_fmt_metric(home_xg)}-{_fmt_metric(away_xg)}
+
+## Component Review
+
+{component_memory}
 """
 
         if not dry_run:

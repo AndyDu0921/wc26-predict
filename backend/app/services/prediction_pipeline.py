@@ -1692,7 +1692,7 @@ class PredictionPipeline:
         signal_risk_tags: list[str] = []
         try:
             from app.services.signal_adjuster_sync import apply_signal_adjustments, load_approved_signals
-            approved = load_approved_signals(home_team, away_team)
+            approved = load_approved_signals(home_team, away_team, match_id=match_id)
             if approved:
                 news_signals_available = True
                 news_signals_count = len(approved)
@@ -1708,6 +1708,7 @@ class PredictionPipeline:
                     away_prob=fused["away_win_prob"],
                     home_team=home_team,
                     away_team=away_team,
+                    match_id=match_id,
                     signals=approved,
                 )
                 quality.model_components["news_signals"] = "applied"

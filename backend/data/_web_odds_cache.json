@@ -506,5 +506,57 @@
     "cv_draw": 0.018,
     "cv_away": 0.012,
     "notes": "France massive favorite (-600 avg). 8-bookmaker consensus. PAR +1500, Draw +600, FRA -600."
+  },
+  "Portugal|Spain": {
+    "captured_at": "2026-07-06T06:45:02.814798+00:00",
+    "bookmakers": [
+      {
+        "name": "FanDuel via CBS Sports",
+        "region": "US",
+        "home": 4.1,
+        "draw": 3.6,
+        "away": 1.87
+      },
+      {
+        "name": "DraftKings via DKNetwork",
+        "region": "US",
+        "home": 4.1,
+        "draw": 3.6,
+        "away": 1.91
+      },
+      {
+        "name": "Winible live odds",
+        "region": "US",
+        "home": 4.1,
+        "draw": 3.6,
+        "away": 1.91
+      }
+    ]
+  },
+  "United States|Belgium": {
+    "captured_at": "2026-07-06T06:43:25.197383+00:00",
+    "bookmakers": [
+      {
+        "name": "DraftKings via Sports Illustrated",
+        "region": "US",
+        "home": 2.55,
+        "draw": 3.35,
+        "away": 2.8
+      },
+      {
+        "name": "New York Post consensus",
+        "region": "US",
+        "home": 2.65,
+        "draw": 3.4,
+        "away": 2.65
+      },
+      {
+        "name": "Kalshi via Covers",
+        "region": "US",
+        "home": 2.78,
+        "draw": 3.45,
+        "away": 2.63
+      }
+    ]
   }
 }

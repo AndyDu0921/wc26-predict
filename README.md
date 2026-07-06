@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-V4.9.0_alpha-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/phase-V4.9_Accuracy_Data_OS-orange?style=flat-square" alt="phase">
-  <img src="https://img.shields.io/badge/backend_tests-534_passed_4_skipped-success?style=flat-square" alt="backend tests">
+  <img src="https://img.shields.io/badge/backend_tests-541_passed_4_skipped-success?style=flat-square" alt="backend tests">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/model_loading-disk_cache_only-brightgreen?style=flat-square" alt="model loading">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
@@ -23,14 +23,14 @@ WC26 Predict 现在处在 **V4.9 Accuracy Data OS** 阶段：先补齐可回放�
 
 **V4.9.0-alpha（2026-07-05）当前状态：**
 
-- **测试状态**：`534 passed, 4 skipped`（2026-07-06，本地后端全量测试）。
+- **测试状态**：`541 passed, 4 skipped`（2026-07-06，本地后端全量测试）。
 - **代码版本**：`4.9.0-alpha`；当前代码中的 WC 权重标签为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；`model_change_proposals` 不会自动改生产权重。
-- **本地样本口径**：evaluation registry 显示 `84` 个 canonical result 样本，其中 `29` 个 strict eligible backtest 样本、`46` 个 diagnostic 样本、`9` 个 rejected 样本；任何准确率结论必须先说明采用哪个口径。
+- **本地样本口径**：evaluation registry 显示 `87` 个 canonical result 样本，其中 `32` 个 strict eligible backtest 样本、`46` 个 diagnostic 样本、`9` 个 rejected 样本；任何准确率结论必须先说明采用哪个口径。
 - **预测流水线**：DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market（7 级顺序融合）+ 战意因子 + 平局下限 12% + 分歧自适应 + 动态市场提升 + DC半衰期学习(180d最优) + A3 Stacking元学习器(21维特征) + B1加权共形预测(α=0.1)
-- **复盘数据完整性**：当前 DB `postmatch_process_eval` 为 `18` 条、`match_team_statistics` 为 `30` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
+- **复盘数据完整性**：当前 DB `postmatch_process_eval` 为 `20` 条、`match_team_statistics` 为 `34` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
 - **数据库完整性**：SQLite `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行保留在 `data_integrity_quarantine` 供审计。
 - **新功能**：V4.9 Accuracy Data OS：evaluation registry repair report v2、strict sample repair queue、accuracy todo backlog、候选实验 preflight、结构化赛前情报信号、FeatureSnapshot v2、候选模型家族标识、data-repair/calibrator/stacking proposal 类型、旧 backtest/grid/stacking 脚本统一 wrapper。
-- **已知风险**：strict 样本仍只有 `29` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
+- **已知风险**：strict 样本仍只有 `32` 场，距离 `50+` 目标仍差 `18` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
 
 ### 系统目标
 
@@ -78,7 +78,7 @@ backend/app/services/weights.py          权重配置 (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           模型工件 (calibrator, ratings)
 backend/model_artifacts/dc_cache/        模型磁盘缓存 (DC + Enhancer)
 backend/scripts/             CLI 脚本 (预测、复盘、模拟、训练)
-backend/tests/               测试 (534 passed, 4 skipped)
+backend/tests/               测试 (541 passed, 4 skipped)
 backend/dashboard/           Streamlit 本地研究工作台 (9 页面)
 backend/data/                SQLite 数据库 + 数据文件
 reports/                     当前预测报告
@@ -146,7 +146,7 @@ cd backend
 
 # 1. 运行测试
 python -m pytest tests/ -q --tb=short
-# 预期: 534 passed, 4 skipped
+# 预期: 541 passed, 4 skipped
 
 # 2. 检查 API 健康状态
 python -c "from app.main import app; print('FastAPI app loaded OK')"
@@ -300,14 +300,14 @@ WC26 Predict is in the **V4.9 Accuracy Data OS** phase: improve replayable pre-m
 
 **V4.9.0-alpha (2026-07-05) State:**
 
-- **Tests**: `534 passed, 4 skipped` (local backend full suite, 2026-07-06).
+- **Tests**: `541 passed, 4 skipped` (local backend full suite, 2026-07-06).
 - **Code version**: `4.9.0-alpha`; current WC weight labels are group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`; `model_change_proposals` never auto-apply production weights.
-- **Local sample registry**: `84` canonical result samples, `29` strict eligible backtest samples, `46` diagnostic samples, and `9` rejected samples. Accuracy claims must state the sample definition.
+- **Local sample registry**: `87` canonical result samples, `32` strict eligible backtest samples, `46` diagnostic samples, and `9` rejected samples. Accuracy claims must state the sample definition.
 - **Fusion chain**: DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market (7-stage sequential fusion) + motivation factor + 12% draw floor + adaptive divergence guard + dynamic market boost + DC half-life learning (180d optimal) + A3 Stacking meta-learner (21-dim features) + B1 Weighted Conformal Prediction (α=0.1)
-- **Post-match data completeness**: local DB has `18` `postmatch_process_eval` rows and `30` `match_team_statistics` rows. Strict backtests must not mix all schedule-finished rows without registry filtering.
+- **Post-match data completeness**: local DB has `20` `postmatch_process_eval` rows and `34` `match_team_statistics` rows. Strict backtests must not mix all schedule-finished rows without registry filtering.
 - **DB integrity**: SQLite `PRAGMA integrity_check=ok` and `PRAGMA foreign_key_check=0`; historical orphan rows are preserved in `data_integrity_quarantine` for auditability.
 - **New**: V4.9 Accuracy Data OS: evaluation registry repair report v2, strict sample repair queue, accuracy todo backlog, candidate experiment preflight, structured pre-match information-state signals, FeatureSnapshot v2, candidate family metadata, data-repair/calibrator/stacking proposal types, and legacy experiment wrappers.
-- **Known risk**: strict evidence is still limited to `29` samples; dynamic candidates remain shadow-only until paired proper-scoring gates pass.
+- **Known risk**: strict evidence is still limited to `32` samples, `18` below the `50+` target; dynamic candidates remain shadow-only until paired proper-scoring gates pass.
 - **Self-evolution**: proposal-only. The system can write `model_change_proposals`, but no proposal is auto-applied to production weights, calibrators, or artifacts.
 - **Known issues**: diagnostic/rejected samples are mostly missing pre-match snapshots, timestamp evidence, or current probabilities; data repair has higher priority than adding more production models.
 
@@ -357,7 +357,7 @@ backend/app/services/weights.py          Weight config (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           Model artifacts (calibrator, ratings)
 backend/model_artifacts/dc_cache/        Disk-cached models (DC + Enhancer)
 backend/scripts/             CLI scripts (predict, review, simulate, train)
-backend/tests/               Tests (534 passed, 4 skipped)
+backend/tests/               Tests (541 passed, 4 skipped)
 backend/dashboard/           Streamlit research dashboard (9 pages)
 backend/data/                SQLite database + data files
 reports/                     Current prediction reports
@@ -425,7 +425,7 @@ cd backend
 
 # 1. Run tests
 python -m pytest tests/ -q --tb=short
-# Expected: 534 passed, 4 skipped
+# Expected: 541 passed, 4 skipped
 
 # 2. Check API health
 python -c "from app.main import app; print('FastAPI app loaded OK')"

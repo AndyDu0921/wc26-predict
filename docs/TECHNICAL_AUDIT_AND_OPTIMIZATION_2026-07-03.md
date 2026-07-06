@@ -1,7 +1,7 @@
 # WC26 Predict 技术审计与优化记录
 
 日期: 2026-07-03  
-更新: 2026-07-05（V4.9 Accuracy Data OS 实施后事实校准）
+更新: 2026-07-06（V4.9 Accuracy Data OS + 197-200 闭环修复后事实校准）
 范围: 后端预测链路、复盘学习、权重自进化、评估样本登记、候选实验框架、市场数据链路、技术债清理。静态前端暂不纳入本次优化范围。
 
 ## 结论
@@ -10,7 +10,7 @@
 2. 新模型不应直接上线。动态双变量 Poisson / 动态贝叶斯类模型值得进入候选池，但必须先通过成对 walk-forward 回测与 `BacktestGate`。
 3. 复盘系统可以进化，但前提是只让 verified / full-tier 样本驱动参数候选，并且候选必须持久化、可审计、不过闸不生效。
 4. 市场赔率/多博彩商共识是重要预测信号，不再视为污染；只禁止投注建议、保证收益、带单等诱导性语言。
-5. V4.9-alpha 后续修复确认：本地 DB 已升级到 Alembic `e5f6a7b8c9d0`；`model_weight_proposals`、学习日志比分字段、Accuracy Engine 审计表、通用 `model_change_proposals`、结构化情报 FeatureSnapshot v2 均已落库或可物化。
+5. V4.9-alpha 后续修复确认：本地 DB 已升级到 Alembic `f6a7b8c9d0e1`；`model_weight_proposals`、学习日志比分字段、Accuracy Engine 审计表、通用 `model_change_proposals`、结构化情报 FeatureSnapshot v2、`prediction_snapshots` score matrix 审计字段均已落库或可物化。
 
 ## 已落地改动
 
@@ -31,7 +31,7 @@
 - V4.8 新增 shadow candidate pool 与统一 experiment runner：动态 DC、动态双变量 Poisson、Bayesian weighted dynamic、covariate ML、Dirichlet calibration、stacking optimizer 均只离线评估。
 - V4.8 新增 `model_change_proposals` 通用提案 ledger：自进化只能生成 proposal，不会自动改生产权重、校准器或模型 artifacts。
 - V4.8 关键数据口径修复：`wc26_schedule` 可在无冲突时补齐 canonical result；schedule-only 样本使用 `match_date + kickoff_time` 做 kickoff source，并保留审计来源。
-- V4.8/V4.9 新增并扩展 `feature_snapshots` 物化：当前 registry 可构建 `29` 条 strict 样本赛前特征 payload，payload 不包含真实比分字段；V4.9 持久化后表内保留历史审计记录共 `93` 条。
+- V4.8/V4.9 新增并扩展 `feature_snapshots` 物化：当前 registry 可构建 `32` 条 strict 样本；payload 不包含真实比分字段。
 - V4.9 新增 evaluation registry repair report v2：逐场给出 `missing_pre_match_snapshot`、`snapshot_or_kickoff_time_unknown`、`missing_current_probabilities`、赛后快照、结果冲突的修复动作，并输出 priority、blocking level、repair order 和 action groups；只允许真实赛前证据提升 strict。
 - V4.9 新增 accuracy todo backlog：从 registry、repair report、DB integrity、市场赔率覆盖、阵容/伤停覆盖和 `prediction_pipeline.py` 规模生成只读 TODO，不创建快照、概率、权重或报告。
 - V4.9 新增 strict sample repair queue：逐场检查本地 `pre_match_snapshots` / `prediction_snapshots` 是否存在真实赛前概率证据；当前本地没有更多 diagnostic 样本可直接提升 strict。
@@ -46,13 +46,13 @@
 
 ## 验证结果
 
-- 后端全量测试: `534 passed, 4 skipped`。
-- Evaluation registry v2 dry-run: `84` total samples, `84` canonical result rows, `60` match-result rows, `83` schedule-finished rows, `29` strict eligible samples, `46` diagnostic samples, `9` rejected samples, `19` registry process-eval matches, `1` source-result conflict.
+- 后端全量测试: `541 passed, 4 skipped`。
+- Evaluation registry v2 dry-run: `87` total samples, `87` canonical result rows, `62` match-result rows, `85` schedule-finished rows, `32` strict eligible samples, `46` diagnostic samples, `9` rejected samples, `22` registry process-eval matches, `1` source-result conflict.
 - Evaluation registry repair smoke: 非 strict 样本只有在真实赛前证据补齐后才可提升 strict；禁止 placeholder probability、赛后补预测、无时间戳信号进入 strict。
 - Feature snapshot materialization: `feature_snapshots` 表当前 `93` 条历史审计记录；payload 抽查无 actual-goal labels。
-- Candidate experiment smoke: 默认 `min_sample_count=30` 时 preflight 因 `29 < 30` 阻塞候选锦标赛；低门槛或 `--force` 工程 smoke 只证明端到端可运行，不构成上线证据。
-- Proposal ledger smoke: `model_change_proposals` 当前 `27` 条，权重、数据修复、feature-rule、calibrator、stacking proposal 均保持 proposal-only。
-- Alembic 当前本地 head: `e5f6a7b8c9d0`
+- Candidate experiment smoke: 默认 `min_sample_count=30` 时 preflight 当前 ready（strict=32），但仍低于 50+ 目标；shadow candidate 的 CI 仍跨 0 时不得上线。
+- Proposal ledger smoke: `model_change_proposals` 当前 `30` 条，权重、数据修复、feature-rule、calibrator、stacking proposal 均保持 proposal-only。
+- Alembic 当前本地 head: `f6a7b8c9d0e1`
 - DB integrity: `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行 `104` 条已隔离到 `data_integrity_quarantine` 并保留备份。
 - 代码编译检查: 核心变更文件 `py_compile` 通过。
 

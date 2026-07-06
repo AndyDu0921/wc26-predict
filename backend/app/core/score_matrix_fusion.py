@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
+
 from app.core.engine import fuse_score_matrices, negbin_score_matrix
 from app.services.score_matrix_calibrator import calibrate_score_matrix
 
@@ -53,10 +55,20 @@ def build_score_matrix_fusion(
         diagnostics["fusion_sources"].append("negbin")
 
     if weibull_score_matrix is not None:
-        matrices.append(weibull_score_matrix)
-        weights.append(0.17)                # Weibull 0.25→0.17: bimodal, unreliable for score prediction
+        weibull_quality = score_matrix_quality_gate(
+            weibull_score_matrix,
+            home_xg=home_xg,
+            away_xg=away_xg,
+            source="weibull",
+        )
+        diagnostics["weibull_score_matrix_quality"] = weibull_quality
         source_matrices["weibull"] = weibull_score_matrix
-        diagnostics["fusion_sources"].append("weibull")
+        if not weibull_quality["used"]:
+            diagnostics.setdefault("shadow_sources", []).append("weibull")
+        else:
+            matrices.append(weibull_score_matrix)
+            weights.append(0.17)                # Weibull 0.25→0.17: bimodal, unreliable for score prediction
+            diagnostics["fusion_sources"].append("weibull")
 
     if len(matrices) >= 2:
         fused = fuse_score_matrices(matrices, weights, final_probs=final_probs)
@@ -86,3 +98,70 @@ def _top_scores(matrix: list[list[float]]) -> list[dict[str, Any]]:
         {"score": f"{home_g}:{away_g}", "prob": round(prob, 4)}
         for home_g, away_g, prob in sorted(flat, key=lambda item: item[2], reverse=True)[:3]
     ]
+
+
+def score_matrix_quality_gate(
+    matrix: list[list[float]],
+    *,
+    home_xg: float,
+    away_xg: float,
+    source: str,
+) -> dict[str, Any]:
+    """Return whether a source score matrix is safe for score fusion.
+
+    The gate is intentionally conservative for non-DC sources: it allows the
+    matrix to be stored for audit, but shadows it when the distribution is too
+    sparse or a single scoreline dominates. This prevents pathological Weibull
+    matrices from creating unrealistic top-score outputs while preserving the
+    source evidence for post-match review.
+    """
+    arr = np.asarray(matrix, dtype=float)
+    if arr.ndim != 2 or arr.shape[0] == 0 or arr.shape[1] == 0:
+        return {
+            "source": source,
+            "used": False,
+            "reason": "invalid_shape",
+        }
+
+    total = float(arr.sum())
+    if total <= 0:
+        return {
+            "source": source,
+            "used": False,
+            "reason": "non_positive_total",
+            "sum": total,
+        }
+
+    probs = arr / total
+    max_cell = float(probs.max())
+    nonzero_share = float((probs > 1e-12).sum() / probs.size)
+    top_idx = np.unravel_index(int(probs.argmax()), probs.shape)
+    top_home = int(top_idx[0])
+    top_away = int(top_idx[1])
+    expected_gap = float(home_xg - away_xg)
+    top_gap = float(top_home - top_away)
+    gap_inconsistent = (
+        abs(expected_gap) >= 0.25
+        and top_gap != 0
+        and (expected_gap > 0) != (top_gap > 0)
+    )
+
+    reasons: list[str] = []
+    if max_cell > 0.16:
+        reasons.append("max_cell_probability_too_high")
+    if nonzero_share < 0.50:
+        reasons.append("matrix_too_sparse")
+    if gap_inconsistent:
+        reasons.append("top_score_direction_conflicts_with_xg")
+
+    return {
+        "source": source,
+        "used": not reasons,
+        "reason": "ok" if not reasons else ",".join(reasons),
+        "sum": round(total, 6),
+        "max_cell_probability": round(max_cell, 6),
+        "nonzero_share": round(nonzero_share, 6),
+        "top_score": f"{top_home}:{top_away}",
+        "home_xg": round(float(home_xg), 4),
+        "away_xg": round(float(away_xg), 4),
+    }
