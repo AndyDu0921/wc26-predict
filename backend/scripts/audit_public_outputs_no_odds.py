@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Audit public-facing outputs for odds and bookmaker leakage."""
+"""Audit public-facing outputs for unsafe betting-advice language.
+
+The filename is kept for backward compatibility with existing scripts.  V4.9
+allows market odds/bookmaker evidence in research reports; this audit blocks
+advice-like or guaranteed-outcome language only.
+"""
 
 from __future__ import annotations
 
@@ -35,9 +40,10 @@ TEXT_SUFFIXES = {
     ".csv",
 }
 DEFAULT_PATHS = (REPO_ROOT / "reports",)
+ARCHIVE_DIR_NAMES = {"archive"}
 
 
-def iter_public_files(paths: Iterable[Path]) -> Iterable[Path]:
+def iter_public_files(paths: Iterable[Path], *, include_archive: bool = False) -> Iterable[Path]:
     """Yield public text files under the provided paths."""
     for path in paths:
         resolved = path.resolve()
@@ -48,17 +54,19 @@ def iter_public_files(paths: Iterable[Path]) -> Iterable[Path]:
                 yield resolved
             continue
         for child in resolved.rglob("*"):
+            if not include_archive and _under_archive(child, resolved):
+                continue
             if child.is_file() and child.suffix.lower() in TEXT_SUFFIXES:
                 yield child
 
 
-def audit_paths(paths: Iterable[Path], *, mode: str = "creator_safe") -> dict:
+def audit_paths(paths: Iterable[Path], *, mode: str = "creator_safe", include_archive: bool = False) -> dict:
     """Scan public files and return a structured audit result."""
     terms = list(CREATOR_SAFE_FORBIDDEN)
     if mode == "public_safe":
         terms.extend(PUBLIC_SAFE_EXTRA_FORBIDDEN)
 
-    files = list(iter_public_files(paths))
+    files = list(iter_public_files(paths, include_archive=include_archive))
     findings = []
     for file_path in files:
         try:
@@ -86,14 +94,23 @@ def audit_paths(paths: Iterable[Path], *, mode: str = "creator_safe") -> dict:
     return {
         "passed": not findings,
         "mode": mode,
+        "include_archive": include_archive,
         "files_scanned": len(files),
         "findings": findings,
     }
 
 
+def _under_archive(path: Path, root: Path) -> bool:
+    try:
+        relative = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return any(part.lower() in ARCHIVE_DIR_NAMES for part in relative.parts[:-1])
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scan public outputs for odds/bookmaker leakage",
+        description="Scan public outputs for unsafe betting-advice language",
     )
     parser.add_argument(
         "paths",
@@ -105,6 +122,11 @@ def _parse_args() -> argparse.Namespace:
         choices=("creator_safe", "public_safe"),
         default="creator_safe",
     )
+    parser.add_argument(
+        "--include-archive",
+        action="store_true",
+        help="Also scan reports/archive historical files.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON output")
     return parser.parse_args()
 
@@ -112,14 +134,14 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     paths = [Path(item) for item in args.paths] if args.paths else list(DEFAULT_PATHS)
-    result = audit_paths(paths, mode=args.mode)
+    result = audit_paths(paths, mode=args.mode, include_archive=args.include_archive)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif result["passed"]:
         print(
             f"PASS: scanned {result['files_scanned']} public files; "
-            "no forbidden odds/bookmaker terms found."
+            "no unsafe betting-advice terms found."
         )
     else:
         print(

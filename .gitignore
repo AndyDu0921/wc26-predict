@@ -63,6 +63,7 @@ HANDOFF.md
 .cheat-hooks/
 .cheat-state.json
 .auth/
+.codex/
 
 # Cheat-on-content files (separate project)
 STATUS.md
@@ -113,6 +114,9 @@ _archive/
 *_full.json
 backend/data/_pred_*.json
 backend/data/_bootstrap_*.json
+backend/data/db_integrity_audit_*.json
+backend/data/db_integrity_repair_*.json
+backend/data/*.integrity-backup-*.db
 
 # Agent runtime state (regenerated on demand)
 backend/data/hermes_agent_state.json

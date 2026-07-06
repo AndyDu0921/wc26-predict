@@ -58,14 +58,22 @@ def test_repair_report_marks_missing_snapshot_as_real_evidence_repair(tmp_path):
 
     report = build_evaluation_registry_repair_report(db_path)
 
-    assert report["schema_version"] == "evaluation_registry_repair_report.v1"
+    assert report["schema_version"] == "evaluation_registry_repair_report.v2"
     assert report["repair_summary"]["reported_samples"] == 1
+    assert report["repair_summary"]["priority_counts"]["P0"] == 1
+    assert report["repair_summary"]["blocking_level_counts"]["repairable"] == 1
     row = report["samples"][0]
     assert row["sample_status"] == "diagnostic"
+    assert row["priority"] == "P0"
+    assert row["blocking_level"] == "repairable"
+    assert row["repair_order"] == 30
     assert row["can_promote_to_strict_after_actions"] is True
+    assert row["promotability_reason"] == "requires_real_pre_kickoff_probability_and_timestamp_evidence"
     actions = {item["action"] for item in row["recommended_actions"]}
     assert "import_real_pre_match_snapshot" in actions
     assert "recover_current_probabilities_from_valid_snapshot" in actions
+    grouped_actions = {item["action"] for item in report["repair_summary"]["action_groups"]}
+    assert "normalize_snapshot_and_kickoff_time" in grouped_actions
 
 
 def test_repair_report_does_not_promote_post_kickoff_snapshot(tmp_path):
@@ -92,6 +100,8 @@ def test_repair_report_does_not_promote_post_kickoff_snapshot(tmp_path):
     row = build_evaluation_registry_repair_report(db_path)["samples"][0]
 
     assert row["sample_status"] == "rejected"
+    assert row["blocking_level"] == "hard_block"
     assert row["can_promote_to_strict_after_actions"] is False
     assert "snapshot_after_kickoff" in row["exclusion_reasons"]
+    assert row["promotability_reason"] == "hard_blocked_by_snapshot_after_kickoff"
     assert row["promotion_policy"] == "Do not promote without replacing hard-blocking evidence."

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate V4.8 self-evolution proposals without applying them."""
+"""Generate V4.9 self-evolution proposals without applying them."""
 
 from __future__ import annotations
 

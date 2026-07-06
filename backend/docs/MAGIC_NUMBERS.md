@@ -1,8 +1,8 @@
 # Magic Number 中央注册表
 
 > **维护规则**: 每次修改常量 → 必须更新此表。每次新增常量 → 必须在此表注册。
-> **最后更新**: 2026-07-04
-> **对应版本**: V4.8.0-alpha
+> **最后更新**: 2026-07-05
+> **对应版本**: V4.9.0-alpha
 
 本文档是 WC26 Predict 系统中所有硬编码常量的单一真相来源。每个值附设定依据、历史来源和修改记录。
 
@@ -14,7 +14,7 @@
 
 | 常量 | 值 | 行号 | 设定依据 | 引入版本 | 修改记录 |
 |:---|:---|:---|:---|:---|:---|
-| `WC_XG_CALIBRATION_FACTOR` | 1.20 | `core/engine.py` | V4.7-score grid search 当前最优；需继续用严格 walk-forward 复核 | V4.7.0-alpha | V4.7 从过时文档值 1.35 统一为代码事实 1.20 |
+| `WC_XG_CALIBRATION_FACTOR` | 1.35 | L17 | 当前代码事实；KO 阶段复盘指出 xG 低估，仍需严格 walk-forward 复核 | V4.8.1-alpha | V4.9 文档从过时 1.20 对齐到代码事实 1.35 |
 | `NEGBIN_R` | 8.0 | `core/engine.py` | V4.7-score grid search 当前最优；仅作为候选证据，不单独证明上线优势 | V4.7.0-alpha | V4.7 从过时文档值 3.5 统一为代码事实 8.0 |
 | `NEGBIN_FUSION_WEIGHT` | 0.05 | L19 | 保守 5%，仅做微调 | V3.9.5 | — |
 
@@ -33,6 +33,17 @@
 | 常量 | 值 | 行号 | 设定依据 | 引入版本 | 修改记录 |
 |:---|:---|:---|:---|:---|:---|
 | `DRAW_FLOOR` | 0.12 | L25 | WC 最低平局概率（小组赛基线） | V4.3.1 | — |
+| `KO_DRAW_FLOOR` | 0.18 | L36 | 淘汰赛 90 分钟平局保护；必须继续用 strict walk-forward 复核 | V4.8.1-alpha | V4.9 对齐代码事实 |
+
+### Market Consensus Gate（高质量市场共识）
+
+| 常量 | 值 | 行号 | 设定依据 | 引入版本 | 修改记录 |
+|:---|:---|:---|:---|:---|:---|
+| `MARKET_CONSENSUS_GATE_ENABLED` | True | L39 | 多博彩商共识可提升 market cap，但不绕过 gate | V4.8.1-alpha | V4.9 对齐代码事实 |
+| `MARKET_CONSENSUS_CV_THRESHOLD` | 0.03 | L40 | CV < 3% 视为高一致性 | V4.8.1-alpha | — |
+| `MARKET_CONSENSUS_BOOST` | 0.08 | L41 | 高一致性时 market_max 增量 | V4.8.1-alpha | — |
+| `MARKET_CONSENSUS_MAX_CAP` | 0.45 | L42 | 共识 boost 后市场影响绝对上限 | V4.8.1-alpha | — |
+| `MARKET_CONSENSUS_MIN_BOOKMAKERS` | 6 | L43 | 至少 6 家 bookmaker 才触发高共识 gate | V4.8.1-alpha | — |
 
 ### Score Matrix Fusion（V4.7-alpha）
 
@@ -81,10 +92,10 @@
 | 常量 | 值 | 设定依据 | 引入版本 | 修改记录 |
 |:---|:---|:---|:---|:---|
 | `dc` | 0.90 | 淘汰赛 Enhancer 偏差更危险 | V4.3.1 | V4.3.1: 0.78→0.90 |
-| `elo` | 0.22 | 淘汰赛竞争性强，Elo 更可靠 | V4.3.1 | V4.3.1: 0.20→0.22 |
-| `pi` | 0.18 | Brier 0.29 在竞争性比赛中最佳 | V4.3.1 | V4.3.1: 0.15→0.18 |
-| `market_max` | 0.30 | 淘汰赛市场数据质量高 | V4.3.1 | — |
-| `weibull` | 0.10 | （与小组赛相同） | V4.3.1 | — |
+| `elo` | 0.24 | 淘汰赛竞争性强，Elo 更可靠；当前代码事实 | V4.8.1-alpha | V4.8.1: 0.22→0.24 |
+| `pi` | 0.22 | 当前代码事实；候选结论仍需 strict paired evidence | V4.8.1-alpha | V4.8.1: 0.18→0.22 |
+| `market_max` | 0.35 | 淘汰赛市场数据质量高；可被 market consensus gate 上调但封顶 0.45 | V4.8.1-alpha | V4.8.1: 0.30→0.35 |
+| `weibull` | 0.05 | 淘汰赛降权，保留为弱信号 | V4.8.1-alpha | V4.8.1: 0.10→0.05 |
 
 ### 友谊赛特殊权重
 
@@ -104,11 +115,11 @@
 
 | 权重 | WC 小组赛 | WC 淘汰赛 | 计算链 |
 |:---|:---|:---|:---|
-| `dc_effective` | **0.5916** (65.7%) | **0.5181** (57.6%) | `0.90 × 0.90 × 0.88 × 0.83` / `0.90 × 0.90 × 0.78 × 0.82` |
-| `enhancer_effective` | **0.0657** (7.3%) | **0.0576** (6.4%) | `0.10 × 0.90 × 0.88 × 0.83` / `0.10 × 0.90 × 0.78 × 0.82` |
-| `weibull_effective` | **0.0730** (8.1%) | **0.0640** (7.1%) | `0.10 × 0.88 × 0.83` / `0.10 × 0.78 × 0.82` |
-| `elo_effective` | **0.0996** (11.1%) | **0.1804** (20.0%) | `0.12 × 0.83` / `0.22 × 0.82` |
-| `pi_effective` | **0.1700** (18.9%) | **0.1800** (20.0%) | `0.17` / `0.18` |
+| `dc_effective` | **0.5916** | **0.5068** | `0.90 × 0.90 × 0.88 × 0.83` / `0.90 × 0.95 × 0.76 × 0.78` |
+| `enhancer_effective` | **0.0657** | **0.0563** | `0.10 × 0.90 × 0.88 × 0.83` / `0.10 × 0.95 × 0.76 × 0.78` |
+| `weibull_effective` | **0.0730** | **0.0296** | `0.10 × 0.88 × 0.83` / `0.05 × 0.76 × 0.78` |
+| `elo_effective` | **0.0996** | **0.1872** | `0.12 × 0.83` / `0.24 × 0.78` |
+| `pi_effective` | **0.1700** | **0.2200** | `0.17` / `0.22` |
 | **∑** | **1.0000** | **1.0000** | 5 个有效权重恒和为 1.0 |
 
 > **解读**: 淘汰赛中 DC 被稀释得更严重（57.6% vs 65.7%），因为 Elo/Pi 权重更高。这解释了为什么淘汰赛预测比小组赛更依赖 Elo+Pi 共识，而非 DC 主导。该解释是结构性权重分析，不等同于准确率结论；准确率结论必须来自 evaluation registry + paired walk-forward。
@@ -237,7 +248,7 @@
 
 ### 十一-C、MC λ 多项式系数 (`services/tournament_simulator.py`)
 
-**来源**: ~~Csató & Gyimesi (2025) EJOR~~ **⚠️ UNVERIFIED_SOURCE** — 标注为"40,000+ 场比赛拟合"，但已知 Csató & Gyimesi (2025) EJOR 论文主题是 48 队世界杯赛制与竞争不平衡，并非 win-prob→xG 多项式。真实出处待确认。已通过 feature flag `USE_CG_LAMBDA_POLYNOMIAL=False` 默认关闭，仅影响 tournament simulator 不影口向单场预测。替换启发式 λ = 1.0 + 0.8×(hw−aw)。
+**来源**: ~~Csató & Gyimesi (2025) EJOR~~ **⚠️ UNVERIFIED_SOURCE** — 标注为"40,000+ 场比赛拟合"，但已知 Csató & Gyimesi (2025) EJOR 论文主题是 48 队世界杯赛制与竞争不平衡，并非 win-prob→xG 多项式。真实出处待确认。已通过 feature flag `USE_CG_LAMBDA_POLYNOMIAL=False` 默认关闭，仅影响 tournament simulator，不影响单场预测。替换启发式 λ = 1.0 + 0.8×(hw−aw)。
 
 | 系数 | 值 | 设定依据 |
 |:---|:---|:---|
@@ -259,7 +270,7 @@
 
 ---
 
-## 十三、V4.8 Accuracy Engine 审计闸门
+## 十三、V4.9 Accuracy Engine 审计闸门
 
 > 以下常量只控制 shadow 实验、自进化提案和评估审计；不改变生产预测权重，不代表任何候选模型已被证明更准。
 
@@ -275,6 +286,21 @@
 | ECE bins | 10 | `_ece()` | 标准十分箱校准粗检；ECE 只作辅助指标，不能单独放行候选 | V4.8.0-alpha |
 | LogLoss epsilon | `1e-12` | `_logloss()` / `_score_logloss_mean()` | 防止 `log(0)`，保持与赛后评估数值稳定策略一致 | V4.8.0-alpha |
 
+### Candidate Experiment Preflight (`services/accuracy_experiment_preflight.py`)
+
+| 常量 | 值 | 位置 | 设定依据 | 引入版本 |
+|:---|:---|:---|:---|:---|
+| `min_sample_count` | 30 | CLI / preflight 默认值 | DB 完整性和 strict/eligible 样本数未达标时，默认阻塞候选锦标赛，避免输出误导性上线证据 | V4.9.0-alpha |
+| DB integrity gate | `integrity_check == ok` 且 `foreign_key_violation_count == 0` | `run_accuracy_experiment_preflight()` | 候选实验前必须先保证评估资产没有结构漂移 | V4.9.0-alpha |
+
+### Accuracy Todo Backlog (`services/accuracy_todo_backlog.py`)
+
+| 常量 | 值 | 位置 | 设定依据 | 引入版本 |
+|:---|:---|:---|:---|:---|
+| `STRICT_SAMPLE_TARGET` | 50 | `accuracy_todo_backlog.py` | 50+ strict 样本是下一阶段讨论候选模型稳定性的最低数据资产目标 | V4.9.0-alpha |
+| `MIN_MARKET_BOOKMAKERS` | 3 | `accuracy_todo_backlog.py` | 市场赔率是关键预测信号；TODO backlog 用 3+ bookmaker 共识作为覆盖率改善目标 | V4.9.0-alpha |
+| `PIPELINE_LINE_TARGET` | 500 | `accuracy_todo_backlog.py` | `prediction_pipeline.py` 超过该规模时继续列为 P2 拆分技术债 | V4.9.0-alpha |
+
 ### Model Change Proposals (`services/model_change_proposals.py`)
 
 | 常量 | 值 | 位置 | 设定依据 | 引入版本 |
@@ -282,7 +308,7 @@
 | `min_active_logs` | 30 | `build_learning_log_weight_proposal()` 默认值 | 少于 30 条 active / diagnostic 学习日志不生成有效权重候选 | V4.8.0-alpha |
 | Marginal action threshold | `±0.002` | `_marginal_recommendations()` | 只把平均边际贡献绝对值超过 0.002 的组件标记为考虑增减，其余保持 hold | V4.8.0-alpha |
 
-## 十三、淘汰赛特殊参数（手动融合脚本）
+## 十四、淘汰赛特殊参数（手动融合脚本）
 
 | 常量 | 值 | 适用范围 | 设定依据 | 引入版本 |
 |:---|:---|:---|:---|:---|
@@ -331,7 +357,7 @@
 | 2026-06-30 | De-vig 方法 | 纯 proportional | 域驱动修正 (Karimov et al. 2025) | B3: 359,035场分析，修正平局/客胜系统性高估 |
 | **2026-07-01** | **DC `half_life_days`** | **180** | **180（不变）** | **P1-2: Walk-forward CV确认180d最优（Brier=0.541），短半衰期在粗搜索中因数据泄露虚高** |
 | 2026-07-01 | CG λ polynomial | 4次多项式 | **feature-flag 关闭** | **P0-3: 文献归属验证失败，标注 UNVERIFIED_SOURCE** |
-| **2026-07-01** | **序贯融合有效权重** | **名称权重** | **pipeline_params 自动输出** | **P1-2: 固化WC小组赛/淘汰赛有效权重快照; DC名义0.90→小组有效0.59/淘汰有效0.52** |
+| **2026-07-05** | **序贯融合有效权重** | **名称权重** | **pipeline_params 自动输出** | **V4.9: 对齐当前代码; DC名义0.90→小组有效0.5916/淘汰有效0.5068** |
 
 ---
 

@@ -2,8 +2,8 @@
 
 Three modes (from action plan Section 1.2):
   internal_research: Full output — probabilities, market debug, odds data.
-  creator_safe:      Creator-friendly — hides odds/betting/bookmaker terms,
-                     keeps team analysis, form, schedule, uncertainty.
+  creator_safe:      Creator-friendly — keeps market/odds evidence but blocks
+                     betting advice and guaranteed-outcome language.
   public_safe:        Public-compliant — additionally hides probabilities,
                      xG, score predictions. Only rankings, history, info.
 
@@ -35,9 +35,9 @@ class OutputMode(str, Enum):
 class OutputPolicy:
     """Enforces output content safety based on mode.
 
-    Rules (from action plan Section 8):
-    - creator_safe: No odds, betting, bookmaker terms
-    - public_safe: Also no probabilities, xG, score predictions
+    Rules:
+    - creator_safe: market/odds evidence is allowed; betting advice is blocked
+    - public_safe: also hides probabilities, xG, score predictions
     """
 
     def __init__(self, mode: str = "internal_research") -> None:
@@ -80,8 +80,8 @@ class OutputPolicy:
 
         filtered = dict(result)
 
-        # ── creator_safe: strip market/odds fields ──
-        if self.mode in (OutputMode.CREATOR, OutputMode.PUBLIC):
+        # ── public_safe: strip market/probability fields for broad publishing ──
+        if self.mode == OutputMode.PUBLIC:
             pred = filtered.get("prediction", {})
             if isinstance(pred, dict):
                 pred.pop("market_applied", None)
@@ -235,15 +235,24 @@ class OutputPolicy:
     def _get_replacements() -> dict[str, str]:
         """Replace forbidden terms with compliant alternatives."""
         return {
-            "赔率": "市场参考",
-            "盘口": "市场参考",
-            "博彩": "[已过滤]",
-            "投注": "[已过滤]",
-            "博彩公司": "[已过滤]",
-            "odds": "market reference",
-            "bookmaker": "[filtered]",
-            "betting": "[filtered]",
-            "handicap": "[filtered]",
+            "建议投注": "[已过滤]",
+            "推荐投注": "[已过滤]",
+            "竞彩推荐": "[已过滤]",
+            "下注": "[已过滤]",
+            "带单": "[已过滤]",
+            "推单": "[已过滤]",
+            "稳赚": "[已过滤]",
+            "必中": "[已过滤]",
+            "包赢": "[已过滤]",
+            "盈利保证": "[已过滤]",
+            "best bet": "[filtered]",
+            "betting tips": "[filtered]",
+            "bet this": "[filtered]",
+            "odds pick": "[filtered]",
+            "guaranteed prediction": "[filtered]",
+            "sure win": "[filtered]",
+            "lock pick": "[filtered]",
+            "wager now": "[filtered]",
             "命中率": "准确度",
             "胜率": "表现",
             "概率": "分析",

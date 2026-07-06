@@ -10,24 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.9.0-alpha] — 2026-07-05
 
 ### Added
-- **Accuracy Data OS repair report**: `evaluation_registry_repair_report.v1` produces deterministic repair actions for diagnostic/rejected samples without creating snapshots, probabilities, artifacts, or reports.
+- **Accuracy Data OS repair report**: `evaluation_registry_repair_report.v2` produces deterministic repair actions, priority, blocking level, repair order, and grouped sample IDs for diagnostic/rejected samples without creating snapshots, probabilities, artifacts, or reports.
+- **Strict sample repair queue**: `build_strict_sample_repair_queue.py` inspects local snapshot/prediction evidence per non-strict sample and reports whether any real pre-kickoff probability evidence can be used.
+- **Accuracy todo backlog**: `build_accuracy_todo_backlog.py` turns registry, DB integrity, snapshot coverage, market odds coverage, lineup coverage, and prediction-pipeline size into a read-only prioritized backlog.
+- **Candidate experiment preflight**: `preflight_accuracy_experiments.py` and `run_accuracy_experiments.py` now block default candidate tournaments when strict/eligible samples or DB integrity do not meet the configured gate.
 - **Structured pre-match intelligence layer**: `information_state_signals.v1` converts local player availability evidence into source/time/confidence-scored shadow signals and excludes future evidence from strict features.
 - **FeatureSnapshot v2**: strict feature payloads now include information-state signals, player availability shadow payloads, schedule context, and data quality fields while still excluding actual goals.
 - **V4.9 shadow candidate names**: dynamic Bayesian weighted goal model, international covariate hybrid, Dirichlet calibration candidate, and proper-scoring stacking candidate are available as shadow/proposal-only candidates.
 - **Data-repair proposal type**: `model_change_proposals` can now record `data-repair`, `calibrator`, and `stacking` proposal categories separately from ordinary model proposals.
+- **DB integrity audit tool**: `audit_db_integrity.py` audits SQLite integrity drift and can conservatively repair exact team-alias ID drift, nullable empty FKs, and orphan child rows with backup + quarantine evidence.
+- **Proposal review statuses**: `model_change_proposals` now supports explicit manual review transitions such as `approved_for_shadow` and `promoted_config` without mutating production configuration.
 - **Legacy experiment wrappers**: old full-pipeline backtest, score grid, and stacking collection scripts now delegate to the unified accuracy experiment runner and no longer overwrite old artifacts.
 
 ### Changed
 - Version source of truth is now `4.9.0-alpha`.
-- Candidate experiment output includes `candidate_family` and `sample_quality_summary` so proposal review can distinguish model, calibration, stacking, and data-quality failures.
+- Market odds and multi-bookmaker consensus are treated as important prediction evidence. Output audits now block betting advice / guaranteed-outcome language, not odds or bookmaker evidence.
+- Candidate experiment output includes `candidate_family`, `sample_quality_summary`, and read-only preflight evidence so proposal review can distinguish model, calibration, stacking, and data-quality failures.
+- Evaluation registry now prefers a clean pre-kickoff `prediction_snapshots` probability record over an unusable post-kickoff `pre_match_snapshots` row for the same match.
 - `run_accuracy_experiments.py` defaults to the V4.9 candidate names while retaining backward-compatible candidate aliases.
-- Feature snapshot materialization persisted 25 new V4.9 strict audit rows; `feature_snapshots` now contains 66 audit rows.
-- Proposal generation is idempotent and inserted one new data-repair proposal; `model_change_proposals` now contains 12 rows.
+- Feature snapshot materialization retains `93` audit rows.
+- Proposal generation is idempotent; `model_change_proposals` now contains `27` rows.
+- Deleted stale V3/V4.5/V4.8 documentation that polluted current-state reasoning: `docs/PRD_ARCHITECTURE_COMPLETE.md`, `docs/EXTERNAL_REVIEW_SUMMARY.md`, and `backend/docs/POSTMATCH_SOP.md`.
 
 ### Verified
-- Backend test suite: `516 passed, 4 skipped`.
-- Evaluation registry repair smoke: `81` total samples, `25` strict, `46` diagnostic, `10` rejected; `46` diagnostic samples are potentially promotable only with real pre-kickoff evidence.
-- Default shadow experiment smoke still rejects all candidates because strict eligible sample count is `25 < 30`.
+- Backend test suite: `534 passed, 4 skipped`.
+- SQLite integrity: `PRAGMA integrity_check=ok`, `PRAGMA foreign_key_check=0`; `104` historical orphan rows are preserved in `data_integrity_quarantine`.
+- Evaluation registry repair smoke: `84` total samples, `29` strict, `46` diagnostic, `9` rejected; diagnostic samples are promotable only with real pre-kickoff evidence.
+- Default shadow experiment smoke is preflight-blocked because strict eligible sample count is `29 < 30`; forced diagnostic runs remain available without modifying production weights or artifacts.
+- Creator-safe output audit scans `77` report files and passes while preserving market/odds evidence.
 - Low-threshold engineering smoke confirms dynamic candidates run end-to-end, but this is not production evidence.
 - Legacy wrappers for `backtest_full_pipeline.py`, `grid_search_score_params.py`, and `collect_stacking_training_data.py` execute through the unified runner.
 
@@ -270,7 +280,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Motivation Factor**: Team motivation modeling for group stage match-day 3.
 - **Draw Floor**: 12% minimum draw probability for WC matches.
 - **Divergence Paradox Fix**: Resolved counter-intuitive market-model interaction.
-- Post-match review standardization (SOP in `POSTMATCH_SOP.md`).
+- Post-match review standardization. The historical `POSTMATCH_SOP.md` file was removed in V4.9 because the current flow is enforced by `run_postmatch_complete.py`, registry diagnostics, and proposal-only self-evolution.
 
 ---
 

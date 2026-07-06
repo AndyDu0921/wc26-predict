@@ -331,7 +331,7 @@ def main():
                     results["memory"]["skipped"] += 1
                     continue
 
-                # Legacy escape hatch only. V4.8 learning/evaluation paths must
+                # Legacy escape hatch only. V4.9 learning/evaluation paths must
                 # prefer real pre-match snapshots over synthetic probabilities.
                 print(f"  LEGACY: {home} vs {away} — creating prediction_run placeholder")
                 if not dry_run:

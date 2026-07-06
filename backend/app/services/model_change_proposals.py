@@ -15,6 +15,17 @@ from typing import Any
 from uuid import uuid4
 
 
+ALLOWED_PROPOSAL_STATUSES = {
+    "proposal_rejected",
+    "proposal_pending_data_repair",
+    "proposal_needs_backtest",
+    "proposal_pending_review",
+    "approved_for_shadow",
+    "promoted_config",
+}
+MANUAL_APPROVAL_STATUSES = {"approved_for_shadow", "promoted_config"}
+
+
 @dataclass(frozen=True)
 class ModelChangeProposalCandidate:
     proposal_type: str
@@ -249,6 +260,7 @@ def persist_model_change_proposal(
     proposal: ModelChangeProposalCandidate,
 ) -> dict[str, Any]:
     """Persist a generic model-change proposal idempotently by fingerprint."""
+    _validate_proposal_status(proposal.status)
     path = Path(db_path)
     conn = sqlite3.connect(str(path))
     try:
@@ -288,6 +300,77 @@ def persist_model_change_proposal(
         )
         conn.commit()
         return {"inserted": True, "id": record_id, "fingerprint": fingerprint}
+    finally:
+        conn.close()
+
+
+def update_model_change_proposal_status(
+    db_path: str | Path,
+    *,
+    proposal_id: str,
+    new_status: str,
+    reviewed_by: str,
+    review_note: str = "",
+    manual_approval: bool = False,
+) -> dict[str, Any]:
+    """Update proposal review status without mutating production configuration.
+
+    ``approved_for_shadow`` and ``promoted_config`` require explicit manual
+    approval metadata.  Even ``promoted_config`` only updates the proposal
+    ledger; callers must perform any production config change in a separate,
+    audited operation.
+    """
+    _validate_proposal_status(new_status)
+    if new_status in MANUAL_APPROVAL_STATUSES and not manual_approval:
+        raise ValueError(f"{new_status} requires manual_approval=True")
+    if not reviewed_by.strip():
+        raise ValueError("reviewed_by is required")
+
+    path = Path(db_path)
+    conn = sqlite3.connect(str(path))
+    try:
+        _require_table(conn)
+        row = conn.execute(
+            """
+            SELECT id, status, evidence
+            FROM model_change_proposals
+            WHERE id=?
+            """,
+            (proposal_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Proposal not found: {proposal_id}")
+
+        evidence = _loads(row[2])
+        history = list(evidence.get("review_history") or [])
+        history.append(
+            {
+                "from_status": row[1],
+                "to_status": new_status,
+                "reviewed_by": reviewed_by,
+                "review_note": review_note,
+                "manual_approval": manual_approval,
+                "production_mutation": False,
+            }
+        )
+        evidence["review_history"] = history
+        evidence["latest_review"] = history[-1]
+        conn.execute(
+            """
+            UPDATE model_change_proposals
+            SET status=?, evidence=?
+            WHERE id=?
+            """,
+            (new_status, _json(evidence), proposal_id),
+        )
+        conn.commit()
+        return {
+            "updated": True,
+            "id": proposal_id,
+            "old_status": row[1],
+            "new_status": new_status,
+            "production_mutation": False,
+        }
     finally:
         conn.close()
 
@@ -405,6 +488,11 @@ def _registry_repair_actions(
 def _require_table(conn: sqlite3.Connection) -> None:
     if not _has_table(conn, "model_change_proposals"):
         raise RuntimeError("Missing model_change_proposals table; run Alembic upgrade first")
+
+
+def _validate_proposal_status(status: str) -> None:
+    if status not in ALLOWED_PROPOSAL_STATUSES:
+        raise ValueError(f"Unsupported proposal status: {status}")
 
 
 def _has_table(conn: sqlite3.Connection, table_name: str) -> bool:

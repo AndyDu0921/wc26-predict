@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Diagnose V4.8 evaluation sample quality."""
+"""Diagnose V4.9 evaluation sample quality."""
 
 from __future__ import annotations
 

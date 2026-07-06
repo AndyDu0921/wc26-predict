@@ -238,6 +238,45 @@ def test_registry_rejects_post_kickoff_prediction_snapshot_fallback(tmp_path):
     assert "snapshot_after_kickoff" in row["exclusion_reasons"]
 
 
+def test_registry_prefers_clean_prediction_snapshot_over_postmatch_pre_snapshot(tmp_path):
+    db_path = tmp_path / "registry.db"
+    conn = _create_registry_db(db_path)
+    conn.execute("INSERT INTO teams(id, name) VALUES ('h1', 'Alpha')")
+    conn.execute("INSERT INTO teams(id, name) VALUES ('a1', 'Beta')")
+    conn.execute(
+        "INSERT INTO matches(id, home_team_id, away_team_id, match_date, competition, stage) "
+        "VALUES ('m1', 'h1', 'a1', '2026-06-15T20:00:00+00:00', 'FIFA World Cup 2026', 'Group A')"
+    )
+    conn.execute("INSERT INTO match_results(match_id, home_goals, away_goals) VALUES ('m1', 1, 0)")
+    conn.execute(
+        "INSERT INTO pre_match_snapshots(id, match_id, home_team, away_team, snapshot_at, kickoff_at, "
+        "model_version, weight_config_label, final_home_prob, final_draw_prob, final_away_prob, "
+        "component_probs, fused_score_matrix) VALUES ('p_late', 'm1', 'Alpha', 'Beta', "
+        "'2026-06-15T22:00:00+00:00', '2026-06-15T20:00:00+00:00', '4.9.0-alpha', "
+        "'WORLD_CUP_V4.9.0_ALPHA', 0.2, 0.3, 0.5, ?, ?)",
+        (json.dumps({"dc": {"away": 0.5}}), json.dumps([[0.2, 0.1], [0.3, 0.4]])),
+    )
+    conn.execute(
+        "INSERT INTO prediction_snapshots(id, match_id, home_team, away_team, generated_at, model_version, "
+        "adjusted_probs, baseline_probs, component_probs) VALUES "
+        "('ps_early', 'm1', 'Alpha', 'Beta', '2026-06-15T10:00:00+00:00', '4.9.0-alpha', ?, NULL, ?)",
+        (json.dumps({"home": 0.6, "draw": 0.25, "away": 0.15}), json.dumps({"dc": {}})),
+    )
+    conn.commit()
+    conn.close()
+
+    row = build_evaluation_registry(db_path)["samples"][0]
+
+    assert row["sample_status"] == "strict"
+    assert row["snapshot_before_kickoff"] is True
+    assert row["pre_match_snapshot_id"] == "p_late"
+    assert row["prediction_snapshot_id"] == "ps_early"
+    assert row["as_of_time"] == "2026-06-15T10:00:00+00:00"
+    assert row["current_prob_source"] == "prediction_snapshots.adjusted_or_baseline_probs"
+    assert row["current_probs"] == {"home": 0.6, "draw": 0.25, "away": 0.15}
+    assert "snapshot_after_kickoff" not in row["exclusion_reasons"]
+
+
 def test_registry_team_fallback_uses_latest_snapshot_before_match(tmp_path):
     db_path = tmp_path / "registry.db"
     conn = _create_registry_db(db_path)

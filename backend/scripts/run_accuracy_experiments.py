@@ -17,6 +17,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.accuracy_experiment_store import persist_experiment_result
+from app.services.accuracy_experiment_preflight import run_accuracy_experiment_preflight
 from app.services.candidate_experiments import CandidateExperimentConfig, run_candidate_experiment
 from app.services.evaluation_registry import DEFAULT_DB_PATH
 from app.services.shadow_candidate_models import SUPPORTED_SHADOW_CANDIDATES
@@ -43,12 +44,38 @@ def main() -> int:
     parser.add_argument("--min-sample-count", type=int, default=30)
     parser.add_argument("--output", default="", help="Optional JSON output path")
     parser.add_argument("--persist", action="store_true", help="Persist audit rows only")
+    parser.add_argument("--force", action="store_true", help="Run even when read-only preflight is blocked")
     args = parser.parse_args()
 
     candidates = [item.strip() for item in args.candidates.split(",") if item.strip()]
     unknown = [item for item in candidates if item not in SUPPORTED_SHADOW_CANDIDATES]
     if unknown:
         raise SystemExit(f"Unsupported candidate(s): {', '.join(unknown)}")
+
+    preflight = run_accuracy_experiment_preflight(
+        args.db_path,
+        competition=args.competition,
+        min_sample_count=args.min_sample_count,
+        candidates=candidates,
+    )
+    if not preflight["passed"] and not args.force:
+        payload = {
+            "schema_version": "accuracy_experiment_batch.v1",
+            "db_path": args.db_path,
+            "competition": args.competition,
+            "min_sample_count": args.min_sample_count,
+            "status": "preflight_blocked",
+            "preflight": preflight,
+            "results": [],
+            "persisted": [],
+            "notes": "Shadow-only batch was not run because preflight failed; use --force only for diagnostics.",
+        }
+        text = json.dumps(payload, ensure_ascii=False, indent=2)
+        if args.output:
+            Path(args.output).write_text(text + "\n", encoding="utf-8")
+        else:
+            print(text)
+        return 0
 
     results = []
     persisted = []
@@ -71,6 +98,8 @@ def main() -> int:
         "db_path": args.db_path,
         "competition": args.competition,
         "min_sample_count": args.min_sample_count,
+        "status": "completed",
+        "preflight": preflight,
         "results": results,
         "persisted": persisted,
         "notes": "Shadow-only batch; production weights and artifacts were not modified.",

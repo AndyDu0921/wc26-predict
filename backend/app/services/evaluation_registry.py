@@ -216,6 +216,7 @@ def _build_row(
     process_eval = _has_process_eval(conn, match_id, schedule_id)
 
     current_probs = None
+    current_prob_source = None
     score_matrix = None
     component_count = 0
     model_version = None
@@ -227,29 +228,49 @@ def _build_row(
     if pre_snapshot is not None:
         pre_snapshot_id = str(pre_snapshot["id"])
         pre_snapshot_at = _as_optional_str(pre_snapshot["snapshot_at"])
-        snapshot_at = pre_snapshot_at
         if kickoff_at is None:
             kickoff_at = _canonical_kickoff_at(_as_optional_str(pre_snapshot["kickoff_at"]))
             kickoff_source = "pre_match_snapshots.kickoff_at" if kickoff_at else kickoff_source
-        model_version = _as_optional_str(pre_snapshot["model_version"])
-        weight_config_label = _as_optional_str(pre_snapshot["weight_config_label"])
-        current_probs = _current_probs_from_pre_snapshot(pre_snapshot)
-        score_matrix = _json_loads(pre_snapshot["fused_score_matrix"])
-        component_count = _component_count(_json_loads(pre_snapshot["component_probs"]))
 
     prediction_snapshot_id = None
     prediction_snapshot_at = None
     if prediction_snapshot is not None:
         prediction_snapshot_id = str(prediction_snapshot["id"])
         prediction_snapshot_at = _as_optional_str(prediction_snapshot["generated_at"])
+
+    pre_probs = _current_probs_from_pre_snapshot(pre_snapshot) if pre_snapshot is not None else None
+    prediction_probs = (
+        _current_probs_from_prediction_snapshot(prediction_snapshot)
+        if prediction_snapshot is not None
+        else None
+    )
+    use_prediction_primary = _should_use_prediction_snapshot_primary(
+        pre_snapshot_at=pre_snapshot_at,
+        pre_probs=pre_probs,
+        prediction_snapshot_at=prediction_snapshot_at,
+        prediction_probs=prediction_probs,
+        kickoff_at=kickoff_at,
+    )
+
+    if pre_snapshot is not None and not use_prediction_primary:
+        snapshot_at = pre_snapshot_at
+        model_version = _as_optional_str(pre_snapshot["model_version"])
+        weight_config_label = _as_optional_str(pre_snapshot["weight_config_label"])
+        current_probs = pre_probs
+        current_prob_source = "pre_match_snapshots.final_probs" if current_probs is not None else None
+        score_matrix = _json_loads(pre_snapshot["fused_score_matrix"])
+        component_count = _component_count(_json_loads(pre_snapshot["component_probs"]))
+
+    if prediction_snapshot is not None:
         if model_version is None:
             model_version = _as_optional_str(prediction_snapshot["model_version"])
-        if snapshot_at is None:
+        if snapshot_at is None or use_prediction_primary:
             snapshot_at = prediction_snapshot_at
-        if current_probs is None:
-            current_probs = _current_probs_from_prediction_snapshot(prediction_snapshot)
+        if current_probs is None or use_prediction_primary:
+            current_probs = prediction_probs
             if current_probs is not None:
-                weight_config_label = weight_config_label or "prediction_snapshot.adjusted_probs"
+                current_prob_source = "prediction_snapshots.adjusted_or_baseline_probs"
+                weight_config_label = "prediction_snapshot.adjusted_probs"
         if component_count == 0:
             component_count = _component_count(_json_loads(_row_get(prediction_snapshot, "component_probs")))
 
@@ -337,7 +358,7 @@ def _build_row(
         prediction_snapshot_at=prediction_snapshot_at,
         model_version=model_version,
         weight_config_label=weight_config_label,
-        current_prob_source=_current_prob_source(pre_snapshot, prediction_snapshot, current_probs),
+        current_prob_source=current_prob_source,
         component_count=component_count,
         data_completeness_score=completeness,
         data_availability=data_availability,
@@ -558,18 +579,26 @@ def _current_probs_from_mapping(raw: Any) -> dict[str, float] | None:
     return {"home": home / total, "draw": draw / total, "away": away / total}
 
 
-def _current_prob_source(
-    pre_snapshot: sqlite3.Row | None,
-    prediction_snapshot: sqlite3.Row | None,
-    current_probs: dict[str, float] | None,
-) -> str | None:
-    if current_probs is None:
-        return None
-    if pre_snapshot is not None:
-        return "pre_match_snapshots.final_probs"
-    if prediction_snapshot is not None:
-        return "prediction_snapshots.adjusted_or_baseline_probs"
-    return "unknown"
+def _should_use_prediction_snapshot_primary(
+    *,
+    pre_snapshot_at: str | None,
+    pre_probs: dict[str, float] | None,
+    prediction_snapshot_at: str | None,
+    prediction_probs: dict[str, float] | None,
+    kickoff_at: str | None,
+) -> bool:
+    """Prefer a clean prediction snapshot over an unusable pre-match snapshot."""
+    prediction_clean = (
+        prediction_probs is not None
+        and _snapshot_before_kickoff(prediction_snapshot_at, kickoff_at) is True
+    )
+    if not prediction_clean:
+        return False
+    pre_clean = (
+        pre_probs is not None
+        and _snapshot_before_kickoff(pre_snapshot_at, kickoff_at) is True
+    )
+    return not pre_clean
 
 
 def _sample_key(home_team: str, away_team: str, match_date: str) -> str:

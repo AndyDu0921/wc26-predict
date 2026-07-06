@@ -7,6 +7,7 @@ from app.services.model_change_proposals import (
     build_proposal_from_experiment,
     build_registry_feature_rule_proposal,
     persist_model_change_proposal,
+    update_model_change_proposal_status,
 )
 
 
@@ -240,7 +241,7 @@ def test_experiment_proposal_types_separate_calibrator_and_stacking():
 def test_data_repair_proposal_from_repair_report_is_proposal_only():
     proposal = build_data_repair_proposal_from_repair_report(
         {
-            "schema_version": "evaluation_registry_repair_report.v1",
+            "schema_version": "evaluation_registry_repair_report.v2",
             "registry_hash": "hash-1",
             "summary": {"strict_count": 25},
             "repair_summary": {
@@ -258,3 +259,66 @@ def test_data_repair_proposal_from_repair_report_is_proposal_only():
     assert proposal.gate_decision["passed"] is False
     assert proposal.candidate_payload["production_mutation"] is False
     assert proposal.candidate_payload["historical_report_mutation"] is False
+
+
+def test_status_update_requires_manual_approval_for_shadow_or_promotion(tmp_path):
+    db_path = tmp_path / "proposal.db"
+    conn = _proposal_db(db_path)
+    conn.close()
+    proposal = build_proposal_from_experiment(
+        {
+            "candidate_name": "dynamic_dixon_coles",
+            "sample_registry_hash": "abc",
+            "gate_decision": {"passed": True},
+        }
+    )
+    inserted = persist_model_change_proposal(db_path, proposal)
+
+    try:
+        update_model_change_proposal_status(
+            db_path,
+            proposal_id=inserted["id"],
+            new_status="approved_for_shadow",
+            reviewed_by="Andy",
+        )
+    except ValueError as exc:
+        assert "manual_approval" in str(exc)
+    else:
+        raise AssertionError("manual approval was required")
+
+
+def test_status_update_records_review_without_production_mutation(tmp_path):
+    db_path = tmp_path / "proposal.db"
+    conn = _proposal_db(db_path)
+    conn.close()
+    proposal = build_proposal_from_experiment(
+        {
+            "candidate_name": "proper_scoring_stacking_candidate",
+            "candidate_family": "stacking",
+            "sample_registry_hash": "abc",
+            "gate_decision": {"passed": True},
+        }
+    )
+    inserted = persist_model_change_proposal(db_path, proposal)
+
+    result = update_model_change_proposal_status(
+        db_path,
+        proposal_id=inserted["id"],
+        new_status="approved_for_shadow",
+        reviewed_by="Andy",
+        review_note="Run in shadow tournament only.",
+        manual_approval=True,
+    )
+
+    assert result["production_mutation"] is False
+    assert result["old_status"] == "proposal_pending_review"
+    assert result["new_status"] == "approved_for_shadow"
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute("SELECT status, evidence FROM model_change_proposals WHERE id=?", (inserted["id"],)).fetchone()
+    finally:
+        conn.close()
+    evidence = json.loads(row[1])
+    assert row[0] == "approved_for_shadow"
+    assert evidence["latest_review"]["production_mutation"] is False
+    assert evidence["latest_review"]["reviewed_by"] == "Andy"

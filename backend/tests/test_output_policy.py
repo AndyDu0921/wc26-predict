@@ -31,9 +31,20 @@ def test_output_policy_public_safe_filters_probability():
     assert "home_win_prob" not in result or "0.65" not in result
 
 
-def test_output_policy_creator_safe_no_odds():
-    """Creator safe mode must not contain odds-related terms."""
+def test_output_policy_creator_safe_preserves_market_odds_data():
+    """Creator safe mode keeps market data, because it improves analysis quality."""
     policy = OutputPolicy(mode="creator_safe")
     text = "odds: 2.10 / 3.50 / 3.80 from Bet365"
     result = policy.filter_text(text)
-    assert "2.10" not in result  # Raw odds filtered
+    result_text = result[0] if isinstance(result, tuple) else result
+    assert "2.10" in result_text
+
+
+def test_output_policy_creator_safe_blocks_betting_advice():
+    """Creator safe mode blocks advice-like gambling language."""
+    policy = OutputPolicy(mode="creator_safe")
+    result_text, blocked = policy.filter_text("This is a guaranteed prediction, bet this side now.")
+
+    assert "guaranteed prediction" in blocked
+    assert "bet this" in blocked
+    assert "guaranteed prediction" not in result_text

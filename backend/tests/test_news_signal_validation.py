@@ -22,20 +22,20 @@ def test_scan_text_finds_forbidden():
     """Forbidden terms are detected."""
     from app.services.public_safety_filter import scan_text
     # Test with a known forbidden term from the filter's list
-    results = scan_text("This is a 投注 recommendation.")
+    results = scan_text("This is a 建议投注 recommendation.")
     # Results may vary depending on exact filter implementation
     assert isinstance(results, list)
 
 
-def test_filter_dict_removes_forbidden():
-    """filter_dict removes forbidden key-value pairs."""
+def test_filter_dict_preserves_odds_but_filters_advice():
+    """Market odds are preserved; advice-like betting copy is filtered."""
     from app.services.public_safety_filter import filter_dict
     data = {
         "title": "Match Analysis",
         "odds": "2.10 / 3.50 / 3.80",
-        "analysis": "Safe content here",
+        "analysis": "No 建议投注 here",
     }
     result = filter_dict(data, mode="creator_safe")
-    # "odds" key should be stripped in creator_safe mode
-    assert "odds" not in result
+    assert result["odds"] == "2.10 / 3.50 / 3.80"
+    assert "建议投注" not in result["analysis"]
     assert "title" in result

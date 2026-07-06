@@ -1,4 +1,4 @@
-"""Persistence helpers for V4.8 shadow experiment audit tables."""
+"""Persistence helpers for V4.9 shadow experiment audit tables."""
 
 from __future__ import annotations
 

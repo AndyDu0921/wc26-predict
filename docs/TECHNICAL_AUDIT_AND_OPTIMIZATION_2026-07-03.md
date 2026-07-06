@@ -2,14 +2,14 @@
 
 日期: 2026-07-03  
 更新: 2026-07-05（V4.9 Accuracy Data OS 实施后事实校准）
-范围: 后端预测链路、复盘学习、权重自进化、评估样本登记、候选实验框架、公开输出审计。静态前端暂不纳入本次优化范围。
+范围: 后端预测链路、复盘学习、权重自进化、评估样本登记、候选实验框架、市场数据链路、技术债清理。静态前端暂不纳入本次优化范围。
 
 ## 结论
 
 1. 架构仍有优化空间。核心问题不是“模型不够多”，而是预测链路、复盘证据、权重提案和市场共识需要更强的可重放性与闸门约束。
 2. 新模型不应直接上线。动态双变量 Poisson / 动态贝叶斯类模型值得进入候选池，但必须先通过成对 walk-forward 回测与 `BacktestGate`。
 3. 复盘系统可以进化，但前提是只让 verified / full-tier 样本驱动参数候选，并且候选必须持久化、可审计、不过闸不生效。
-4. 当前公开输出审计发现 `reports/` 存量文件存在赔率/博彩商/投注相关词，默认视为发布前需要净化的内容。本次不擅自改写历史报告。
+4. 市场赔率/多博彩商共识是重要预测信号，不再视为污染；只禁止投注建议、保证收益、带单等诱导性语言。
 5. V4.9-alpha 后续修复确认：本地 DB 已升级到 Alembic `e5f6a7b8c9d0`；`model_weight_proposals`、学习日志比分字段、Accuracy Engine 审计表、通用 `model_change_proposals`、结构化情报 FeatureSnapshot v2 均已落库或可物化。
 
 ## 已落地改动
@@ -20,7 +20,7 @@
 - 快照持久化增加历史 `weight_config`、`pre_market_probs`、`market_weight_used`、`negbin_weight`、`calibration_applied`。
 - 新增 `model_weight_proposals` 审计表、ORM model、Alembic migration 和 `BacktestGate`。权重候选只记录为 proposal，不会自动写生产配置。
 - The Odds API / MarketCalibrator 改为多 bookmaker 中位数共识，不再只取第一家或单一 bookmaker。
-- 新增公开输出审计脚本 `backend/scripts/audit_public_outputs_no_odds.py`。
+- 更新输出审计脚本：当前推荐入口为 `backend/scripts/audit_public_outputs.py`；旧 `audit_public_outputs_no_odds.py` 仅作为兼容入口保留。V4.9 起只检查投注建议/保证性语言，不禁止市场赔率或 bookmaker 证据。
 - 新增 evaluation registry：显式区分 `matches + match_results`、`wc26_schedule`、赛前快照、预测快照、过程评估；只有无结果冲突、可验证 kickoff、且有赛前概率快照的样本才能进入严格回测。
 - 新增 shadow candidate experiment runner：输出 `experiment_id`、`sample_registry_hash`、paired metrics、group metrics、leakage checks 与 gate decision；不写生产权重，不覆盖 artifacts。
 - 修复过程评估假信号：没有赛前 expected shots 时，射门量 delta 留空，不再用实际射门减实际射门制造 0 误差。
@@ -31,23 +31,29 @@
 - V4.8 新增 shadow candidate pool 与统一 experiment runner：动态 DC、动态双变量 Poisson、Bayesian weighted dynamic、covariate ML、Dirichlet calibration、stacking optimizer 均只离线评估。
 - V4.8 新增 `model_change_proposals` 通用提案 ledger：自进化只能生成 proposal，不会自动改生产权重、校准器或模型 artifacts。
 - V4.8 关键数据口径修复：`wc26_schedule` 可在无冲突时补齐 canonical result；schedule-only 样本使用 `match_date + kickoff_time` 做 kickoff source，并保留审计来源。
-- V4.8/V4.9 新增并扩展 `feature_snapshots` 物化：当前 registry 可构建 `25` 条 strict 样本赛前特征 payload，payload 不包含真实比分字段；V4.9 持久化后表内保留历史审计记录共 `66` 条。
-- V4.9 新增 evaluation registry repair report：逐场给出 `missing_pre_match_snapshot`、`snapshot_or_kickoff_time_unknown`、`missing_current_probabilities`、赛后快照、结果冲突的修复动作；只允许真实赛前证据提升 strict。
+- V4.8/V4.9 新增并扩展 `feature_snapshots` 物化：当前 registry 可构建 `29` 条 strict 样本赛前特征 payload，payload 不包含真实比分字段；V4.9 持久化后表内保留历史审计记录共 `93` 条。
+- V4.9 新增 evaluation registry repair report v2：逐场给出 `missing_pre_match_snapshot`、`snapshot_or_kickoff_time_unknown`、`missing_current_probabilities`、赛后快照、结果冲突的修复动作，并输出 priority、blocking level、repair order 和 action groups；只允许真实赛前证据提升 strict。
+- V4.9 新增 accuracy todo backlog：从 registry、repair report、DB integrity、市场赔率覆盖、阵容/伤停覆盖和 `prediction_pipeline.py` 规模生成只读 TODO，不创建快照、概率、权重或报告。
+- V4.9 新增 strict sample repair queue：逐场检查本地 `pre_match_snapshots` / `prediction_snapshots` 是否存在真实赛前概率证据；当前本地没有更多 diagnostic 样本可直接提升 strict。
+- V4.9 新增 candidate experiment preflight：默认候选实验在 DB 不干净或 strict/eligible 样本不足时直接阻塞，并返回 blockers；`--force` 仅用于只读诊断，不构成上线证据。
+- V4.9 修复 registry 主证据选择：同场若存在赛后 `pre_match_snapshots` 和真实赛前 `prediction_snapshots`，严格评估优先使用可验证赛前概率记录，避免赛后快照误杀样本。
 - V4.9 新增 structured information-state signals：伤停/停赛等本地记录必须带 `available_at`、`published_at`、`confidence`、`source`，未来信号不得进入 strict features。
-- V4.9 扩展 FeatureSnapshot v2：加入结构化情报、player availability shadow、schedule context 和数据质量摘要；最新持久化新增 25 条 V2 审计记录。
+- V4.9 扩展 FeatureSnapshot v2：加入结构化情报、player availability shadow、schedule context 和数据质量摘要；当前 `feature_snapshots` 表保留 93 条历史审计记录。
 - V4.9 扩展 self-evolution proposal ledger：新增 `data-repair` proposal 类型，并区分 `calibrator`、`stacking` 与普通 `model` 候选。
 - V4.9 清理旧实验入口：`backtest_full_pipeline.py`、`grid_search_score_params.py`、`collect_stacking_training_data.py` 变成统一 experiment runner wrapper，不再覆盖旧 artifact。
+- V4.9 新增数据库完整性审计/修复：`audit_db_integrity.py` 默认只读；apply 模式会先备份 DB，精确修复 team aliases，空 nullable FK 归一为 NULL，其余孤儿行隔离到 `data_integrity_quarantine`，不伪造父记录。
+- V4.9 删除确定过时的长文档：`docs/PRD_ARCHITECTURE_COMPLETE.md`、`docs/EXTERNAL_REVIEW_SUMMARY.md`、`backend/docs/POSTMATCH_SOP.md`，避免 V3/V4.5/V4.8 历史事实污染当前判断。
 
 ## 验证结果
 
-- 后端全量测试: `516 passed, 4 skipped`
-- Evaluation registry v2 dry-run: `81` total samples, `81` canonical result rows, `58` match-result rows, `81` schedule-finished rows, `25` strict eligible samples, `46` diagnostic samples, `10` rejected samples, `16` process-eval rows, `1` source-result conflict.
-- Evaluation registry repair smoke: `56` 个非 strict 样本进入修复报告，`46` 个 diagnostic 只有在真实赛前证据补齐后才可提升 strict，`10` 个 rejected 仍有硬阻断。
-- Feature snapshot materialization: 当前 registry 构建 `25` 条 strict pre-result payload；V4.9 持久化 `inserted=25, skipped=0`；`feature_snapshots` 表保留历史审计记录共 `66` 条；payload 抽查无 actual-goal labels。
-- Candidate experiment smoke: 默认 `min_sample_count=30` 时全部候选因 `25 < 30` 被拒绝；低门槛工程 smoke 显示动态候选可端到端运行，但这不构成上线证据。
-- Proposal ledger smoke: `model_change_proposals` 当前 `12` 条，新增 `data-repair` proposal，权重与 feature-rule proposal 保持幂等未重复插入。
+- 后端全量测试: `534 passed, 4 skipped`。
+- Evaluation registry v2 dry-run: `84` total samples, `84` canonical result rows, `60` match-result rows, `83` schedule-finished rows, `29` strict eligible samples, `46` diagnostic samples, `9` rejected samples, `19` registry process-eval matches, `1` source-result conflict.
+- Evaluation registry repair smoke: 非 strict 样本只有在真实赛前证据补齐后才可提升 strict；禁止 placeholder probability、赛后补预测、无时间戳信号进入 strict。
+- Feature snapshot materialization: `feature_snapshots` 表当前 `93` 条历史审计记录；payload 抽查无 actual-goal labels。
+- Candidate experiment smoke: 默认 `min_sample_count=30` 时 preflight 因 `29 < 30` 阻塞候选锦标赛；低门槛或 `--force` 工程 smoke 只证明端到端可运行，不构成上线证据。
+- Proposal ledger smoke: `model_change_proposals` 当前 `27` 条，权重、数据修复、feature-rule、calibrator、stacking proposal 均保持 proposal-only。
 - Alembic 当前本地 head: `e5f6a7b8c9d0`
-- 公开输出审计摘要: `reports/` 扫描 71 个文件，29 个文件存在 275 条 forbidden-term findings。
+- DB integrity: `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行 `104` 条已隔离到 `data_integrity_quarantine` 并保留备份。
 - 代码编译检查: 核心变更文件 `py_compile` 通过。
 
 ## 研究依据
@@ -64,5 +70,5 @@
 1. 继续提升 strict eligible 样本数：优先补齐剩余 `46` 个 diagnostic 样本的赛前快照、current probabilities 和真实 kickoff 证据。
 2. 用统一 experiment runner 继续扩大动态 DC / 动态双变量 Poisson / 动态贝叶斯 / stacking / calibration 候选的无泄漏 paired evidence。
 3. 扩大 `feature_snapshots` 与球员可用性数据；没有赛前 `available_at` 的数据只能进诊断池，不能驱动生产概率。
-4. 清理报告生成模板，使 public / creator 输出默认不含裸赔率、bookmaker 名、投注词；内部研究报告继续允许保留。
+4. 保留报告中的市场赔率与 bookmaker 证据；只清理投注建议、保证收益、带单等诱导性表达。
 5. 继续收敛剩余预测入口：长期目标是 CLI、API、批处理、模拟器都只调用同一个纯 kernel / experiment interface。

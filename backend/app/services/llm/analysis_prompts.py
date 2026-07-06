@@ -5,8 +5,8 @@ Three prompt families:
 2. Video commentary script (segmented with time marks)
 3. Social media copy (multi-platform: Xiaohongshu, WeChat, Twitter)
 
-All prompts enforce compliance rules: no betting terms, no odds display,
-no win-rate guarantees, mandatory disclaimer.
+All prompts enforce compliance rules: market odds are allowed as evidence,
+but betting advice, guaranteed outcomes, and monetized tip language are not.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ MATCH_ANALYSIS_SYSTEM = """你是一名资深足球战术分析师和数据记�
 核心规则:
 - 只能使用提供的比赛数据，不得编造信息
 - 不得声称使用了数据源状态中 status 不是 used 的数据源
-- 不使用博彩/投注相关用语（赔率、盘口、下注、稳胆、必中等）
+- 可以引用赔率/盘口/市场共识作为证据，但不得写成下注建议、稳胆、必中或保证性结论
 - 不确定的地方必须明确标注
 - 必须包含"模型预测有其局限性"的声明
 - 使用专业但易懂的中文
@@ -33,7 +33,7 @@ VIDEO_SCRIPT_SYSTEM = """你是一名专业的体育视频内容创作者，擅�
 - 脚本分为开场(10秒)、数据拆解(60秒)、看点分析(60秒)、结语(20秒)
 - 每段标注建议时长和画面建议
 - 信息密度高，不说废话
-- 不使用博彩/投注相关用语
+- 可以引用赔率/盘口/市场共识作为证据，但不得写成下注建议、稳胆、必中或保证性结论
 - 结尾必须包含"数据仅供参考"声明
 - 口语化但不失专业感"""
 
@@ -44,7 +44,7 @@ SOCIAL_COPY_SYSTEM = """你是一名体育社交媒体运营专家，熟悉小�
 - 小红书: 活泼口语化，善用emoji，150-200字，带话题标签
 - 公众号: 正式专业，适合深度阅读，200-300字
 - Twitter: 简洁有力，英文为主，280字符以内
-- 不得使用博彩/投注用语
+- 可以引用赔率/盘口/市场共识作为证据，但不得写成下注建议、稳胆、必中或保证性结论
 - 不得承诺比赛结果
 - 可以展示数据，但需注明「模型预测」
 """
