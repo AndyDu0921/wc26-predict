@@ -479,7 +479,9 @@ def _build_prediction_run_feature_snapshot(
 ) -> dict[str, Any]:
     meta = result["meta"]
     pipeline = result.get("pipeline") or result.get("pipeline_params") or {}
+    information_state = _build_information_state_payload(result, meta)
     return {
+        "schema_version": "prediction_run_feature_snapshot.v4_10",
         "training_rows": pipeline.get("training_rows", meta.get("training_rows")),
         "match_context": {
             "home_team_name": meta["home_team"],
@@ -508,6 +510,7 @@ def _build_prediction_run_feature_snapshot(
                 result.get("calibration_applied", False),
             )
         ),
+        "information_state": information_state,
         "evaluation_sample": evaluation_sample,
     }
 
@@ -545,3 +548,29 @@ def _json_load(raw: Any, default: Any = None) -> Any:
         return json.loads(raw)
     except (TypeError, json.JSONDecodeError):
         return default
+
+
+def _build_information_state_payload(
+    result: dict[str, Any],
+    meta: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach V4.10 replayable information state without affecting prediction."""
+    try:
+        from app.services.evaluation_registry import DEFAULT_DB_PATH
+        from app.services.information_state_engine import build_match_information_state_snapshot
+
+        return build_match_information_state_snapshot(
+            DEFAULT_DB_PATH,
+            match_id=str(meta.get("match_id") or ""),
+            home_team=str(meta.get("home_team") or ""),
+            away_team=str(meta.get("away_team") or ""),
+            kickoff_at=meta.get("match_date"),
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).debug("information state snapshot skipped", exc_info=True)
+        return {
+            "schema_version": "information_state_snapshot.v1",
+            "audit": {"quality_score": 0.0, "missing": ["information_state_unavailable"], "error": str(exc)},
+            "signals": [],
+            "shadow_only": True,
+        }

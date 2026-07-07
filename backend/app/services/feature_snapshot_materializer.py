@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from app.services.evaluation_registry import build_evaluation_registry
 from app.services.information_state_signals import build_information_state_signals
+from app.services.information_state_engine import build_match_information_state_snapshot
 from app.services.player_availability import build_player_availability_shadow
 
 
@@ -117,6 +118,13 @@ def _feature_payload(row: dict[str, Any], registry_hash: str, *, db_path: str | 
         db_path=db_path,
         as_of_time=row.get("as_of_time"),
     ).to_dict()
+    information_state_v4_10 = build_match_information_state_snapshot(
+        db_path,
+        match_id=row.get("canonical_match_id"),
+        home_team=row["home_team"],
+        away_team=row["away_team"],
+        kickoff_at=row.get("kickoff_at"),
+    )
     return {
         "schema_version": "feature_snapshot.v2",
         "registry_hash": registry_hash,
@@ -146,6 +154,7 @@ def _feature_payload(row: dict[str, Any], registry_hash: str, *, db_path: str | 
         "leakage_status": row["leakage_status"],
         "information_state_signals": information_state["signals"],
         "information_state_signal_summary": information_state["summary"],
+        "information_state_v4_10": information_state_v4_10,
         "player_availability_shadow": player_availability,
         "schedule_context": _schedule_context(row),
     }

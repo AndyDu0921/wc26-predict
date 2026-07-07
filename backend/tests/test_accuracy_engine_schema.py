@@ -18,11 +18,14 @@ def test_local_accuracy_engine_tables_exist_after_migration():
     finally:
         conn.close()
 
-    assert version == "f6a7b8c9d0e1"
+    assert version == "g7b8c9d0e1f2"
     assert {
         "feature_snapshots",
         "experiment_runs",
         "candidate_predictions",
         "model_change_proposals",
+        "evidence_items",
+        "information_state_signals",
+        "signal_evaluations",
     }.issubset(tables)
     assert {"fused_score_matrix", "source_score_matrices"}.issubset(prediction_snapshot_columns)

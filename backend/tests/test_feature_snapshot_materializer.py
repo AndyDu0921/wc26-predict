@@ -89,6 +89,8 @@ def test_feature_snapshot_payload_excludes_result_labels(tmp_path):
     assert isinstance(payload["quality_flags"], list)
     assert isinstance(payload["information_state_signals"], list)
     assert payload["information_state_signal_summary"]["shadow_only"] is True
+    assert payload["information_state_v4_10"]["schema_version"] == "information_state_snapshot.v1"
+    assert payload["information_state_v4_10"]["shadow_only"] is True
     assert payload["player_availability_shadow"]["source_status"]["shadow_only"] is True
     assert payload["schedule_context"]["source_status"]["shadow_only"] is True
     assert "actual_home_goals" not in payload

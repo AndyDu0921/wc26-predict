@@ -153,6 +153,7 @@ def test_prediction_run_feature_snapshot_keeps_approved_signal_ids():
         "11111111-1111-1111-1111-111111111111",
         "22222222-2222-2222-2222-222222222222",
     ]
+    assert feature_snapshot["information_state"]["shadow_only"] is True
 
 
 def test_prediction_run_json_payloads_preserve_utf8_risk_tags_and_signals():
@@ -226,3 +227,5 @@ def test_snapshot_and_prediction_run_params_share_evaluation_sample():
     assert feature_snapshot["weight_config"]["pi"] == 0.17
     assert feature_snapshot["market_weight_used"] == 0.22
     assert feature_snapshot["calibration_applied"] is True
+    assert feature_snapshot["schema_version"] == "prediction_run_feature_snapshot.v4_10"
+    assert feature_snapshot["information_state"]["schema_version"] == "information_state_snapshot.v1"

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.10.0-alpha] — 2026-07-07
+
+### Added
+- **Information State Engine**: new V4.10 evidence ledger (`evidence_items`), structured shadow signals (`information_state_signals`), and post-match signal attribution table (`signal_evaluations`).
+- **Traceable evidence CLIs**: `collect_match_evidence.py`, `extract_information_signals.py`, `score_information_signals.py`, and `audit_match_information_state.py`.
+- Prediction snapshots now include an `information_state` payload with evidence coverage, missing data, shadow signals, and strict-readiness diagnostics.
+- Post-match review now evaluates information-state signals as proposal-only attribution evidence without changing production weights.
+
+### Changed
+- Version source of truth is now `4.10.0-alpha`.
+- Market odds and bookmaker consensus remain core pre-match research signals; V4.10 adds stronger provenance and information-state audit around them.
+- LLM/news intelligence is treated as structured evidence extraction input, not as a direct probability generator.
+
+### Verified
+- Alembic head: `g7b8c9d0e1f2`.
+- Backend test suite: `551 passed, 4 skipped`.
+- V4.10 targeted tests pass for evidence validation, idempotent ingestion, future-evidence exclusion, shadow scoring, signal attribution, FeatureSnapshot payloads, and snapshot-store payloads.
+- Temporary CLI smoke confirms collect → extract → score → audit works without touching production weights or artifacts.
+- Public output audit scans `65` active public files and passes while preserving market/odds evidence.
+- DB integrity audit passes with `foreign_key_violation_count=0`.
+- Accuracy experiment preflight is ready at the engineering gate with `32` strict samples, `47` diagnostic samples, and `8` rejected samples; production model promotion still requires stronger paired evidence.
+
 ## [4.9.0-alpha] — 2026-07-05
 
 ### Added
@@ -20,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Data-repair proposal type**: `model_change_proposals` can now record `data-repair`, `calibrator`, and `stacking` proposal categories separately from ordinary model proposals.
 - **DB integrity audit tool**: `audit_db_integrity.py` audits SQLite integrity drift and can conservatively repair exact team-alias ID drift, nullable empty FKs, and orphan child rows with backup + quarantine evidence.
 - **Proposal review statuses**: `model_change_proposals` now supports explicit manual review transitions such as `approved_for_shadow` and `promoted_config` without mutating production configuration.
-- **Legacy experiment wrappers**: old full-pipeline backtest, score grid, and stacking collection scripts now delegate to the unified accuracy experiment runner and no longer overwrite old artifacts.
+- **Unified accuracy experiment runner**: old full-pipeline backtest, score grid, and stacking collection flows are consolidated into `run_accuracy_experiments.py`.
 
 ### Changed
 - Version source of truth is now `4.9.0-alpha`.
@@ -29,17 +51,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Evaluation registry now prefers a clean pre-kickoff `prediction_snapshots` probability record over an unusable post-kickoff `pre_match_snapshots` row for the same match.
 - `run_accuracy_experiments.py` defaults to the V4.9 candidate names while retaining backward-compatible candidate aliases.
 - Feature snapshot materialization retains `93` audit rows.
-- Proposal generation is idempotent; `model_change_proposals` now contains `27` rows.
+- Proposal generation is idempotent; `model_change_proposals` now contains `30` rows.
 - Deleted stale V3/V4.5/V4.8 documentation that polluted current-state reasoning: `docs/PRD_ARCHITECTURE_COMPLETE.md`, `docs/EXTERNAL_REVIEW_SUMMARY.md`, and `backend/docs/POSTMATCH_SOP.md`.
+- Deleted stale experiment wrapper scripts: `backtest_full_pipeline.py`, `grid_search_score_params.py`, `collect_stacking_training_data.py`, and `_accuracy_wrapper.py`.
+- Added production traceability audits for report paths, archive manifest integrity, and operational entrypoint allowlists.
+- Archived legacy root-level reports under `reports/archive/legacy-root/` with a manifest instead of leaving old-format reports in the active report root.
 
 ### Verified
-- Backend test suite: `534 passed, 4 skipped`.
+- Backend test suite: `546 passed, 4 skipped`.
 - SQLite integrity: `PRAGMA integrity_check=ok`, `PRAGMA foreign_key_check=0`; `104` historical orphan rows are preserved in `data_integrity_quarantine`.
-- Evaluation registry repair smoke: `84` total samples, `29` strict, `46` diagnostic, `9` rejected; diagnostic samples are promotable only with real pre-kickoff evidence.
-- Default shadow experiment smoke is preflight-blocked because strict eligible sample count is `29 < 30`; forced diagnostic runs remain available without modifying production weights or artifacts.
+- Evaluation registry repair smoke: `87` total samples, `32` strict, `47` diagnostic, `8` rejected; diagnostic samples are promotable only with real pre-kickoff evidence.
+- Default shadow experiment preflight is ready at the engineering gate (`32 >= 30`), but production discussion still requires the `50+` strict sample target and supported paired evidence.
 - Creator-safe output audit scans `77` report files and passes while preserving market/odds evidence.
 - Low-threshold engineering smoke confirms dynamic candidates run end-to-end, but this is not production evidence.
-- Legacy wrappers for `backtest_full_pipeline.py`, `grid_search_score_params.py`, and `collect_stacking_training_data.py` execute through the unified runner.
+- Public output audit now uses the neutral `public_output_audit_core.py`; the old no-odds audit entrypoint was removed because market odds are valid research evidence.
+- Windows scheduled task registration is disabled until a new scheduler is designed around current explicit entrypoints.
 
 ## [4.8.0-alpha] — 2026-07-04
 
@@ -107,7 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `backend/app/core/conformal_core.py` — Pure math: nonconformity score + recency weight + prediction set.
 - `backend/app/services/stacking_meta_learner.py` — Service layer: fit/predict/save/load with sklearn compatibility.
 - `backend/app/services/conformal_predictor.py` — Calibration records store + lazy threshold computation.
-- `backend/scripts/collect_stacking_training_data.py` — Walk-forward backtest collecting all 7 component probabilities.
+- Legacy stacking-data collection entrypoint was later retired in V4.9; current accuracy experiments must use `backend/scripts/run_accuracy_experiments.py`.
 - 35 new tests (`test_stacking_features.py` + `test_conformal_core.py`), total now 287.
 
 ### Changed

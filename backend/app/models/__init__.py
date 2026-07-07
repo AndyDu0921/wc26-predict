@@ -24,9 +24,12 @@ from app.models.match_result_verification import MatchResultVerification
 from app.models.model_weight_proposal import ModelWeightProposal
 from app.models.accuracy_engine import (
     CandidatePrediction,
+    EvidenceItem,
     ExperimentRun,
     FeatureSnapshot,
+    InformationStateSignal,
     ModelChangeProposal,
+    SignalEvaluation,
 )
 
 __all__ = [
@@ -59,4 +62,7 @@ __all__ = [
     "ExperimentRun",
     "CandidatePrediction",
     "ModelChangeProposal",
+    "EvidenceItem",
+    "InformationStateSignal",
+    "SignalEvaluation",
 ]

@@ -5,9 +5,9 @@
 > 2026 世界杯概率预测研究系统。目标只有一个：在可审计、可复现、无数据泄漏的前提下，把预测做得更准。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-V4.9.0_alpha-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/phase-V4.9_Accuracy_Data_OS-orange?style=flat-square" alt="phase">
-  <img src="https://img.shields.io/badge/backend_tests-541_passed_4_skipped-success?style=flat-square" alt="backend tests">
+  <img src="https://img.shields.io/badge/version-V4.10.0_alpha-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/phase-V4.10_Information_State_Engine-orange?style=flat-square" alt="phase">
+  <img src="https://img.shields.io/badge/backend_tests-551_passed_4_skipped-success?style=flat-square" alt="backend tests">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/model_loading-disk_cache_only-brightgreen?style=flat-square" alt="model loading">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
@@ -19,17 +19,17 @@
 
 ### 当前结论
 
-WC26 Predict 现在处在 **V4.9 Accuracy Data OS** 阶段：先补齐可回放赛前数据、结构化情报、shadow 候选实验和 proposal-only 自进化，再讨论任何生产级模型替换。
+WC26 Predict 现在处在 **V4.10 Information State Engine** 阶段：把实时新闻、伤停、阵容、天气、赔率/市场共识升级为可追溯、可打分、可回放、可赛后验证的赛前信息资产。
 
-**V4.9.0-alpha（2026-07-05）当前状态：**
+**V4.10.0-alpha（2026-07-07）当前状态：**
 
-- **测试状态**：`541 passed, 4 skipped`（2026-07-06，本地后端全量测试）。
-- **代码版本**：`4.9.0-alpha`；当前代码中的 WC 权重标签为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；`model_change_proposals` 不会自动改生产权重。
-- **本地样本口径**：evaluation registry 显示 `87` 个 canonical result 样本，其中 `32` 个 strict eligible backtest 样本、`46` 个 diagnostic 样本、`9` 个 rejected 样本；任何准确率结论必须先说明采用哪个口径。
+- **测试状态**：`551 passed, 4 skipped`（最近一次本地后端全量测试；V4.10 信息状态引擎已纳入全量验证）。
+- **代码版本**：`4.10.0-alpha`；当前代码中的 WC 权重标签仍为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；V4.10 不改生产权重。
+- **本地样本口径**：evaluation registry 显示 `87` 个 canonical result 样本，其中 `32` 个 strict eligible backtest 样本、`47` 个 diagnostic 样本、`8` 个 rejected 样本，`source_result_conflicts=0`；任何准确率结论必须先说明采用哪个口径。
 - **预测流水线**：DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market（7 级顺序融合）+ 战意因子 + 平局下限 12% + 分歧自适应 + 动态市场提升 + DC半衰期学习(180d最优) + A3 Stacking元学习器(21维特征) + B1加权共形预测(α=0.1)
 - **复盘数据完整性**：当前 DB `postmatch_process_eval` 为 `20` 条、`match_team_statistics` 为 `34` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
 - **数据库完整性**：SQLite `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行保留在 `data_integrity_quarantine` 供审计。
-- **新功能**：V4.9 Accuracy Data OS：evaluation registry repair report v2、strict sample repair queue、accuracy todo backlog、候选实验 preflight、结构化赛前情报信号、FeatureSnapshot v2、候选模型家族标识、data-repair/calibrator/stacking proposal 类型、旧 backtest/grid/stacking 脚本统一 wrapper。
+- **新功能**：V4.10 Information State Engine：`evidence_items` 证据账本、`information_state_signals` 结构化信号、`signal_evaluations` 赛后信号归因、赛前信息状态审计、FeatureSnapshot V4.10 信息状态 payload。
 - **已知风险**：strict 样本仍只有 `32` 场，距离 `50+` 目标仍差 `18` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
 
 ### 系统目标
@@ -78,7 +78,7 @@ backend/app/services/weights.py          权重配置 (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           模型工件 (calibrator, ratings)
 backend/model_artifacts/dc_cache/        模型磁盘缓存 (DC + Enhancer)
 backend/scripts/             CLI 脚本 (预测、复盘、模拟、训练)
-backend/tests/               测试 (541 passed, 4 skipped)
+backend/tests/               测试 (551 passed, 4 skipped)
 backend/dashboard/           Streamlit 本地研究工作台 (9 页面)
 backend/data/                SQLite 数据库 + 数据文件
 reports/                     当前预测报告
@@ -146,13 +146,25 @@ cd backend
 
 # 1. 运行测试
 python -m pytest tests/ -q --tb=short
-# 预期: 541 passed, 4 skipped
+# 预期: 551 passed, 4 skipped
 
 # 2. 检查 API 健康状态
 python -c "from app.main import app; print('FastAPI app loaded OK')"
 
 # 3. 环境验证
 python scripts/verify_env.py
+```
+
+**生产追溯审计：**
+
+```bash
+cd backend
+python scripts/audit_entrypoints.py
+python scripts/audit_report_paths.py
+python scripts/audit_db_integrity.py
+python scripts/preflight_accuracy_experiments.py
+python scripts/audit_public_outputs.py
+python scripts/audit_match_information_state.py --match-id 199 --home "Portugal" --away "Spain"
 ```
 
 ### 常用命令
@@ -175,6 +187,19 @@ python scripts/auto_postmatch.py
 # 单场复盘审查
 python scripts/postmatch_review.py
 ```
+
+**当前入口白名单：**
+
+- 赛前预测：`backend/scripts/predict_match_full.py`
+- 赛后复盘：`backend/scripts/run_postmatch_complete.py`
+- 准确率实验：`backend/scripts/run_accuracy_experiments.py`
+- 实验预检：`backend/scripts/preflight_accuracy_experiments.py`
+- DB 审计：`backend/scripts/audit_db_integrity.py`
+- 公开输出审计：`backend/scripts/audit_public_outputs.py`
+- 信息证据采集：`backend/scripts/collect_match_evidence.py`
+- 信息信号抽取：`backend/scripts/extract_information_signals.py`
+- 信息信号评分：`backend/scripts/score_information_signals.py`
+- 信息状态审计：`backend/scripts/audit_match_information_state.py`
 
 **WC26 赛程与模拟：**
 
@@ -259,10 +284,11 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### 版本历史
 
-当前主版本：**V4.9.0-alpha**
+当前主版本：**V4.10.0-alpha**
 
 | 版本 | 日期 | 关键变更 |
 |------|------|---------|
+| **V4.10.0-alpha** | 2026-07-07 | Real-time information state engine: evidence ledger + structured signal scoring + signal attribution + information-state preflight |
 | **V4.9.0-alpha** | 2026-07-05 | Accuracy Data OS: repair report v2 + accuracy todo backlog + experiment preflight + structured pre-match signals + FeatureSnapshot v2 + proposal-only self-evolution |
 | **V4.8.0-alpha** | 2026-07-04 | Accuracy Engine: registry v2 + PredictionKernel + shadow candidate experiments + generic proposal ledger |
 | **V4.7.0-alpha** | 2026-07-03 | 三源比分矩阵融合 + 学习引擎比分归因 + BacktestGate proposal-only 权重候选 + snapshot 可回放元数据 + stacking 安全门 |
@@ -296,17 +322,17 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### Current Status
 
-WC26 Predict is in the **V4.9 Accuracy Data OS** phase: improve replayable pre-match data, structured information-state signals, shadow candidate experiments, and proposal-only self-evolution before any production model replacement.
+WC26 Predict is in the **V4.10 Information State Engine** phase: turn live news, injuries, lineups, weather, odds, and market consensus into traceable, scored, replayable pre-match evidence.
 
-**V4.9.0-alpha (2026-07-05) State:**
+**V4.10.0-alpha (2026-07-07) State:**
 
-- **Tests**: `541 passed, 4 skipped` (local backend full suite, 2026-07-06).
-- **Code version**: `4.9.0-alpha`; current WC weight labels are group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`; `model_change_proposals` never auto-apply production weights.
-- **Local sample registry**: `87` canonical result samples, `32` strict eligible backtest samples, `46` diagnostic samples, and `9` rejected samples. Accuracy claims must state the sample definition.
+- **Tests**: `551 passed, 4 skipped` on the latest full local suite; V4.10 information-state engine tests are included in full validation.
+- **Code version**: `4.10.0-alpha`; current WC weight labels remain group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`; V4.10 does not auto-apply production weights.
+- **Local sample registry**: `87` canonical result samples, `32` strict eligible backtest samples, `47` diagnostic samples, `8` rejected samples, and `source_result_conflicts=0`. Accuracy claims must state the sample definition.
 - **Fusion chain**: DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market (7-stage sequential fusion) + motivation factor + 12% draw floor + adaptive divergence guard + dynamic market boost + DC half-life learning (180d optimal) + A3 Stacking meta-learner (21-dim features) + B1 Weighted Conformal Prediction (α=0.1)
 - **Post-match data completeness**: local DB has `20` `postmatch_process_eval` rows and `34` `match_team_statistics` rows. Strict backtests must not mix all schedule-finished rows without registry filtering.
 - **DB integrity**: SQLite `PRAGMA integrity_check=ok` and `PRAGMA foreign_key_check=0`; historical orphan rows are preserved in `data_integrity_quarantine` for auditability.
-- **New**: V4.9 Accuracy Data OS: evaluation registry repair report v2, strict sample repair queue, accuracy todo backlog, candidate experiment preflight, structured pre-match information-state signals, FeatureSnapshot v2, candidate family metadata, data-repair/calibrator/stacking proposal types, and legacy experiment wrappers.
+- **New**: V4.10 Information State Engine: evidence ledger, structured shadow signals, signal scoring, post-match signal attribution, and information-state audit payloads in prediction feature snapshots.
 - **Known risk**: strict evidence is still limited to `32` samples, `18` below the `50+` target; dynamic candidates remain shadow-only until paired proper-scoring gates pass.
 - **Self-evolution**: proposal-only. The system can write `model_change_proposals`, but no proposal is auto-applied to production weights, calibrators, or artifacts.
 - **Known issues**: diagnostic/rejected samples are mostly missing pre-match snapshots, timestamp evidence, or current probabilities; data repair has higher priority than adding more production models.
@@ -357,7 +383,7 @@ backend/app/services/weights.py          Weight config (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           Model artifacts (calibrator, ratings)
 backend/model_artifacts/dc_cache/        Disk-cached models (DC + Enhancer)
 backend/scripts/             CLI scripts (predict, review, simulate, train)
-backend/tests/               Tests (541 passed, 4 skipped)
+backend/tests/               Tests (551 passed, 4 skipped)
 backend/dashboard/           Streamlit research dashboard (9 pages)
 backend/data/                SQLite database + data files
 reports/                     Current prediction reports
@@ -425,13 +451,25 @@ cd backend
 
 # 1. Run tests
 python -m pytest tests/ -q --tb=short
-# Expected: 541 passed, 4 skipped
+# Expected: 551 passed, 4 skipped
 
 # 2. Check API health
 python -c "from app.main import app; print('FastAPI app loaded OK')"
 
 # 3. Environment check
 python scripts/verify_env.py
+```
+
+**Production traceability audit:**
+
+```bash
+cd backend
+python scripts/audit_entrypoints.py
+python scripts/audit_report_paths.py
+python scripts/audit_db_integrity.py
+python scripts/preflight_accuracy_experiments.py
+python scripts/audit_public_outputs.py
+python scripts/audit_match_information_state.py --match-id 199 --home "Portugal" --away "Spain"
 ```
 
 ### Common Commands
@@ -454,6 +492,19 @@ python scripts/auto_postmatch.py
 # Single match review
 python scripts/postmatch_review.py
 ```
+
+**Current entrypoint allowlist:**
+
+- Pre-match prediction: `backend/scripts/predict_match_full.py`
+- Post-match review: `backend/scripts/run_postmatch_complete.py`
+- Accuracy experiments: `backend/scripts/run_accuracy_experiments.py`
+- Experiment preflight: `backend/scripts/preflight_accuracy_experiments.py`
+- DB audit: `backend/scripts/audit_db_integrity.py`
+- Public output audit: `backend/scripts/audit_public_outputs.py`
+- Evidence collection: `backend/scripts/collect_match_evidence.py`
+- Signal extraction: `backend/scripts/extract_information_signals.py`
+- Signal scoring: `backend/scripts/score_information_signals.py`
+- Information-state audit: `backend/scripts/audit_match_information_state.py`
 
 **WC26 Schedule & Simulation:**
 
@@ -535,10 +586,11 @@ See [`docs/COMPLIANCE_AND_OUTPUT_POLICY.md`](docs/COMPLIANCE_AND_OUTPUT_POLICY.m
 
 ### Version History
 
-Current version: **V4.9.0-alpha**
+Current version: **V4.10.0-alpha**
 
 | Version | Date | Key Changes |
 |------|------|---------|
+| **V4.10.0-alpha** | 2026-07-07 | Real-time information state engine: evidence ledger + structured signal scoring + signal attribution + information-state preflight |
 | **V4.9.0-alpha** | 2026-07-05 | Accuracy Data OS: repair report v2 + accuracy todo backlog + experiment preflight + structured pre-match signals + FeatureSnapshot v2 + proposal-only self-evolution |
 | **V4.8.0-alpha** | 2026-07-04 | Accuracy Engine: registry v2 + PredictionKernel + shadow candidate experiments + generic proposal ledger |
 | **V4.7.0-alpha** | 2026-07-03 | Score-matrix fusion + score-level learning attribution + BacktestGate proposal-only weight candidates + replayable snapshot metadata + stacking safety gates |

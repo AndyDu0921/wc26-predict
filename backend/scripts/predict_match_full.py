@@ -27,6 +27,13 @@ from app.core.verification_gates import (
     format_gate_results,
     all_errors_passed,
 )
+from app.services.evaluation_registry import DEFAULT_DB_PATH
+from app.services.information_state_engine import (
+    audit_match_information_state,
+    collect_match_evidence,
+    extract_information_signals,
+    score_information_signals,
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -134,6 +141,48 @@ def main() -> int:
         print(format_gate_results(preflight_warnings, "Pre-flight Gate"), file=sys.stderr)
         # Non-fatal: continue but with degraded confidence
 
+    information_state_audit = None
+    try:
+        if not args.no_save:
+            collect_match_evidence(
+                DEFAULT_DB_PATH,
+                match_id=args.match_id or None,
+                home_team=args.home,
+                away_team=args.away,
+            )
+            extract_information_signals(
+                DEFAULT_DB_PATH,
+                match_id=args.match_id or None,
+                home_team=args.home,
+                away_team=args.away,
+                kickoff_at=args.match_date,
+                persist=True,
+            )
+            score_information_signals(
+                DEFAULT_DB_PATH,
+                match_id=args.match_id or None,
+                home_team=args.home,
+                away_team=args.away,
+            )
+        information_state_audit = audit_match_information_state(
+            DEFAULT_DB_PATH,
+            match_id=args.match_id or None,
+            home_team=args.home,
+            away_team=args.away,
+            kickoff_at=args.match_date,
+        )
+        missing = information_state_audit.get("missing", [])
+        print(
+            "[Information State] "
+            f"quality={information_state_audit.get('quality_score', 0):.2f} "
+            f"evidence={information_state_audit.get('evidence_count', 0)} "
+            f"signals={information_state_audit.get('signal_count', 0)} "
+            f"missing={','.join(missing) if missing else 'none'}",
+            file=sys.stderr,
+        )
+    except Exception as exc:
+        print(f"[Information State] audit failed: {exc}", file=sys.stderr)
+
     pipeline = PredictionPipeline.from_artifacts(mode=args.mode)
     result = pipeline.predict_sync(
         args.home,
@@ -149,6 +198,8 @@ def main() -> int:
         enable_weather=not args.no_weather,
     )
     payload = result.to_dict()
+    if information_state_audit is not None:
+        payload["information_state_audit"] = information_state_audit
 
     # ── Post-flight gate ───────────────────────────────────────────
     probs_for_gate = payload.get("prediction", {}) if isinstance(payload, dict) else {}

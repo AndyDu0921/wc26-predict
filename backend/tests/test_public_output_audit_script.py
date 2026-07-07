@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from scripts.audit_public_outputs import audit_paths as audit_paths_alias
-from scripts.audit_public_outputs_no_odds import audit_paths
+from scripts.public_output_audit_core import audit_paths
 
 
 def test_audit_paths_passes_clean_file(tmp_path: Path):
@@ -30,7 +30,7 @@ def test_audit_paths_allows_market_odds_data(tmp_path: Path):
     assert result["findings"] == []
 
 
-def test_new_audit_entrypoint_is_backward_compatible(tmp_path: Path):
+def test_new_audit_entrypoint_uses_shared_core(tmp_path: Path):
     report = tmp_path / "market.md"
     report.write_text("Market odds and bookmaker consensus are research evidence.", encoding="utf-8")
 

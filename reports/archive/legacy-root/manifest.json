@@ -1,0 +1,115 @@
+{
+  "schema_version": "report_archive_manifest.v1",
+  "archive_dir": "reports/archive/legacy-root",
+  "file_count": 18,
+  "files": [
+    {
+      "path": "reports/archive/legacy-root/ARG-vs-CPV-R32-2026-07-03.md",
+      "name": "ARG-vs-CPV-R32-2026-07-03.md",
+      "size": 18021,
+      "sha256": "d2cea7363db86f846a01f8328163a91fe26d33c95c817716245d79c65e9aa70f"
+    },
+    {
+      "path": "reports/archive/legacy-root/AUS-vs-EGY-R32-2026-07-03.md",
+      "name": "AUS-vs-EGY-R32-2026-07-03.md",
+      "size": 16695,
+      "sha256": "fc3d366eeaf046acb935b897af1b1d39a7b614e783049a159b1c99661a80e1ee"
+    },
+    {
+      "path": "reports/archive/legacy-root/BEL-vs-SEN-R32-2026-07-01.md",
+      "name": "BEL-vs-SEN-R32-2026-07-01.md",
+      "size": 7537,
+      "sha256": "c29fb2c70e3c649ec3d2e7e9f6c119d3f28cb5d6d50274c21720d5123f938706"
+    },
+    {
+      "path": "reports/archive/legacy-root/BEL-vs-SEN-R32-2026-07-02.md",
+      "name": "BEL-vs-SEN-R32-2026-07-02.md",
+      "size": 13410,
+      "sha256": "5d45709561c012d10cc8abefb2b9ea657d21155c633c93aebe6596cd2430cad2"
+    },
+    {
+      "path": "reports/archive/legacy-root/CAN-MAR-prediction-2026-07-04.md",
+      "name": "CAN-MAR-prediction-2026-07-04.md",
+      "size": 11577,
+      "sha256": "4d81487f965cc20f2052843b25b15de8f5f9b9de33db11f56487c3c74ea79dc0"
+    },
+    {
+      "path": "reports/archive/legacy-root/COL-vs-GHA-R32-2026-07-03.md",
+      "name": "COL-vs-GHA-R32-2026-07-03.md",
+      "size": 19608,
+      "sha256": "9b0779cab6c24a025dd20a1ef1cfcfe942ae025f224b664d2cc1fcc676adf4dc"
+    },
+    {
+      "path": "reports/archive/legacy-root/ENG-vs-COD-R32-2026-07-01.md",
+      "name": "ENG-vs-COD-R32-2026-07-01.md",
+      "size": 7437,
+      "sha256": "15a4f8249024df08a05071291ea448a9aa71841e2901a199ede55ebeb4cec7e0"
+    },
+    {
+      "path": "reports/archive/legacy-root/ENG-vs-COD-R32-2026-07-02.md",
+      "name": "ENG-vs-COD-R32-2026-07-02.md",
+      "size": 11764,
+      "sha256": "1af30bf6531f669c8ee4e2f1e5db86c053e69a557f10c367dbbe8e6b08a1bc8d"
+    },
+    {
+      "path": "reports/archive/legacy-root/ESP-vs-AUT-R32-2026-07-03-postmatch.md",
+      "name": "ESP-vs-AUT-R32-2026-07-03-postmatch.md",
+      "size": 9966,
+      "sha256": "345d985937dfca006e586d26525bca0334b8486f526e6f4161a2e998c2fe3b1c"
+    },
+    {
+      "path": "reports/archive/legacy-root/ESP-vs-AUT-R32-2026-07-03.md",
+      "name": "ESP-vs-AUT-R32-2026-07-03.md",
+      "size": 16282,
+      "sha256": "753281c5111c93d820bbb11cd54dc31ec09d22153a3032714f7e0b70f0e84117"
+    },
+    {
+      "path": "reports/archive/legacy-root/PAR-FRA-postmatch-2026-07-05.md",
+      "name": "PAR-FRA-postmatch-2026-07-05.md",
+      "size": 9095,
+      "sha256": "85ae7b9cfb2b142d9a50ee10b1299606b488dd96f91f3edb7bf6ab5d0427947c"
+    },
+    {
+      "path": "reports/archive/legacy-root/PAR-FRA-prediction-2026-07-04.md",
+      "name": "PAR-FRA-prediction-2026-07-04.md",
+      "size": 14951,
+      "sha256": "f0373433fad47667b6704081179679c23e95f9bb15be1da1e26582ca7876bfeb"
+    },
+    {
+      "path": "reports/archive/legacy-root/POR-vs-CRO-R32-2026-07-03-postmatch.md",
+      "name": "POR-vs-CRO-R32-2026-07-03-postmatch.md",
+      "size": 9411,
+      "sha256": "8594fb2ccb0855838535de5ffe4d75e69bbc75354b9da37c90ba6d41e85a67f2"
+    },
+    {
+      "path": "reports/archive/legacy-root/POR-vs-CRO-R32-2026-07-03.md",
+      "name": "POR-vs-CRO-R32-2026-07-03.md",
+      "size": 16201,
+      "sha256": "dc4a98ea8a72ebaa77bdaf2b2bfd0c196e94a5060bcf898fff4dda16f9b0f844"
+    },
+    {
+      "path": "reports/archive/legacy-root/SUI-vs-ALG-R32-2026-07-03-postmatch.md",
+      "name": "SUI-vs-ALG-R32-2026-07-03-postmatch.md",
+      "size": 8161,
+      "sha256": "f3cb0990219437fdefd11e1089eb37dcd8445b630ab62c2fc02043ea44074ff5"
+    },
+    {
+      "path": "reports/archive/legacy-root/SUI-vs-ALG-R32-2026-07-03.md",
+      "name": "SUI-vs-ALG-R32-2026-07-03.md",
+      "size": 16712,
+      "sha256": "675aff01b276f2303a57be4ee3aa6542b77859058d4893eab7de461df5c4fe53"
+    },
+    {
+      "path": "reports/archive/legacy-root/USA-vs-BIH-R32-2026-07-02.md",
+      "name": "USA-vs-BIH-R32-2026-07-02.md",
+      "size": 10346,
+      "sha256": "5878d28a0ed4deb7477cebefb809513fa4e6c990fefbc96e1abbef1452871966"
+    },
+    {
+      "path": "reports/archive/legacy-root/公众号文章_2026-07-03_V4.7.0.md",
+      "name": "公众号文章_2026-07-03_V4.7.0.md",
+      "size": 31292,
+      "sha256": "238f62ddf22180b511d0c84954ed910f1d073fdcea18121c3205647abd727e2c"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 # Magic Number 中央注册表
 
 > **维护规则**: 每次修改常量 → 必须更新此表。每次新增常量 → 必须在此表注册。
-> **最后更新**: 2026-07-06
-> **对应版本**: V4.9.0-alpha
+> **最后更新**: 2026-07-07
+> **对应版本**: V4.10.0-alpha
 
 本文档是 WC26 Predict 系统中所有硬编码常量的单一真相来源。每个值附设定依据、历史来源和修改记录。
 
@@ -303,6 +303,16 @@
 | `STRICT_SAMPLE_TARGET` | 50 | `accuracy_todo_backlog.py` | 50+ strict 样本是下一阶段讨论候选模型稳定性的最低数据资产目标 | V4.9.0-alpha |
 | `MIN_MARKET_BOOKMAKERS` | 3 | `accuracy_todo_backlog.py` | 市场赔率是关键预测信号；TODO backlog 用 3+ bookmaker 共识作为覆盖率改善目标 | V4.9.0-alpha |
 | `PIPELINE_LINE_TARGET` | 500 | `accuracy_todo_backlog.py` | `prediction_pipeline.py` 超过该规模时继续列为 P2 拆分技术债 | V4.9.0-alpha |
+
+### Information State Engine (`services/information_state_engine.py`)
+
+| 常量 | 值 | 位置 | 设定依据 | 引入版本 |
+|:---|:---|:---|:---|:---|
+| `LOW_CONFIDENCE_THRESHOLD` | 0.45 | 信息状态信号评分 | 低于该置信度的新闻/情报信号只保留为 rejected/shadow 证据，不进入 active shadow attribution | V4.10.0-alpha |
+| Injury / suspension base magnitude | 0.12 | `SIGNAL_BASE_MAGNITUDE` | 核心球员缺阵类信号初始上限；只作 shadow adjustment，不改生产概率 | V4.10.0-alpha |
+| Return base magnitude | 0.08 | `SIGNAL_BASE_MAGNITUDE` | 复出信号初始上限；需赛后 signal attribution 验证有效性 | V4.10.0-alpha |
+| Market move base magnitude | 0.10 | `SIGNAL_BASE_MAGNITUDE` | 市场赔率/多 bookmaker 共识是核心外部信号；V4.10 仅登记为可审计 shadow signal | V4.10.0-alpha |
+| Weather base magnitude | 0.03 | `SIGNAL_BASE_MAGNITUDE` | 极端天气条件触发的保守 shadow 影响 | V4.10.0-alpha |
 
 ### Model Change Proposals (`services/model_change_proposals.py`)
 

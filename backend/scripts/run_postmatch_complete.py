@@ -43,6 +43,8 @@ from app.database import AsyncSessionLocal
 from app.models.prediction_snapshot import PredictionSnapshot
 from app.models.prediction_learning_log import PredictionLearningLog
 from app.services.learning_engine import get_learning_engine
+from app.services.evaluation_registry import DEFAULT_DB_PATH
+from app.services.information_state_engine import evaluate_match_signals
 from app.services.result_verification import (
     get_verification_service,
     SourceTier,
@@ -807,9 +809,51 @@ async def run_complete_postmatch(
             match_date_str = report_date
 
         # ── 7a. DB commit ──
+        signal_eval_summary = {
+            "signals_evaluated": 0,
+            "evaluations": [],
+            "persisted": False,
+        }
         if not dry_run:
             await db.commit()
             print(f"  ✅ 7a: DB committed")
+            try:
+                signal_eval_summary = evaluate_match_signals(
+                    DEFAULT_DB_PATH,
+                    match_id=match_uuid,
+                    home_team=home_team,
+                    away_team=away_team,
+                    home_score=home_score,
+                    away_score=away_score,
+                    prediction_run_id=None,
+                    dry_run=False,
+                )
+                print(
+                    "  ✅ Signal attribution: "
+                    f"{signal_eval_summary.get('signals_evaluated', 0)} signals evaluated"
+                )
+            except Exception as exc:
+                signal_eval_summary = {
+                    "signals_evaluated": 0,
+                    "evaluations": [],
+                    "persisted": False,
+                    "error": str(exc),
+                }
+                print(f"  ⚠ Signal attribution skipped: {exc}")
+        else:
+            try:
+                signal_eval_summary = evaluate_match_signals(
+                    DEFAULT_DB_PATH,
+                    match_id=match_uuid,
+                    home_team=home_team,
+                    away_team=away_team,
+                    home_score=home_score,
+                    away_score=away_score,
+                    prediction_run_id=None,
+                    dry_run=True,
+                )
+            except Exception:
+                signal_eval_summary = {"signals_evaluated": 0, "evaluations": [], "persisted": False}
 
         # ── 7b. Write postmatch report to reports/postmatch/ ──
         reports_dir = BACKEND_DIR.parent / "reports" / "postmatch"
@@ -861,6 +905,29 @@ async def run_complete_postmatch(
 | Elo Marginal | {_fmt_metric(learning_log.elo_marginal, 4)} |
 """
 
+        signal_eval_rows = signal_eval_summary.get("evaluations") or []
+        if signal_eval_rows:
+            signal_eval_lines = "\n".join(
+                f"| {row.get('metrics', {}).get('team', 'N/A')} | "
+                f"{row.get('metrics', {}).get('signal_type', 'N/A')} | "
+                f"{row.get('metrics', {}).get('direction', 'N/A')} | "
+                f"{row.get('verdict', 'N/A')} | "
+                f"{_fmt_metric(row.get('contribution_score'), 4)} |"
+                for row in signal_eval_rows
+            )
+        else:
+            signal_eval_lines = "| N/A | N/A | N/A | no_signals | 0.0000 |"
+        signal_section = f"""
+## 🧠 Information-State Signal Attribution
+
+| Team | Signal | Direction | Verdict | Contribution |
+|:---|:---|:---:|:---:|---:|
+{signal_eval_lines}
+
+**Signal Evaluations**: {signal_eval_summary.get('signals_evaluated', 0)}
+**Policy**: proposal-only; no automatic production weight change.
+"""
+
         # Build full report
         report_md = f"""# 🏆 Post-Match Review: {home_team} vs {away_team}
 
@@ -901,6 +968,7 @@ async def run_complete_postmatch(
 **Stats Completeness**: {'Full' if not missing_stats else f'Partial — missing: {", ".join(missing_stats)}'}
 **Learning Data Quality**: {learning_weight_detail.get('learning_data_quality') if learning_weight_detail.get('learning_data_quality') is not None else 'N/A'}
 {learning_section}
+{signal_section}
 ---
 
 *Generated: {datetime.now(timezone.utc).isoformat()} | Pipeline: run_postmatch_complete.py*
@@ -954,6 +1022,11 @@ metadata:
 ## Component Review
 
 {component_memory}
+
+## Information-State Signal Attribution
+
+- **Signals evaluated**: {signal_eval_summary.get('signals_evaluated', 0)}
+- **Policy**: proposal-only; no automatic weight change.
 """
 
         if not dry_run:
@@ -978,6 +1051,7 @@ metadata:
             "data_completeness": "full" if not missing_stats else "partial",
             "report_file": str(report_path) if not dry_run else None,
             "memory_file": str(memory_path) if not dry_run else None,
+            "signal_evaluations": signal_eval_summary.get("signals_evaluated", 0),
         }
 
         print(f"\n{'='*70}")

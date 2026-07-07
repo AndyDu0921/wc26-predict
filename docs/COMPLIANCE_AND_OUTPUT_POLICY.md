@@ -117,6 +117,19 @@ Forbidden uses:
 
 ---
 
+## 4.1 Information-state evidence policy
+
+News, injuries, lineups, weather, travel context, and market odds must be stored
+as traceable evidence before they influence analysis. V4.10 evidence records must
+carry a source URL or internal snapshot URI, an availability time, and a
+reliability score.
+
+LLM systems may extract and classify signals from evidence. They must not
+directly create final match probabilities, betting calls to action, or automatic
+production-weight changes.
+
+---
+
 ## 5. Safe report language
 
 Recommended wording:
@@ -145,7 +158,7 @@ cd backend
 python scripts/audit_public_outputs.py
 ```
 
-`scripts/audit_public_outputs_no_odds.py` is kept as a backward-compatible alias. In V4.9 both scripts check unsafe betting-advice language; they do not ban market odds or bookmaker consensus evidence.
+The audit allows market odds and bookmaker consensus as research evidence. It only blocks unsafe betting-advice or guaranteed-outcome language.
 
 Also manually inspect:
 

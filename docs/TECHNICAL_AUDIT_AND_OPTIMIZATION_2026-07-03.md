@@ -1,8 +1,8 @@
 # WC26 Predict 技术审计与优化记录
 
 日期: 2026-07-03  
-更新: 2026-07-06（V4.9 Accuracy Data OS + 197-200 闭环修复后事实校准）
-范围: 后端预测链路、复盘学习、权重自进化、评估样本登记、候选实验框架、市场数据链路、技术债清理。静态前端暂不纳入本次优化范围。
+更新: 2026-07-07（V4.10 Information State Engine 落地后事实校准）
+范围: 后端预测链路、复盘学习、权重自进化、评估样本登记、候选实验框架、市场数据链路、实时信息状态引擎、技术债清理。静态前端暂不纳入本次优化范围。
 
 ## 结论
 
@@ -10,7 +10,7 @@
 2. 新模型不应直接上线。动态双变量 Poisson / 动态贝叶斯类模型值得进入候选池，但必须先通过成对 walk-forward 回测与 `BacktestGate`。
 3. 复盘系统可以进化，但前提是只让 verified / full-tier 样本驱动参数候选，并且候选必须持久化、可审计、不过闸不生效。
 4. 市场赔率/多博彩商共识是重要预测信号，不再视为污染；只禁止投注建议、保证收益、带单等诱导性语言。
-5. V4.9-alpha 后续修复确认：本地 DB 已升级到 Alembic `f6a7b8c9d0e1`；`model_weight_proposals`、学习日志比分字段、Accuracy Engine 审计表、通用 `model_change_proposals`、结构化情报 FeatureSnapshot v2、`prediction_snapshots` score matrix 审计字段均已落库或可物化。
+5. V4.10-alpha 后续修复确认：本地 DB 已升级到 Alembic `g7b8c9d0e1f2`；`model_weight_proposals`、学习日志比分字段、Accuracy Engine 审计表、通用 `model_change_proposals`、结构化情报 FeatureSnapshot v2、`prediction_snapshots` score matrix 审计字段、V4.10 evidence/signal/evaluation 表均已落库或可物化。
 
 ## 已落地改动
 
@@ -20,7 +20,7 @@
 - 快照持久化增加历史 `weight_config`、`pre_market_probs`、`market_weight_used`、`negbin_weight`、`calibration_applied`。
 - 新增 `model_weight_proposals` 审计表、ORM model、Alembic migration 和 `BacktestGate`。权重候选只记录为 proposal，不会自动写生产配置。
 - The Odds API / MarketCalibrator 改为多 bookmaker 中位数共识，不再只取第一家或单一 bookmaker。
-- 更新输出审计脚本：当前推荐入口为 `backend/scripts/audit_public_outputs.py`；旧 `audit_public_outputs_no_odds.py` 仅作为兼容入口保留。V4.9 起只检查投注建议/保证性语言，不禁止市场赔率或 bookmaker 证据。
+- 更新输出审计脚本：当前推荐入口为 `backend/scripts/audit_public_outputs.py`，共享核心为 `backend/scripts/public_output_audit_core.py`。V4.9 起只检查投注建议/保证性语言，不禁止市场赔率或 bookmaker 证据。
 - 新增 evaluation registry：显式区分 `matches + match_results`、`wc26_schedule`、赛前快照、预测快照、过程评估；只有无结果冲突、可验证 kickoff、且有赛前概率快照的样本才能进入严格回测。
 - 新增 shadow candidate experiment runner：输出 `experiment_id`、`sample_registry_hash`、paired metrics、group metrics、leakage checks 与 gate decision；不写生产权重，不覆盖 artifacts。
 - 修复过程评估假信号：没有赛前 expected shots 时，射门量 delta 留空，不再用实际射门减实际射门制造 0 误差。
@@ -40,20 +40,28 @@
 - V4.9 新增 structured information-state signals：伤停/停赛等本地记录必须带 `available_at`、`published_at`、`confidence`、`source`，未来信号不得进入 strict features。
 - V4.9 扩展 FeatureSnapshot v2：加入结构化情报、player availability shadow、schedule context 和数据质量摘要；当前 `feature_snapshots` 表保留 93 条历史审计记录。
 - V4.9 扩展 self-evolution proposal ledger：新增 `data-repair` proposal 类型，并区分 `calibrator`、`stacking` 与普通 `model` 候选。
-- V4.9 清理旧实验入口：`backtest_full_pipeline.py`、`grid_search_score_params.py`、`collect_stacking_training_data.py` 变成统一 experiment runner wrapper，不再覆盖旧 artifact。
+- V4.9 清理旧实验入口：删除旧实验 wrapper；当前只保留 `run_accuracy_experiments.py` 作为候选实验入口。
+- V4.9 新增生产追溯审计：`audit_report_paths.py` 检查 DB 报告路径、archive manifest 和旧根目录报告；`audit_entrypoints.py` 固化当前操作入口白名单。
+- V4.10 新增 Information State Engine：`evidence_items` 统一保存新闻、伤停、阵容、天气、赔率/市场共识和赛程上下文证据；`information_state_signals` 保存结构化 shadow 信号；`signal_evaluations` 保存赛后信号级归因。
+- V4.10 新增信息状态 CLI：`collect_match_evidence.py`、`extract_information_signals.py`、`score_information_signals.py`、`audit_match_information_state.py`；预测入口会自动执行信息状态采集/抽取/评分/审计的本地闭环。
+- V4.10 扩展 `prediction_runs.input_feature_snapshot` 和 `feature_snapshots.payload`：新增 information-state audit、missing-data gate、shadow signals 和 strict-readiness 诊断；不改变生产概率和权重。
+- V4.9 隔离旧根目录报告到 `reports/archive/legacy-root/`，并生成 manifest；默认公开输出审计不扫描 archive。
 - V4.9 新增数据库完整性审计/修复：`audit_db_integrity.py` 默认只读；apply 模式会先备份 DB，精确修复 team aliases，空 nullable FK 归一为 NULL，其余孤儿行隔离到 `data_integrity_quarantine`，不伪造父记录。
 - V4.9 删除确定过时的长文档：`docs/PRD_ARCHITECTURE_COMPLETE.md`、`docs/EXTERNAL_REVIEW_SUMMARY.md`、`backend/docs/POSTMATCH_SOP.md`，避免 V3/V4.5/V4.8 历史事实污染当前判断。
 
 ## 验证结果
 
-- 后端全量测试: `541 passed, 4 skipped`。
-- Evaluation registry v2 dry-run: `87` total samples, `87` canonical result rows, `62` match-result rows, `85` schedule-finished rows, `32` strict eligible samples, `46` diagnostic samples, `9` rejected samples, `22` registry process-eval matches, `1` source-result conflict.
+- 后端全量测试: `551 passed, 4 skipped`。
+- Evaluation registry v2 dry-run: `87` total samples, `87` canonical result rows, `62` match-result rows, `85` schedule-finished rows, `32` strict eligible samples, `47` diagnostic samples, `8` rejected samples, `22` registry process-eval matches, `0` source-result conflicts.
 - Evaluation registry repair smoke: 非 strict 样本只有在真实赛前证据补齐后才可提升 strict；禁止 placeholder probability、赛后补预测、无时间戳信号进入 strict。
 - Feature snapshot materialization: `feature_snapshots` 表当前 `93` 条历史审计记录；payload 抽查无 actual-goal labels。
 - Candidate experiment smoke: 默认 `min_sample_count=30` 时 preflight 当前 ready（strict=32），但仍低于 50+ 目标；shadow candidate 的 CI 仍跨 0 时不得上线。
 - Proposal ledger smoke: `model_change_proposals` 当前 `30` 条，权重、数据修复、feature-rule、calibrator、stacking proposal 均保持 proposal-only。
-- Alembic 当前本地 head: `f6a7b8c9d0e1`
+- Alembic 当前本地 head: `g7b8c9d0e1f2`
 - DB integrity: `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行 `104` 条已隔离到 `data_integrity_quarantine` 并保留备份。
+- Report path audit: `prediction_snapshots.report_path` checked `5` rows, missing `0`, legacy root `0`, archive manifest `18` files, root report files `0`。
+- Entrypoint audit: current operation allowlist passes; Windows task registration script is disabled because the previous scheduler helper no longer exists。
+- V4.10 information-state CLI smoke: collect → extract → score → audit 在临时 DB 中通过；真实 DB 中 smoke 测试数据已清理，三张 V4.10 新表保持生产洁净。
 - 代码编译检查: 核心变更文件 `py_compile` 通过。
 
 ## 研究依据

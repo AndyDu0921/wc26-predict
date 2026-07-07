@@ -10,7 +10,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from scripts.audit_public_outputs_no_odds import audit_paths, iter_public_files, main
+from scripts.public_output_audit_core import audit_paths, iter_public_files, main
 
 
 __all__ = ["audit_paths", "iter_public_files", "main"]
