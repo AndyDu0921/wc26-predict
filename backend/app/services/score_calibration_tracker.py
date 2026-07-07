@@ -92,7 +92,7 @@ def ensure_tables(db_path: str | Path | None = None) -> bool:
         logger.warning("DB not found at %s — cannot create score calibration tables", path)
         return False
     try:
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(str(path), timeout=0.1)
         conn.executescript(DDL)
         # Seed drift buckets if they don't exist yet
         for bucket_name, _, _ in BUCKETS:
@@ -103,6 +103,12 @@ def ensure_tables(db_path: str | Path | None = None) -> bool:
         conn.commit()
         conn.close()
         return True
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc).lower():
+            logger.debug("Score calibration table creation skipped: database is locked")
+            return False
+        logger.warning("Failed to create score calibration tables", exc_info=True)
+        return False
     except Exception:
         logger.warning("Failed to create score calibration tables", exc_info=True)
         return False
@@ -207,10 +213,11 @@ def log_score_calibration(
         return {}
 
     # Ensure tables exist
-    ensure_tables(path)
+    if not ensure_tables(path):
+        return {}
 
     result: dict[str, Any] = {}
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=0.1)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
 
@@ -238,6 +245,13 @@ def log_score_calibration(
         _rebuild_drift_from_log(conn)
 
         conn.commit()
+    except sqlite3.OperationalError as exc:
+        conn.rollback()
+        if "locked" in str(exc).lower():
+            logger.debug("Score calibration log skipped for match %s: database is locked", match_id)
+            return result
+        logger.warning("Failed to log score calibration for match %s", match_id, exc_info=True)
+        return result
     except Exception:
         conn.rollback()
         logger.warning("Failed to log score calibration for match %s", match_id, exc_info=True)

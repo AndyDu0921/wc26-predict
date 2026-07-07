@@ -1,9 +1,8 @@
-"""backtest_helpers.py — Shared walk-forward Elo / Pi helpers for backtest scripts.
+"""Shared walk-forward Elo / Pi helpers for historical backtest scripts.
 
-Both ``backtest_full_pipeline.py`` and ``collect_stacking_training_data.py``
-need incremental (no-lookahead) Elo and Pi ratings built from pre-cutoff
-match history.  This module provides the canonical implementations so they
-don't diverge.
+The current V4.9 accuracy path uses ``run_accuracy_experiments.py`` and the
+evaluation registry.  These helpers remain for historical reproduction and
+manual diagnostics that need incremental no-lookahead Elo/Pi ratings.
 
 All functions are deterministic and IO-free (except the shared data-loaders
 that read from SQLite via a caller-supplied path).

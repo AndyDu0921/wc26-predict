@@ -125,6 +125,44 @@ class TestProcessEvaluator:
         # Dominance should still work
         assert result.dominance_index_home is not None
 
+    def test_shot_volume_delta_requires_predicted_shots(self):
+        home_stats = {"xg": 1.0, "shots_total": 15, "goals": 1}
+        away_stats = {"xg": 0.8, "shots_total": 7, "goals": 0}
+
+        result = evaluate_process(
+            match_id=185,
+            predicted_home_xg=1.1,
+            predicted_away_xg=0.7,
+            home_stats=home_stats,
+            away_stats=away_stats,
+            outcome_correct=True,
+            predicted_winner="home",
+        )
+
+        assert result.shot_volume_delta_home is None
+        assert result.shot_volume_delta_away is None
+        assert result.shot_volume_delta_reason == "expected_shots_unavailable"
+
+    def test_shot_volume_delta_uses_expected_shots_when_available(self):
+        home_stats = {"xg": 1.0, "shots_total": 15, "goals": 1}
+        away_stats = {"xg": 0.8, "shots_total": 7, "goals": 0}
+
+        result = evaluate_process(
+            match_id=186,
+            predicted_home_xg=1.1,
+            predicted_away_xg=0.7,
+            home_stats=home_stats,
+            away_stats=away_stats,
+            outcome_correct=True,
+            predicted_winner="home",
+            predicted_home_shots=10,
+            predicted_away_shots=9,
+        )
+
+        assert result.shot_volume_delta_home == 5
+        assert result.shot_volume_delta_away == -2
+        assert result.shot_volume_delta_reason == "expected_shots_available"
+
 
 class TestFailureClassifier:
     def test_good_prediction(self):
@@ -145,7 +183,7 @@ class TestFailureClassifier:
             data_quality_score=0.85,
         )
         assert result["model_failure_type"] == "LUCKY_RESULT"
-        assert result["base_learning_weight"] == 0.30
+        assert result["base_learning_weight"] == 0.50  # V4.8.1: 0.30→0.50 for KO context
 
     def test_unlucky_result(self):
         result = classify_failure(

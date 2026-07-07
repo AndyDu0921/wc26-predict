@@ -22,6 +22,15 @@ from app.models.signal_track_record import SignalTrackRecord
 from app.models.context_performance_matrix import ContextPerformanceMatrix
 from app.models.match_result_verification import MatchResultVerification
 from app.models.model_weight_proposal import ModelWeightProposal
+from app.models.accuracy_engine import (
+    CandidatePrediction,
+    EvidenceItem,
+    ExperimentRun,
+    FeatureSnapshot,
+    InformationStateSignal,
+    ModelChangeProposal,
+    SignalEvaluation,
+)
 
 __all__ = [
     "Base",
@@ -49,4 +58,11 @@ __all__ = [
     "ContextPerformanceMatrix",
     "MatchResultVerification",
     "ModelWeightProposal",
+    "FeatureSnapshot",
+    "ExperimentRun",
+    "CandidatePrediction",
+    "ModelChangeProposal",
+    "EvidenceItem",
+    "InformationStateSignal",
+    "SignalEvaluation",
 ]

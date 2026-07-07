@@ -7,11 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.10.0-alpha] — 2026-07-07
+
+### Added
+- **Information State Engine**: new V4.10 evidence ledger (`evidence_items`), structured shadow signals (`information_state_signals`), and post-match signal attribution table (`signal_evaluations`).
+- **Traceable evidence CLIs**: `collect_match_evidence.py`, `extract_information_signals.py`, `score_information_signals.py`, and `audit_match_information_state.py`.
+- Prediction snapshots now include an `information_state` payload with evidence coverage, missing data, shadow signals, and strict-readiness diagnostics.
+- Post-match review now evaluates information-state signals as proposal-only attribution evidence without changing production weights.
+
+### Changed
+- Version source of truth is now `4.10.0-alpha`.
+- Market odds and bookmaker consensus remain core pre-match research signals; V4.10 adds stronger provenance and information-state audit around them.
+- LLM/news intelligence is treated as structured evidence extraction input, not as a direct probability generator.
+
+### Verified
+- Alembic head: `g7b8c9d0e1f2`.
+- Backend test suite: `551 passed, 4 skipped`.
+- V4.10 targeted tests pass for evidence validation, idempotent ingestion, future-evidence exclusion, shadow scoring, signal attribution, FeatureSnapshot payloads, and snapshot-store payloads.
+- Temporary CLI smoke confirms collect → extract → score → audit works without touching production weights or artifacts.
+- Public output audit scans `65` active public files and passes while preserving market/odds evidence.
+- DB integrity audit passes with `foreign_key_violation_count=0`.
+- Accuracy experiment preflight is ready at the engineering gate with `32` strict samples, `47` diagnostic samples, and `8` rejected samples; production model promotion still requires stronger paired evidence.
+
+## [4.9.0-alpha] — 2026-07-05
+
+### Added
+- **Accuracy Data OS repair report**: `evaluation_registry_repair_report.v2` produces deterministic repair actions, priority, blocking level, repair order, and grouped sample IDs for diagnostic/rejected samples without creating snapshots, probabilities, artifacts, or reports.
+- **Strict sample repair queue**: `build_strict_sample_repair_queue.py` inspects local snapshot/prediction evidence per non-strict sample and reports whether any real pre-kickoff probability evidence can be used.
+- **Accuracy todo backlog**: `build_accuracy_todo_backlog.py` turns registry, DB integrity, snapshot coverage, market odds coverage, lineup coverage, and prediction-pipeline size into a read-only prioritized backlog.
+- **Candidate experiment preflight**: `preflight_accuracy_experiments.py` and `run_accuracy_experiments.py` now block default candidate tournaments when strict/eligible samples or DB integrity do not meet the configured gate.
+- **Structured pre-match intelligence layer**: `information_state_signals.v1` converts local player availability evidence into source/time/confidence-scored shadow signals and excludes future evidence from strict features.
+- **FeatureSnapshot v2**: strict feature payloads now include information-state signals, player availability shadow payloads, schedule context, and data quality fields while still excluding actual goals.
+- **V4.9 shadow candidate names**: dynamic Bayesian weighted goal model, international covariate hybrid, Dirichlet calibration candidate, and proper-scoring stacking candidate are available as shadow/proposal-only candidates.
+- **Data-repair proposal type**: `model_change_proposals` can now record `data-repair`, `calibrator`, and `stacking` proposal categories separately from ordinary model proposals.
+- **DB integrity audit tool**: `audit_db_integrity.py` audits SQLite integrity drift and can conservatively repair exact team-alias ID drift, nullable empty FKs, and orphan child rows with backup + quarantine evidence.
+- **Proposal review statuses**: `model_change_proposals` now supports explicit manual review transitions such as `approved_for_shadow` and `promoted_config` without mutating production configuration.
+- **Unified accuracy experiment runner**: old full-pipeline backtest, score grid, and stacking collection flows are consolidated into `run_accuracy_experiments.py`.
+
+### Changed
+- Version source of truth is now `4.9.0-alpha`.
+- Market odds and multi-bookmaker consensus are treated as important prediction evidence. Output audits now block betting advice / guaranteed-outcome language, not odds or bookmaker evidence.
+- Candidate experiment output includes `candidate_family`, `sample_quality_summary`, and read-only preflight evidence so proposal review can distinguish model, calibration, stacking, and data-quality failures.
+- Evaluation registry now prefers a clean pre-kickoff `prediction_snapshots` probability record over an unusable post-kickoff `pre_match_snapshots` row for the same match.
+- `run_accuracy_experiments.py` defaults to the V4.9 candidate names while retaining backward-compatible candidate aliases.
+- Feature snapshot materialization retains `93` audit rows.
+- Proposal generation is idempotent; `model_change_proposals` now contains `30` rows.
+- Deleted stale V3/V4.5/V4.8 documentation that polluted current-state reasoning: `docs/PRD_ARCHITECTURE_COMPLETE.md`, `docs/EXTERNAL_REVIEW_SUMMARY.md`, and `backend/docs/POSTMATCH_SOP.md`.
+- Deleted stale experiment wrapper scripts: `backtest_full_pipeline.py`, `grid_search_score_params.py`, `collect_stacking_training_data.py`, and `_accuracy_wrapper.py`.
+- Added production traceability audits for report paths, archive manifest integrity, and operational entrypoint allowlists.
+- Archived legacy root-level reports under `reports/archive/legacy-root/` with a manifest instead of leaving old-format reports in the active report root.
+
+### Verified
+- Backend test suite: `546 passed, 4 skipped`.
+- SQLite integrity: `PRAGMA integrity_check=ok`, `PRAGMA foreign_key_check=0`; `104` historical orphan rows are preserved in `data_integrity_quarantine`.
+- Evaluation registry repair smoke: `87` total samples, `32` strict, `47` diagnostic, `8` rejected; diagnostic samples are promotable only with real pre-kickoff evidence.
+- Default shadow experiment preflight is ready at the engineering gate (`32 >= 30`), but production discussion still requires the `50+` strict sample target and supported paired evidence.
+- Creator-safe output audit scans `77` report files and passes while preserving market/odds evidence.
+- Low-threshold engineering smoke confirms dynamic candidates run end-to-end, but this is not production evidence.
+- Public output audit now uses the neutral `public_output_audit_core.py`; the old no-odds audit entrypoint was removed because market odds are valid research evidence.
+- Windows scheduled task registration is disabled until a new scheduler is designed around current explicit entrypoints.
+
+## [4.8.0-alpha] — 2026-07-04
+
+### Added
+- **Accuracy Engine v2**: `evaluation_registry.v2` is now the only strict backtest sample gateway, with explicit strict / diagnostic / rejected sample statuses, leakage status, horizon, model version, data availability, and registry hash.
+- **PredictionKernel**: async API, sync CLI, and batch paths now share a pure deterministic fusion kernel for core probability fusion and provenance generation.
+- **Accuracy audit tables**: Alembic migration `e5f6a7b8c9d0` adds `feature_snapshots`, `experiment_runs`, `candidate_predictions`, and `model_change_proposals` without touching production weight tables.
+- **Shadow candidate pool**: dynamic Dixon-Coles, dynamic bivariate Poisson, Bayesian weighted dynamic, covariate ML, Dirichlet calibration, stacking optimizer, and uniform/current baselines can be evaluated offline.
+- **Unified experiment runner**: `run_accuracy_experiments.py` compares champion vs candidate with paired Brier, LogLoss, RPS, score LogLoss, ECE, group metrics, leakage checks, and gate decision.
+- **Proposal-only self-evolution ledger**: `model_change_proposals` records model, calibrator, feature-rule, and weight proposals without applying them to production configuration.
+- **Feature snapshot materializer**: `materialize_feature_snapshots.py` persists pre-result feature payloads for strict registry samples without storing actual goals or changing production state.
+
+### Changed
+- Version source of truth is now `4.8.0-alpha`; current WC weight labels are group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`. Generic self-evolution proposals do not auto-apply production weights.
+- Legacy backtest/grid/stacking scripts now point to the new accuracy experiment runner for current evidence generation while remaining available for historical reproducibility.
+- Documentation now separates verified local facts from historical V4.3-V4.7 architecture text and avoids unverified accuracy claims.
+- Schedule-only finished rows with no source conflict can now supply canonical results; kickoff time resolves from `wc26_schedule.match_date + kickoff_time` when `matches.match_date` is unavailable.
+
+### Fixed
+- Process-evaluation shot-volume deltas remain unavailable when pre-match expected shots are missing, preventing fake zero-error learning signals.
+- Candidate gates reject metric regressions, identity/no-op candidates, insufficient samples, and candidates whose apparent gains are not supported by paired proper-scoring evidence.
+- Legacy memory backfill no longer creates placeholder `prediction_runs` by default; synthetic placeholder runs require the explicit `--allow-placeholder-runs` escape hatch.
+
+### Verified
+- Backend test suite: `508 passed, 4 skipped`.
+- Evaluation registry v2 dry-run: `81` total local samples, `81` canonical result rows, `58` match-result rows, `81` schedule-finished rows, `25` strict eligible samples, `46` diagnostic samples, `10` rejected samples.
+- Feature snapshot materialization: `25` strict pre-result payloads built; persistence is idempotent (`inserted=0, skipped=25` after the latest rerun). The table currently contains `41` rows because earlier V4.8 materializations are retained as audit history.
+- Local Alembic head: `e5f6a7b8c9d0`.
+- Shadow candidate smoke: no candidate is production-ready on the current `25` strict samples. Dynamic DC, dynamic bivariate Poisson, and Bayesian weighted dynamic remain `shadow_needs_more_evidence`; player availability worsened Brier/LogLoss/RPS in shadow and is rejected.
+
 ## [4.7.0-alpha] — 2026-07-03
 
 ### Added
 - **BacktestGate proposal-only workflow**: model-weight candidates are persisted as auditable proposals and never mutate production weights automatically.
 - **ModelWeightProposal audit table**: Alembic migration + ORM model for weight-candidate evidence.
+- **Evaluation registry**: reconciles `matches + match_results`, `wc26_schedule`, pre-match snapshots, prediction snapshots, and process eval rows before any strict backtest.
+- **Shadow candidate experiment runner**: emits paired Brier/LogLoss/RPS/ECE/group metrics and leakage checks without changing production weights or artifacts.
+- **Player availability shadow component**: converts availability records into auditable xG modifier candidates while keeping production probabilities unchanged.
+- **Shared score-matrix fusion helper**: sync and async prediction paths now share the DC + NegBin + Weibull score-matrix fusion logic.
 - **Stacking safety gates**: the meta-learner now requires all three outcomes (home/draw/away) before fitting or loading an artifact.
 - **Replayable snapshot metadata**: snapshots preserve historical weight config, pre-market probabilities, market weight used, NegBin weight, and calibration state.
 
@@ -19,14 +112,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - World Cup weight metadata now reports `WORLD_CUP_V4.7.0_ALPHA` / `WORLD_CUP_KNOCKOUT_V4.7.0_ALPHA` without changing the numeric weights.
 - `PredictionSnapshot` and app settings now default model version from `app.version.VERSION`.
 - Core fusion returns NegBin component probabilities directly so async/sync downstream consumers use the same component evidence.
+- Alembic migrations are idempotent for the observed local SQLite drift state, allowing upgrade from `f7a8b9c0d1e2` to `d4e5f6a7b8c9`.
 
 ### Fixed
 - Async `PredictionPipeline.predict_match()` now runs Weibull scenario rules after Elo is available; the previous order caused the guard to fall back to full Weibull weight.
 - Async stacking integration now passes canonical component probabilities instead of a component-name list.
 - Invalid or partial stacking artifacts now degrade to uniform fallback instead of emitting incomplete probability dictionaries.
+- `process_evaluator` no longer computes shot-volume deltas as actual shots minus actual shots. Missing pre-match expected shots are now recorded as unavailable instead of fake zero error.
 
 ### Verified
-- Backend test suite: `466 passed, 4 skipped`.
+- Backend test suite: `483 passed, 4 skipped`.
+- Evaluation registry dry-run: `78` total local samples, `58` canonical match-result rows, `9` strict eligible backtest samples.
 
 ## [4.5.0-beta] — 2026-07-01
 
@@ -37,7 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `backend/app/core/conformal_core.py` — Pure math: nonconformity score + recency weight + prediction set.
 - `backend/app/services/stacking_meta_learner.py` — Service layer: fit/predict/save/load with sklearn compatibility.
 - `backend/app/services/conformal_predictor.py` — Calibration records store + lazy threshold computation.
-- `backend/scripts/collect_stacking_training_data.py` — Walk-forward backtest collecting all 7 component probabilities.
+- Legacy stacking-data collection entrypoint was later retired in V4.9; current accuracy experiments must use `backend/scripts/run_accuracy_experiments.py`.
 - 35 new tests (`test_stacking_features.py` + `test_conformal_core.py`), total now 287.
 
 ### Changed
@@ -210,7 +306,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Motivation Factor**: Team motivation modeling for group stage match-day 3.
 - **Draw Floor**: 12% minimum draw probability for WC matches.
 - **Divergence Paradox Fix**: Resolved counter-intuitive market-model interaction.
-- Post-match review standardization (SOP in `POSTMATCH_SOP.md`).
+- Post-match review standardization. The historical `POSTMATCH_SOP.md` file was removed in V4.9 because the current flow is enforced by `run_postmatch_complete.py`, registry diagnostics, and proposal-only self-evolution.
 
 ---
 

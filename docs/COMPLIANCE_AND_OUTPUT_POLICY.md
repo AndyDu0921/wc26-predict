@@ -8,7 +8,7 @@ WC26 Predict must maintain a strict boundary between internal research and publi
 
 WC26 Predict is a football research system, not a gambling product.
 
-The system may run internal model evaluation and calibration research, but public output must never become betting advice, odds promotion, or gambling content.
+The system may use market odds and bookmaker consensus as important research signals. Public or creator-facing output must never turn those signals into betting advice, guaranteed outcomes, or gambling promotion.
 
 ---
 
@@ -29,7 +29,7 @@ Not allowed:
 
 - public marketing claims
 - betting advice
-- bookmaker promotion
+- guaranteed-outcome language
 
 ### 2.2 creator_safe
 
@@ -41,12 +41,15 @@ Allowed:
 - uncertainty notes
 - safe talking points
 - data source references
+- market odds / bookmaker consensus as data evidence
+- probabilities and uncertainty ranges
+- source/provenance notes
 
 Not allowed:
 
-- odds
-- bookmaker names
-- betting language
+- betting advice or calls to action
+- guaranteed wins / profit claims
+- bookmaker promotion or affiliate-style language
 - "pick" or "best bet" phrasing
 - hit-rate claims
 
@@ -63,10 +66,8 @@ Allowed:
 
 Not allowed:
 
-- raw probabilities if they are framed as betting/prediction claims
+- raw probabilities if they are framed as guaranteed outcomes
 - score guarantees
-- odds
-- bookmakers
 - betting-related calls to action
 - gambling terms
 
@@ -74,28 +75,24 @@ Not allowed:
 
 ## 3. Forbidden public terms
 
-Public-facing pages, reports, README marketing sections, and social content should avoid:
+Public-facing pages, reports, README marketing sections, and social content should avoid advice-like or promotional terms:
 
 ```text
-投注
-博彩
-盘口
 赔率推荐
 竞彩
 带单
-命中率
 稳赚
 爆单
 必胜
 推单
 best bet
 betting tips
-bookmaker
-sportsbook
 odds pick
 guaranteed prediction
 sure win
 ```
+
+Allowed when used as evidence, not advice: `赔率`, `盘口`, `博彩`, `odds`, `bookmaker`, `sportsbook`, market consensus tables, and bookmaker-count diagnostics.
 
 Technical docs may mention these terms only when describing compliance restrictions.
 
@@ -103,7 +100,7 @@ Technical docs may mention these terms only when describing compliance restricti
 
 ## 4. Market consensus data policy
 
-Market consensus data can be used only as an internal research signal.
+Market consensus data is an important research and prediction signal.
 
 Allowed internal uses:
 
@@ -112,13 +109,24 @@ Allowed internal uses:
 - run shadow-mode evaluation
 - study uncertainty
 
-Forbidden public uses:
+Forbidden uses:
 
-- display bookmaker names
-- display odds tables
 - encourage betting
 - monetize betting signals
 - imply profitable betting recommendations
+
+---
+
+## 4.1 Information-state evidence policy
+
+News, injuries, lineups, weather, travel context, and market odds must be stored
+as traceable evidence before they influence analysis. V4.10 evidence records must
+carry a source URL or internal snapshot URI, an availability time, and a
+reliability score.
+
+LLM systems may extract and classify signals from evidence. They must not
+directly create final match probabilities, betting calls to action, or automatic
+production-weight changes.
 
 ---
 
@@ -137,7 +145,6 @@ Avoid:
 - "guaranteed win"
 - "best bet"
 - "high hit-rate pick"
-- "odds value"
 - "bet this side"
 
 ---
@@ -148,8 +155,10 @@ Before publishing any report or demo:
 
 ```bash
 cd backend
-python scripts/audit_public_outputs_no_odds.py
+python scripts/audit_public_outputs.py
 ```
+
+The audit allows market odds and bookmaker consensus as research evidence. It only blocks unsafe betting-advice or guaranteed-outcome language.
 
 Also manually inspect:
 

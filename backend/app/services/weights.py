@@ -98,14 +98,14 @@ _WORLD_CUP = WeightConfig(
 #   V4.3.0:  DC=48.6%  Enh=22.9%  Wb=7.7%  Elo=13.4%  Pi=9.0%  → Pi ↑ 0.14→0.17
 #   Knockout: DC=57.6%  Enh=16.2%  Wb=6.0%  Elo=14.8%  Pi=5.5%
 _WORLD_CUP_KNOCKOUT = WeightConfig(
-    version="4.7.0-alpha-knockout",
-    dc=0.90,            # ↑ 0.78→0.90: par with group; Enhancer bias even more dangerous in KO
+    version="4.8.1-knockout",
+    dc=0.90,            # unchanged: par with group; Enhancer bias even more dangerous in KO
     enhancer=0.10,      # effective enhancer ≈5.7% (sequential dilution + higher Elo/Pi)
-    elo=0.22,           # ↑ 0.20→0.22: reliable in competitive fixtures
-    pi=0.18,            # ↑ 0.15→0.18: Brier 0.29 best in competitive WC
-    weibull=0.10,       # (unchanged)
-    market_max=0.30,    # (unchanged)
-    label="WORLD_CUP_KNOCKOUT_V4.7.0_ALPHA",
+    elo=0.24,           # 0.22→0.24: 10/16=63% KO correct, stable anchor
+    pi=0.22,            # 0.18→0.22: 11/16=69% KO correct, best non-market, +0.18 marginal
+    weibull=0.05,       # 0.10→0.05: 5/13=38% KO correct, bimodal, unreliable
+    market_max=0.35,    # 0.30→0.35: 11/14=79% KO correct, strongest component
+    label="WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA",
 )
 
 _UCL_FINAL = WeightConfig(

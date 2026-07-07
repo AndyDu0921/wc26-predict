@@ -24,7 +24,8 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class MatchResultVerification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "match_result_verification"
 
-    match_id: Mapped[UUID] = mapped_column(
+    match_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("matches.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

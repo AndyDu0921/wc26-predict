@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -75,3 +76,106 @@ def test_pi_and_negbin_are_in_sequential_reconstruction():
     assert without_pi is not None
     assert with_pi["away"] > without_pi["away"]
     assert sum(with_pi.values()) == pytest.approx(1.0)
+
+
+def test_historical_dixon_coles_alias_participates_in_attribution():
+    class _Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return None
+
+    class _Db:
+        def __init__(self):
+            self.added = None
+
+        async def execute(self, *args, **kwargs):
+            return _Result()
+
+        def add(self, value):
+            self.added = value
+
+    snapshot = _snapshot(
+        id=None,
+        match_id="197",
+        baseline_probs={"home": 0.50, "draw": 0.25, "away": 0.25},
+        adjusted_probs={"home": 0.50, "draw": 0.25, "away": 0.25},
+        component_probs={
+            "dixon_coles": {"home": 0.65, "draw": 0.20, "away": 0.15},
+            "enhancer": {"home": 0.40, "draw": 0.30, "away": 0.30},
+        },
+        market_probs=None,
+        fused_score_matrix=None,
+        source_score_matrices=None,
+        pipeline_params={
+            "weight_config": {"dc": 0.60, "elo": 0.0, "pi": 0.0, "weibull": 0.0},
+            "market_weight_used": 0.0,
+        },
+    )
+    db = _Db()
+
+    log = asyncio.run(
+        LearningEngine()._attribute_error(
+            snapshot,
+            actual_index=0,
+            db=db,
+            verified_result_id=None,
+            learning_weight=1.0,
+            tier="full",
+            home_goals=1,
+            away_goals=0,
+        )
+    )
+
+    assert db.added is log
+    assert log.dc_marginal is not None
+    assert log.model_was_right is True
+
+
+def test_learning_log_records_wrong_prediction_boolean():
+    class _Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return None
+
+    class _Db:
+        def __init__(self):
+            self.added = None
+
+        async def execute(self, *args, **kwargs):
+            return _Result()
+
+        def add(self, value):
+            self.added = value
+
+    snapshot = _snapshot(
+        id=None,
+        match_id="200",
+        baseline_probs={"home": 0.55, "draw": 0.20, "away": 0.25},
+        adjusted_probs={"home": 0.55, "draw": 0.20, "away": 0.25},
+        component_probs={},
+        market_probs=None,
+        fused_score_matrix=None,
+        source_score_matrices=None,
+        pipeline_params={},
+    )
+    db = _Db()
+
+    log = asyncio.run(
+        LearningEngine()._attribute_error(
+            snapshot,
+            actual_index=2,
+            db=db,
+            verified_result_id=None,
+            learning_weight=1.0,
+            tier="full",
+            home_goals=1,
+            away_goals=4,
+        )
+    )
+
+    assert db.added is log
+    assert log.model_was_right is False

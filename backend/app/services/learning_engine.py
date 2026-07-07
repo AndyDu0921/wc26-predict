@@ -21,7 +21,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prediction_snapshot import PredictionSnapshot
@@ -186,12 +186,6 @@ class LearningEngine:
 
         Returns the created PredictionLearningLog record.
         """
-        if not _is_uuid_like(snapshot.match_id):
-            raise ValueError(
-                f"Learning requires a UUID-like match_id; snapshot={snapshot.id} "
-                f"has match_id={snapshot.match_id!r}"
-            )
-
         tier = _learning_tier(learning_weight)
         actual_index = _result_index(home_goals, away_goals)
 
@@ -274,6 +268,7 @@ class LearningEngine:
         component = snapshot.component_probs or {}
         components = {}
         component_aliases = {
+            "dixon_coles": "dc",
             "dc": "dc",
             "enhancer": "enhancer",
             "negbin": "negbin",
@@ -427,6 +422,7 @@ class LearningEngine:
             status=learning_status,
             error_magnitude=final_brier,
             error_direction=direction,
+            model_was_right=pred_index == actual_index,
             dc_error_contribution=dc_contrib,
             enhancer_error_contribution=enhancer_contrib,
             elo_error_contribution=elo_contrib,
@@ -549,9 +545,32 @@ class LearningEngine:
         db: AsyncSession,
     ) -> str | None:
         """Best-effort link from a script snapshot to the canonical prediction run."""
-        if not _is_uuid_like(snapshot.match_id):
+        raw_match_id = str(snapshot.match_id or "").strip()
+        candidates = [raw_match_id]
+        clean = raw_match_id.replace("-", "")
+        if clean and clean not in candidates:
+            candidates.append(clean)
+        if len(clean) == 32:
+            hyphenated = f"{clean[:8]}-{clean[8:12]}-{clean[12:16]}-{clean[16:20]}-{clean[20:]}"
+            if hyphenated not in candidates:
+                candidates.append(hyphenated)
+
+        for candidate in candidates:
+            result = await db.execute(
+                text(
+                    "SELECT id FROM prediction_runs "
+                    "WHERE CAST(match_id AS TEXT) = :match_id "
+                    "ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"match_id": candidate},
+            )
+            row = result.mappings().first()
+            if row is not None:
+                return str(row["id"])
+
+        if not _is_uuid_like(raw_match_id):
             return None
-        match_uuid = UUID(str(snapshot.match_id))
+        match_uuid = UUID(raw_match_id)
         result = await db.execute(
             select(PredictionRun)
             .where(PredictionRun.match_id == match_uuid)

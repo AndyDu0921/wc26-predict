@@ -21,15 +21,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import io
+import json
+import math
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 
-# Fix Windows GBK encoding for emoji characters
-if sys.platform == 'win32':
+# Fix Windows GBK encoding for emoji characters in direct CLI runs.
+if sys.platform == 'win32' and "pytest" not in sys.modules:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -42,10 +45,13 @@ from app.database import AsyncSessionLocal
 from app.models.prediction_snapshot import PredictionSnapshot
 from app.models.prediction_learning_log import PredictionLearningLog
 from app.services.learning_engine import get_learning_engine
+from app.services.evaluation_registry import DEFAULT_DB_PATH
+from app.services.information_state_engine import evaluate_match_signals
 from app.services.result_verification import (
     get_verification_service,
     SourceTier,
 )
+from scripts.audit_match_closed_loop import audit_match_closed_loop
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Step-by-step pipeline
@@ -60,6 +66,342 @@ PIPELINE_STEPS = [
     "generate_analysis",
     "output_report",
 ]
+
+
+def _is_uuid_like(raw: str) -> bool:
+    try:
+        UUID(str(raw))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _json_load(raw):
+    if raw in (None, ""):
+        return None
+    if isinstance(raw, (dict, list)):
+        return raw
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+def _prob_triplet(payload: dict | None) -> tuple[float, float, float] | None:
+    if not isinstance(payload, dict):
+        return None
+    home = payload.get("home", payload.get("home_prob", payload.get("home_win_prob")))
+    draw = payload.get("draw", payload.get("draw_prob"))
+    away = payload.get("away", payload.get("away_prob", payload.get("away_win_prob")))
+    if home is None or draw is None or away is None:
+        return None
+    return float(home), float(draw), float(away)
+
+
+def _normalize_component_probs(
+    component_probs: dict | None,
+    market_probs: dict | None = None,
+) -> dict:
+    """Normalize historical component keys for review and attribution.
+
+    Older snapshots store Dixon-Coles as ``dixon_coles`` and Pi as
+    ``pi_rating``. Post-match reporting and the learning engine expect the
+    canonical aliases, so we keep the original payload and add aliases.
+    """
+    normalized = dict(component_probs or {})
+    if "dc" not in normalized and "dixon_coles" in normalized:
+        normalized["dc"] = normalized["dixon_coles"]
+    if "pi" not in normalized and "pi_rating" in normalized:
+        normalized["pi"] = normalized["pi_rating"]
+    if market_probs and "market" not in normalized:
+        normalized["market"] = market_probs
+    return normalized
+
+
+def _component_review_rows(
+    component_probs: dict,
+    actual_idx: int,
+    actual_vec: list[int],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for label, key in [
+        ("DC", "dc"),
+        ("Enhancer", "enhancer"),
+        ("DC+Enhancer", "dixon_coles+enhancer"),
+        ("NegBin", "negbin"),
+        ("Weibull", "weibull"),
+        ("Elo", "elo"),
+        ("Pi", "pi"),
+        ("Market", "market"),
+    ]:
+        probs = _prob_triplet(component_probs.get(key))
+        if probs is None:
+            continue
+        l_h, l_d, l_a = probs
+        fav_idx = max(range(3), key=lambda i: [l_h, l_d, l_a][i])
+        brier = sum((p - a) ** 2 for p, a in zip([l_h, l_d, l_a], actual_vec))
+        rows.append({
+            "label": label,
+            "home": l_h,
+            "draw": l_d,
+            "away": l_a,
+            "fav_idx": fav_idx,
+            "fav": ["H", "D", "A"][fav_idx],
+            "dir_correct": fav_idx == actual_idx,
+            "brier": brier,
+        })
+    return rows
+
+
+def _component_markdown(rows: list[dict[str, object]]) -> str:
+    lines = []
+    for row in rows:
+        lines.append(
+            f"| {str(row['label']):12s} | "
+            f"{float(row['home'])*100:5.1f}% / "
+            f"{float(row['draw'])*100:5.1f}% / "
+            f"{float(row['away'])*100:5.1f}% | "
+            f"{row['fav']} | {'✅' if row['dir_correct'] else '❌'} | "
+            f"{float(row['brier']):.4f} |"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_metric(value, digits: int = 3) -> str:
+    if value is None:
+        return "N/A"
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
+def _learning_log_prediction_run_id(learning_log: PredictionLearningLog | None) -> str | None:
+    if learning_log is None:
+        return None
+    raw = str(getattr(learning_log, "prediction_run_id", "") or "").strip()
+    return raw or None
+
+
+def _score_hit_metrics(top_scores, home_score: int, away_score: int) -> tuple[bool, bool]:
+    if not isinstance(top_scores, list):
+        return False, False
+    actual_score = f"{home_score}:{away_score}"
+    valid_scores = [item for item in top_scores if isinstance(item, dict)]
+    exact_hit = bool(valid_scores and str(valid_scores[0].get("score")) == actual_score)
+    top3_hit = any(str(item.get("score")) == actual_score for item in valid_scores[:3])
+    return exact_hit, top3_hit
+
+
+def _calibration_bucket(probs: list[float]) -> int:
+    return min(10, max(1, int(max(probs) * 10) + 1))
+
+
+async def _upsert_postmatch_eval(
+    db,
+    *,
+    prediction_run_id: str,
+    home_score: int,
+    away_score: int,
+    probs: list[float],
+    top_scores,
+    brier: float,
+) -> dict[str, object]:
+    """Create or update postmatch_eval idempotently for one prediction run."""
+    actual_idx = 0 if home_score > away_score else (1 if home_score == away_score else 2)
+    actual_result = ["H", "D", "A"][actual_idx]
+    log_loss = -math.log(max(float(probs[actual_idx]), 1e-12))
+    exact_hit, top3_hit = _score_hit_metrics(top_scores, home_score, away_score)
+    bucket = _calibration_bucket([float(value) for value in probs])
+    notes = {
+        "source": "run_postmatch_complete.py",
+        "idempotency_key": prediction_run_id,
+        "probabilities_changed": False,
+        "reason": "closed_loop_postmatch_eval_sync",
+    }
+    existing = (
+        await db.execute(
+            text(
+                """
+                SELECT id
+                FROM postmatch_eval
+                WHERE prediction_run_id = :prediction_run_id
+                LIMIT 1
+                """
+            ),
+            {"prediction_run_id": prediction_run_id},
+        )
+    ).mappings().first()
+    params = {
+        "prediction_run_id": prediction_run_id,
+        "actual_home_goals": int(home_score),
+        "actual_away_goals": int(away_score),
+        "actual_result": actual_result,
+        "brier_score": float(brier),
+        "log_loss": float(log_loss),
+        "exact_score_hit": int(exact_hit),
+        "top3_hit": int(top3_hit),
+        "calibration_bucket": int(bucket),
+        "notes": json.dumps(notes, ensure_ascii=False, sort_keys=True),
+    }
+    if existing is None:
+        eval_id = uuid4().hex
+        await db.execute(
+            text(
+                """
+                INSERT INTO postmatch_eval (
+                    id, prediction_run_id, actual_home_goals, actual_away_goals,
+                    actual_result, brier_score, log_loss, exact_score_hit,
+                    top3_hit, calibration_bucket, notes, created_at
+                ) VALUES (
+                    :id, :prediction_run_id, :actual_home_goals, :actual_away_goals,
+                    :actual_result, :brier_score, :log_loss, :exact_score_hit,
+                    :top3_hit, :calibration_bucket, :notes, :created_at
+                )
+                """
+            ),
+            {**params, "id": eval_id, "created_at": datetime.now(timezone.utc).isoformat()},
+        )
+        action = "inserted"
+    else:
+        eval_id = str(existing["id"])
+        await db.execute(
+            text(
+                """
+                UPDATE postmatch_eval
+                SET actual_home_goals = :actual_home_goals,
+                    actual_away_goals = :actual_away_goals,
+                    actual_result = :actual_result,
+                    brier_score = :brier_score,
+                    log_loss = :log_loss,
+                    exact_score_hit = :exact_score_hit,
+                    top3_hit = :top3_hit,
+                    calibration_bucket = :calibration_bucket,
+                    notes = :notes
+                WHERE prediction_run_id = :prediction_run_id
+                """
+            ),
+            params,
+        )
+        action = "updated"
+    return {
+        "persisted": True,
+        "action": action,
+        "postmatch_eval_id": eval_id,
+        "prediction_run_id": prediction_run_id,
+        "actual_result": actual_result,
+        "log_loss": log_loss,
+        "exact_score_hit": exact_hit,
+        "top3_hit": top3_hit,
+        "calibration_bucket": bucket,
+    }
+
+
+def _lookup_process_eval_detail(home_team: str, away_team: str) -> dict[str, object]:
+    learning_weight, tier, failure_type, process_label = _lookup_process_eval_weight(
+        home_team,
+        away_team,
+    )
+    detail: dict[str, object] = {
+        "learning_weight": learning_weight,
+        "learning_tier": tier,
+        "failure_type": failure_type,
+        "process_label": process_label,
+        "base_learning_weight": None,
+        "learning_data_quality": None,
+        "snapshot_factor": 1.0,
+    }
+    try:
+        import sqlite3
+        db_path = BACKEND_DIR / "data" / "local_stage2.db"
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute(
+            """
+            SELECT ppe.learning_weight, ppe.model_failure_type, ppe.process_label, ppe.notes
+            FROM postmatch_process_eval ppe
+            JOIN wc26_schedule s ON s.id = ppe.match_id
+            WHERE s.home_team = ? AND s.away_team = ?
+            ORDER BY ppe.created_at DESC LIMIT 1
+            """,
+            (home_team, away_team),
+        ).fetchone()
+        conn.close()
+        if row and row[3]:
+            notes = json.loads(row[3])
+            base = notes.get("base_learning_weight")
+            if base is not None:
+                base_f = float(base)
+                detail["base_learning_weight"] = base_f
+                if base_f > 0:
+                    detail["learning_data_quality"] = round(float(row[0]) / base_f, 4)
+    except Exception:
+        pass
+    return detail
+
+
+async def _fallback_pre_match_snapshot(db, match_id: str) -> PredictionSnapshot | None:
+    """Build a detached PredictionSnapshot from the latest pre_match_snapshot."""
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT *
+                FROM pre_match_snapshots
+                WHERE CAST(match_id AS TEXT) = :mid
+                ORDER BY snapshot_at DESC
+                LIMIT 1
+                """
+            ),
+            {"mid": match_id},
+        )
+    ).mappings().first()
+    if row is None:
+        return None
+    odds_snapshot = _json_load(row.get("odds_snapshot")) or {}
+    component_probs = _normalize_component_probs(
+        _json_load(row.get("component_probs")) or {},
+        odds_snapshot,
+    )
+    return PredictionSnapshot(
+        id=str(row["id"]),
+        match_id=str(row["match_id"]),
+        generated_at=row.get("snapshot_at"),
+        model_version=row.get("model_version") or row.get("code_version") or "pre_match_snapshot_fallback",
+        run_type="pre_match_snapshot_fallback",
+        home_team=row["home_team"],
+        away_team=row["away_team"],
+        competition=row.get("competition") or "FIFA World Cup 2026",
+        match_time=row.get("kickoff_at"),
+        baseline_probs={
+            "home": float(row["final_home_prob"]),
+            "draw": float(row["final_draw_prob"]),
+            "away": float(row["final_away_prob"]),
+        },
+        adjusted_probs={
+            "home": float(row["final_home_prob"]),
+            "draw": float(row["final_draw_prob"]),
+            "away": float(row["final_away_prob"]),
+        },
+        component_probs=component_probs,
+        market_probs=component_probs.get("market") if isinstance(component_probs, dict) else None,
+        expected_goals={"home": row.get("home_xg"), "away": row.get("away_xg")},
+        top_scores=_json_load(row.get("top_scores")),
+        fused_score_matrix=_json_load(row.get("fused_score_matrix")),
+        source_score_matrices=_json_load(row.get("source_score_matrices")),
+        confidence=row.get("confidence"),
+        missing_inputs=_json_load(row.get("missing_inputs")) or [],
+        pipeline_params={
+            "weight_config": _json_load(row.get("weight_config")),
+            "weight_config_label": row.get("weight_config_label"),
+            "effective_weights": _json_load(row.get("effective_weights")),
+            "market_weight_used": row.get("market_weight_used"),
+            "pre_match_snapshot_id": row.get("id"),
+            "snapshot_fallback": True,
+            "fused_score_matrix": _json_load(row.get("fused_score_matrix")),
+            "source_score_matrices": _json_load(row.get("source_score_matrices")),
+        },
+        report_markdown=row.get("report_markdown"),
+    )
 
 
 def _lookup_process_eval_weight(
@@ -132,6 +474,7 @@ async def run_complete_postmatch(
     Returns a dict with per-step status and final summary.
     """
     match_uuid = match_id.replace("-", "").strip()
+    verification_match_id = match_uuid
     pipeline_status = {step: "pending" for step in PIPELINE_STEPS}
     pipeline_data: dict = {}
 
@@ -154,7 +497,7 @@ async def run_complete_postmatch(
         # Source 1: match_results table (tier 3)
         await verification_service.add_source_result(
             db=db,
-            match_id=UUID(match_uuid),
+            match_id=verification_match_id,
             home_goals=home_score,
             away_goals=away_score,
             source_name="match_results_import",
@@ -178,27 +521,47 @@ async def run_complete_postmatch(
                     )
                 if resp.status_code == 200:
                     page_text = resp.text[:50000]
-                    score_patterns = re.findall(
-                        rf'(\d+)\s*[-–:]\s*(\d+)',
-                        page_text,
-                    )
+                    score_patterns = re.findall(r"(\d+)\s*[-–:]\s*(\d+)", page_text)
                     url_matched = any(
                         int(h) == home_score and int(a) == away_score
                         for h, a in score_patterns
                     )
+                    if not url_matched:
+                        try:
+                            payload = resp.json()
+                        except Exception:
+                            payload = None
+                        if isinstance(payload, dict):
+                            fifa_home = (
+                                (payload.get("HomeTeam") or {}).get("Score")
+                                if isinstance(payload.get("HomeTeam"), dict)
+                                else None
+                            )
+                            fifa_away = (
+                                (payload.get("AwayTeam") or {}).get("Score")
+                                if isinstance(payload.get("AwayTeam"), dict)
+                                else None
+                            )
+                            if fifa_home is not None and fifa_away is not None:
+                                url_matched = int(fifa_home) == home_score and int(fifa_away) == away_score
                     if url_matched:
                         source_label = verify_source_name or "url_verified"
+                        source_tier = (
+                            SourceTier.OFFICIAL_COMPETITION
+                            if "fifa" in source_label.lower()
+                            else SourceTier.REPUTABLE_MEDIA
+                        )
                         await verification_service.add_source_result(
                             db=db,
-                            match_id=UUID(match_uuid),
+                            match_id=verification_match_id,
                             home_goals=home_score,
                             away_goals=away_score,
                             source_name=source_label,
-                            source_tier=SourceTier.REPUTABLE_MEDIA,
+                            source_tier=source_tier,
                             match_status="Finished",
                             notes=f"URL-verified: {verify_url}",
                         )
-                        print(f"  + Source 2: {source_label} (tier 4, URL-verified ✅)")
+                        print(f"  + Source 2: {source_label} (tier {source_tier}, URL-verified ✅)")
                         second_source_added = True
                     else:
                         print(f"  ⚠ URL fetched but score {home_score}-{away_score} not found")
@@ -214,7 +577,7 @@ async def run_complete_postmatch(
             tier_label = "tier 4" if trust_db_score else "tier 6"
             await verification_service.add_source_result(
                 db=db,
-                match_id=UUID(match_uuid),
+                match_id=verification_match_id,
                 home_goals=home_score,
                 away_goals=away_score,
                 source_name=second_name,
@@ -225,7 +588,7 @@ async def run_complete_postmatch(
             print(f"  + Source 2: {second_name} ({tier_label}, DB-trusted ✅)" if trust_db_score else f"  + Source 2: user_provided ({tier_label}, NOT independently verified ⚠)")
 
         # Build consensus
-        consensus = await verification_service.build_consensus(db, UUID(match_uuid))
+        consensus = await verification_service.build_consensus(db, verification_match_id)
 
         if consensus is None or not consensus.is_verified:
             pipeline_status["verify_score"] = "FAILED"
@@ -265,18 +628,23 @@ async def run_complete_postmatch(
             match_uuid_hyphenated = match_uuid
 
         from sqlalchemy import or_
-        snap_result = await db.execute(
-            select(PredictionSnapshot)
-            .where(
-                or_(
+        snap_conditions = [PredictionSnapshot.match_id == match_uuid]
+        if _is_uuid_like(match_uuid):
+            snap_conditions.extend(
+                [
                     PredictionSnapshot.match_id.like(f"{match_uuid}%"),
                     PredictionSnapshot.match_id.like(f"{match_uuid_hyphenated}%"),
-                )
+                ]
             )
+        snap_result = await db.execute(
+            select(PredictionSnapshot)
+            .where(or_(*snap_conditions))
             .order_by(PredictionSnapshot.generated_at.desc())
             .limit(1)
         )
         snapshot = snap_result.scalar_one_or_none()
+        if snapshot is None:
+            snapshot = await _fallback_pre_match_snapshot(db, match_uuid)
 
         if snapshot is None:
             pipeline_status["find_snapshot"] = "FAILED"
@@ -290,21 +658,39 @@ async def run_complete_postmatch(
             }
 
         pipeline_status["find_snapshot"] = "passed"
+        snapshot.component_probs = _normalize_component_probs(
+            snapshot.component_probs or {},
+            snapshot.market_probs or {},
+        )
         pipeline_data["snapshot"] = snapshot
         print(f"  ✅ Found: {snapshot.home_team} vs {snapshot.away_team} "
               f"@ {snapshot.generated_at}")
+        if snapshot.run_type == "pre_match_snapshot_fallback":
+            print("     source: pre_match_snapshots fallback")
 
-        # Remove old learning log if exists (idempotent re-run)
+        # Remove old learning log if exists (idempotent re-run).
+        # Backfilled standard snapshots can point back to the original
+        # pre_match_snapshots row; clean both ids so re-running does not leave
+        # duplicate learning records for the same prediction evidence.
+        learning_log_snapshot_ids = [snapshot.id]
+        params = snapshot.pipeline_params or {}
+        if isinstance(params, dict):
+            source_snapshot_id = (
+                params.get("source_snapshot_id")
+                or params.get("pre_match_snapshot_id")
+            )
+            if source_snapshot_id and source_snapshot_id not in learning_log_snapshot_ids:
+                learning_log_snapshot_ids.append(str(source_snapshot_id))
         existing = await db.execute(
             select(PredictionLearningLog).where(
-                PredictionLearningLog.snapshot_id == snapshot.id
+                PredictionLearningLog.snapshot_id.in_(learning_log_snapshot_ids)
             )
         )
         if existing.scalar_one_or_none() is not None:
             print(f"  → Removing old learning log for clean re-run")
             await db.execute(
                 delete(PredictionLearningLog).where(
-                    PredictionLearningLog.snapshot_id == snapshot.id
+                    PredictionLearningLog.snapshot_id.in_(learning_log_snapshot_ids)
                 )
             )
             await db.flush()
@@ -394,6 +780,14 @@ async def run_complete_postmatch(
             text("UPDATE matches SET status = 'finished' WHERE id = :mid"),
             {"mid": match_uuid},
         )
+        await db.execute(
+            text(
+                "UPDATE wc26_schedule "
+                "SET match_status = 'FINISHED', home_goals = :hg, away_goals = :ag "
+                "WHERE CAST(id AS TEXT) = :mid"
+            ),
+            {"mid": match_uuid, "hg": home_score, "ag": away_score},
+        )
 
         pipeline_status["update_match_results"] = "passed"
         print(f"  ✅ match_results updated")
@@ -416,6 +810,10 @@ async def run_complete_postmatch(
                     getattr(snapshot, 'home_team', ''),
                     getattr(snapshot, 'away_team', ''),
                 )
+            )
+            pipeline_data["learning_weight_detail"] = _lookup_process_eval_detail(
+                getattr(snapshot, 'home_team', ''),
+                getattr(snapshot, 'away_team', ''),
             )
             error_log = await engine.process_match_result(
                 snapshot,
@@ -495,17 +893,25 @@ async def run_complete_postmatch(
 
         # Per-component breakdown
         print(f"\n  Component-level review:")
-        for layer in ["dc", "enhancer", "elo"]:
-            cp = component.get(layer, {})
-            if cp:
-                l_h = cp.get("home", 0.33)
-                l_d = cp.get("draw", 0.33)
-                l_a = cp.get("away", 0.33)
-                l_fav = max(range(3), key=lambda i: [l_h, l_d, l_a][i])
-                l_dir = "✅" if l_fav == actual_idx else "❌"
-                l_brier = sum((p - a)**2 for p, a in zip([l_h, l_d, l_a], actual_vec))
-                print(f"     {layer:12s}: {l_h*100:5.1f}%/{l_d*100:5.1f}%/{l_a*100:5.1f}%  "
-                      f"fav={'HDA'[l_fav]} dir={l_dir} brier={l_brier:.4f}")
+        component_rows = _component_review_rows(component, actual_idx, actual_vec)
+        pipeline_data["component_review_rows"] = component_rows
+        learning_log_for_context = pipeline_data.get("learning_log")
+        if learning_log_for_context is not None:
+            base_context = learning_log_for_context.context_tags or {}
+            learning_log_for_context.context_tags = {
+                **base_context,
+                "component_attribution": component_rows,
+            }
+        for row in component_rows:
+            print(
+                f"     {str(row['label']):12s}: "
+                f"{float(row['home'])*100:5.1f}%/"
+                f"{float(row['draw'])*100:5.1f}%/"
+                f"{float(row['away'])*100:5.1f}%  "
+                f"fav={row['fav']} "
+                f"dir={'✅' if row['dir_correct'] else '❌'} "
+                f"brier={float(row['brier']):.4f}"
+            )
 
         # ═══════════════════════════════════════════════════════════
         # STEP 7: Output report
@@ -527,9 +933,78 @@ async def run_complete_postmatch(
             match_date_str = report_date
 
         # ── 7a. DB commit ──
+        signal_eval_summary = {
+            "signals_evaluated": 0,
+            "evaluations": [],
+            "persisted": False,
+        }
+        postmatch_eval_summary = {
+            "persisted": False,
+            "action": "skipped",
+            "reason": "dry_run" if dry_run else "not_attempted",
+        }
+        learning_log_for_signal = pipeline_data.get("learning_log")
+        signal_prediction_run_id = _learning_log_prediction_run_id(learning_log_for_signal)
         if not dry_run:
+            if not signal_prediction_run_id:
+                pipeline_status["output_report"] = "incomplete"
+                raise RuntimeError(
+                    "Learning log has no prediction_run_id; closed-loop postmatch_eval cannot be written"
+                )
+            postmatch_eval_summary = await _upsert_postmatch_eval(
+                db,
+                prediction_run_id=signal_prediction_run_id,
+                home_score=home_score,
+                away_score=away_score,
+                probs=[pred_h, pred_d, pred_a],
+                top_scores=snapshot.top_scores,
+                brier=brier,
+            )
+            pipeline_data["postmatch_eval"] = postmatch_eval_summary
             await db.commit()
             print(f"  ✅ 7a: DB committed")
+            print(
+                "  ✅ Postmatch eval: "
+                f"{postmatch_eval_summary.get('action')} "
+                f"(top3={postmatch_eval_summary.get('top3_hit')})"
+            )
+            try:
+                signal_eval_summary = evaluate_match_signals(
+                    DEFAULT_DB_PATH,
+                    match_id=match_uuid,
+                    home_team=home_team,
+                    away_team=away_team,
+                    home_score=home_score,
+                    away_score=away_score,
+                    prediction_run_id=signal_prediction_run_id,
+                    dry_run=False,
+                )
+                print(
+                    "  ✅ Signal attribution: "
+                    f"{signal_eval_summary.get('signals_evaluated', 0)} signals evaluated"
+                )
+            except Exception as exc:
+                signal_eval_summary = {
+                    "signals_evaluated": 0,
+                    "evaluations": [],
+                    "persisted": False,
+                    "error": str(exc),
+                }
+                print(f"  ⚠ Signal attribution skipped: {exc}")
+        else:
+            try:
+                signal_eval_summary = evaluate_match_signals(
+                    DEFAULT_DB_PATH,
+                    match_id=match_uuid,
+                    home_team=home_team,
+                    away_team=away_team,
+                    home_score=home_score,
+                    away_score=away_score,
+                    prediction_run_id=signal_prediction_run_id,
+                    dry_run=True,
+                )
+            except Exception:
+                signal_eval_summary = {"signals_evaluated": 0, "evaluations": [], "persisted": False}
 
         # ── 7b. Write postmatch report to reports/postmatch/ ──
         reports_dir = BACKEND_DIR.parent / "reports" / "postmatch"
@@ -541,28 +1016,30 @@ async def run_complete_postmatch(
         report_path = reports_dir / report_filename
 
         # Collect component-level detail
-        component_lines = []
         component_probs = snapshot.component_probs or {}
-        for layer in ["dc", "enhancer", "weibull", "elo", "pi", "market"]:
-            cp = component_probs.get(layer, {})
-            if not cp:
-                continue
-            l_h = cp.get("home", cp.get("home_win_prob", 0.33))
-            l_d = cp.get("draw", cp.get("draw_prob", 0.33))
-            l_a = cp.get("away", cp.get("away_win_prob", 0.33))
-            l_fav_idx = max(range(3), key=lambda i: [l_h, l_d, l_a][i])
-            l_fav = ['H', 'D', 'A'][l_fav_idx]
-            l_dir = "✅" if l_fav_idx == actual_idx else "❌"
-            l_brier = sum((p - a)**2 for p, a in zip([l_h, l_d, l_a], actual_vec))
-            component_lines.append(
-                f"| {layer:12s} | {l_h*100:5.1f}% / {l_d*100:5.1f}% / {l_a*100:5.1f}% "
-                f"| {l_fav} | {l_dir} | {l_brier:.4f} |"
-            )
+        component_rows = pipeline_data.get("component_review_rows") or _component_review_rows(
+            component_probs,
+            actual_idx,
+            actual_vec,
+        )
+        component_markdown = _component_markdown(component_rows)
 
         # Collect learning insights
         learning_log = pipeline_data.get("learning_log")
+        learning_weight_detail = pipeline_data.get("learning_weight_detail") or _lookup_process_eval_detail(
+            home_team,
+            away_team,
+        )
         learning_section = ""
         if learning_log and not dry_run:
+            base_lw = learning_weight_detail.get("base_learning_weight")
+            quality_lw = learning_weight_detail.get("learning_data_quality")
+            snapshot_factor = learning_weight_detail.get("snapshot_factor", 1.0)
+            formula = (
+                f"{float(base_lw):.2f} × {float(quality_lw):.2f} × {float(snapshot_factor):.2f}"
+                if base_lw is not None and quality_lw is not None
+                else "N/A"
+            )
             learning_section = f"""
 ## 📈 Learning Engine
 
@@ -571,9 +1048,41 @@ async def run_complete_postmatch(
 | Brier Score | {learning_log.error_magnitude:.4f} |
 | Direction | {learning_log.error_direction} |
 | Status | {learning_log.status} |
-| DC Marginal | {learning_log.dc_marginal:.4f} |
-| Enhancer Marginal | {learning_log.enhancer_marginal:.4f} |
-| Elo Marginal | {learning_log.elo_marginal:.4f} |
+| Failure Type | {learning_weight_detail.get('failure_type') or 'N/A'} |
+| Learning Weight | {learning_log.learning_weight:.4f} |
+| Learning Formula | {formula} |
+| Score Log Loss | {_fmt_metric(learning_log.score_log_loss, 4)} |
+| Exact Score Hit | {bool(learning_log.score_exact_hit)} |
+| Top-3 Score Hit | {bool(learning_log.score_top3_hit)} |
+| DC Score Log Loss | {_fmt_metric(learning_log.dc_score_log_loss, 4)} |
+| NegBin Score Log Loss | {_fmt_metric(learning_log.negbin_score_log_loss, 4)} |
+| Weibull Score Log Loss | {_fmt_metric(learning_log.weibull_score_log_loss, 4)} |
+| DC Marginal | {_fmt_metric(learning_log.dc_marginal, 4)} |
+| Enhancer Marginal | {_fmt_metric(learning_log.enhancer_marginal, 4)} |
+| Elo Marginal | {_fmt_metric(learning_log.elo_marginal, 4)} |
+"""
+
+        signal_eval_rows = signal_eval_summary.get("evaluations") or []
+        if signal_eval_rows:
+            signal_eval_lines = "\n".join(
+                f"| {row.get('metrics', {}).get('team', 'N/A')} | "
+                f"{row.get('metrics', {}).get('signal_type', 'N/A')} | "
+                f"{row.get('metrics', {}).get('direction', 'N/A')} | "
+                f"{row.get('verdict', 'N/A')} | "
+                f"{_fmt_metric(row.get('contribution_score'), 4)} |"
+                for row in signal_eval_rows
+            )
+        else:
+            signal_eval_lines = "| N/A | N/A | N/A | no_signals | 0.0000 |"
+        signal_section = f"""
+## 🧠 Information-State Signal Attribution
+
+| Team | Signal | Direction | Verdict | Contribution |
+|:---|:---|:---:|:---:|---:|
+{signal_eval_lines}
+
+**Signal Evaluations**: {signal_eval_summary.get('signals_evaluated', 0)}
+**Policy**: proposal-only; no automatic production weight change.
 """
 
         # Build full report
@@ -602,7 +1111,7 @@ async def run_complete_postmatch(
 
 | Component | Probabilities (H/D/A) | Fav | Dir | Brier |
 |:---|---:|:---:|:---:|---:|
-{chr(10).join(component_lines)}
+{component_markdown}
 
 ---
 
@@ -610,11 +1119,13 @@ async def run_complete_postmatch(
 
 | Metric | Prediction | Actual |
 |:---|---:|---:|
-| Home xG | {pred_hxg if pred_hxg is not None else 'N/A'} | {home_xg if home_xg is not None else 'N/A'} |
-| Away xG | {pred_axg if pred_axg is not None else 'N/A'} | {away_xg if away_xg is not None else 'N/A'} |
+| Home xG | {_fmt_metric(pred_hxg)} | {_fmt_metric(home_xg)} |
+| Away xG | {_fmt_metric(pred_axg)} | {_fmt_metric(away_xg)} |
 
-**Data Completeness**: {'Full' if not missing_stats else f'Partial — missing: {", ".join(missing_stats)}'}
+**Stats Completeness**: {'Full' if not missing_stats else f'Partial — missing: {", ".join(missing_stats)}'}
+**Learning Data Quality**: {learning_weight_detail.get('learning_data_quality') if learning_weight_detail.get('learning_data_quality') is not None else 'N/A'}
 {learning_section}
+{signal_section}
 ---
 
 *Generated: {datetime.now(timezone.utc).isoformat()} | Pipeline: run_postmatch_complete.py*
@@ -632,6 +1143,22 @@ async def run_complete_postmatch(
         memory_filename = f"wc-postmatch-{home_team.replace(' ', '')}-{away_team.replace(' ', '')}-{match_date_str}.md"
         memory_path = memory_dir / memory_filename
 
+        component_memory = "\n".join(
+            f"- **{row['label']}**: {row['fav']} / "
+            f"{'correct' if row['dir_correct'] else 'wrong'} / "
+            f"Brier {float(row['brier']):.4f}"
+            for row in component_rows
+        )
+        lw_detail = learning_weight_detail
+        lw_formula = "N/A"
+        if lw_detail.get("base_learning_weight") is not None and lw_detail.get("learning_data_quality") is not None:
+            lw_formula = (
+                f"{float(lw_detail['base_learning_weight']):.2f} × "
+                f"{float(lw_detail['learning_data_quality']):.2f} × "
+                f"{float(lw_detail.get('snapshot_factor', 1.0)):.2f} = "
+                f"{float(lw_detail['learning_weight']):.4f}"
+            )
+
         memory_md = f"""---
 name: wc-postmatch-{home_team.replace(' ', '').lower()}-{away_team.replace(' ', '').lower()}-{match_date_str}
 description: "Post-match: {home_team} {home_score}-{away_score} {away_team}"
@@ -644,7 +1171,20 @@ metadata:
 - **Brier**: {brier:.4f}
 - **Direction**: {'correct' if dir_correct else 'wrong'}
 - **Prediction**: {pred_h*100:.1f}% / {pred_d*100:.1f}% / {pred_a*100:.1f}% (favored: {pred_fav})
-- **Data quality**: {'full' if not missing_stats else 'partial'}
+- **Stats completeness**: {'full' if not missing_stats else 'partial'}
+- **Failure type**: {lw_detail.get('failure_type') or 'N/A'}
+- **Learning weight**: {lw_formula}
+- **xG**: predicted {_fmt_metric(pred_hxg)}-{_fmt_metric(pred_axg)}, actual {_fmt_metric(home_xg)}-{_fmt_metric(away_xg)}
+- **Score metrics**: log loss {_fmt_metric(getattr(learning_log, 'score_log_loss', None), 4)}, exact hit {bool(getattr(learning_log, 'score_exact_hit', False))}, top-3 hit {bool(getattr(learning_log, 'score_top3_hit', False))}
+
+## Component Review
+
+{component_memory}
+
+## Information-State Signal Attribution
+
+- **Signals evaluated**: {signal_eval_summary.get('signals_evaluated', 0)}
+- **Policy**: proposal-only; no automatic weight change.
 """
 
         if not dry_run:
@@ -654,10 +1194,23 @@ metadata:
             print(f"  [DRY-RUN] 7c: Would write → memory/{memory_filename}")
 
         pipeline_status["output_report"] = "passed"
+        closed_loop_audit = None
+        if not dry_run:
+            closed_loop_audit = audit_match_closed_loop(
+                DEFAULT_DB_PATH,
+                match_ids=[match_uuid],
+                phase="post",
+            )
+            if closed_loop_audit.get("passed"):
+                print("  ✅ Closed-loop audit: postmatch complete")
+            else:
+                pipeline_status["output_report"] = "incomplete"
+                missing = closed_loop_audit.get("matches", [{}])[0].get("missing", [])
+                print(f"  ⚠ Closed-loop audit incomplete: {', '.join(missing)}")
 
         # Generate summary
         summary = {
-            "status": "COMPLETE",
+            "status": "COMPLETE" if pipeline_status["output_report"] == "passed" else "INCOMPLETE",
             "pipeline_status": pipeline_status,
             "match_id": match_uuid,
             "home_team": home_team,
@@ -669,6 +1222,9 @@ metadata:
             "data_completeness": "full" if not missing_stats else "partial",
             "report_file": str(report_path) if not dry_run else None,
             "memory_file": str(memory_path) if not dry_run else None,
+            "postmatch_eval": postmatch_eval_summary,
+            "signal_evaluations": signal_eval_summary.get("signals_evaluated", 0),
+            "closed_loop_audit": closed_loop_audit,
         }
 
         print(f"\n{'='*70}")
@@ -776,6 +1332,9 @@ Examples:
         print(f"   Error: {summary.get('error', 'Unknown')}")
         print(f"   Fix: {summary.get('fix', 'See logs above')}")
         sys.exit(1)
+    if summary["status"] == "INCOMPLETE":
+        print("\n⚠ Pipeline finished with closed-loop gaps; see audit output above.")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -5,9 +5,9 @@
 > 2026 世界杯概率预测研究系统。目标只有一个：在可审计、可复现、无数据泄漏的前提下，把预测做得更准。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-V4.7.0_alpha-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/phase-A3_Stacking_+_B1_Conformal-orange?style=flat-square" alt="phase">
-  <img src="https://img.shields.io/badge/backend_tests-466_passed-success?style=flat-square" alt="backend tests">
+  <img src="https://img.shields.io/badge/version-V4.10.0_alpha-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/phase-V4.10_Information_State_Engine-orange?style=flat-square" alt="phase">
+  <img src="https://img.shields.io/badge/backend_tests-551_passed_4_skipped-success?style=flat-square" alt="backend tests">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/model_loading-disk_cache_only-brightgreen?style=flat-square" alt="model loading">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
@@ -19,17 +19,18 @@
 
 ### 当前结论
 
-WC26 Predict 现在处在 **Phase 4：A3 Stacking元学习 + B1加权共形预测** 阶段，已进入 WC 2026 淘汰赛实时预测。
+WC26 Predict 现在处在 **V4.10 Information State Engine** 阶段：把实时新闻、伤停、阵容、天气、赔率/市场共识升级为可追溯、可打分、可回放、可赛后验证的赛前信息资产。
 
-**V4.7.0-alpha（2026-07-03）当前状态：**
+**V4.10.0-alpha（2026-07-07）当前状态：**
 
-- **组件表现（58场累计）**：Market 85%, DC 77%, Pi 69%, Elo 69%, Enhancer 23%
-- **权重版本**：`WORLD_CUP_V4.7.0_ALPHA` — dc=0.90 elo=0.12 pi=0.17 weibull=0.10 market_max=0.30
-- **58/104 场比赛已完成**（54 场小组赛 + 4 场淘汰赛），46 场待进行
+- **测试状态**：`551 passed, 4 skipped`（最近一次本地后端全量测试；V4.10 信息状态引擎已纳入全量验证）。
+- **代码版本**：`4.10.0-alpha`；当前代码中的 WC 权重标签仍为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；V4.10 不改生产权重。
+- **本地样本口径**：evaluation registry 显示 `87` 个 canonical result 样本，其中 `32` 个 strict eligible backtest 样本、`47` 个 diagnostic 样本、`8` 个 rejected 样本，`source_result_conflicts=0`；任何准确率结论必须先说明采用哪个口径。
 - **预测流水线**：DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market（7 级顺序融合）+ 战意因子 + 平局下限 12% + 分歧自适应 + 动态市场提升 + DC半衰期学习(180d最优) + A3 Stacking元学习器(21维特征) + B1加权共形预测(α=0.1)
-- **赛后复盘**：58 场完整复盘报告在 `reports/postmatch/`，含组件级 Brier/LogLoss/方向正确率
-- **新功能**：V4.7-alpha 增强比分矩阵融合、学习引擎比分归因、BacktestGate proposal-only 权重候选、安全 stacking 元学习器、可回放 snapshot 元数据。
-- **已知风险**：NegBin-DC特征重叠（NegBin从DC xG派生），A3在walk-forward CV上未优于序贯融合（+0.058 Brier delta）
+- **复盘数据完整性**：当前 DB `postmatch_process_eval` 为 `20` 条、`match_team_statistics` 为 `34` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
+- **数据库完整性**：SQLite `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行保留在 `data_integrity_quarantine` 供审计。
+- **新功能**：V4.10 Information State Engine：`evidence_items` 证据账本、`information_state_signals` 结构化信号、`signal_evaluations` 赛后信号归因、赛前信息状态审计、FeatureSnapshot V4.10 信息状态 payload。
+- **已知风险**：strict 样本仍只有 `32` 场，距离 `50+` 目标仍差 `18` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
 
 ### 系统目标
 
@@ -77,11 +78,11 @@ backend/app/services/weights.py          权重配置 (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           模型工件 (calibrator, ratings)
 backend/model_artifacts/dc_cache/        模型磁盘缓存 (DC + Enhancer)
 backend/scripts/             CLI 脚本 (预测、复盘、模拟、训练)
-backend/tests/               测试 (466 passed)
+backend/tests/               测试 (551 passed, 4 skipped)
 backend/dashboard/           Streamlit 本地研究工作台 (9 页面)
 backend/data/                SQLite 数据库 + 数据文件
-reports/                     预测报告
-reports/postmatch/           赛后复盘报告
+reports/                     当前预测报告
+reports/postmatch/           当前赛后复盘报告
 docs/                        架构、合规文档
 ```
 
@@ -145,13 +146,25 @@ cd backend
 
 # 1. 运行测试
 python -m pytest tests/ -q --tb=short
-# 预期: 466 passed
+# 预期: 551 passed, 4 skipped
 
 # 2. 检查 API 健康状态
 python -c "from app.main import app; print('FastAPI app loaded OK')"
 
 # 3. 环境验证
 python scripts/verify_env.py
+```
+
+**生产追溯审计：**
+
+```bash
+cd backend
+python scripts/audit_entrypoints.py
+python scripts/audit_report_paths.py
+python scripts/audit_db_integrity.py
+python scripts/preflight_accuracy_experiments.py
+python scripts/audit_public_outputs.py
+python scripts/audit_match_information_state.py --match-id 199 --home "Portugal" --away "Spain"
 ```
 
 ### 常用命令
@@ -174,6 +187,19 @@ python scripts/auto_postmatch.py
 # 单场复盘审查
 python scripts/postmatch_review.py
 ```
+
+**当前入口白名单：**
+
+- 赛前预测：`backend/scripts/predict_match_full.py`
+- 赛后复盘：`backend/scripts/run_postmatch_complete.py`
+- 准确率实验：`backend/scripts/run_accuracy_experiments.py`
+- 实验预检：`backend/scripts/preflight_accuracy_experiments.py`
+- DB 审计：`backend/scripts/audit_db_integrity.py`
+- 公开输出审计：`backend/scripts/audit_public_outputs.py`
+- 信息证据采集：`backend/scripts/collect_match_evidence.py`
+- 信息信号抽取：`backend/scripts/extract_information_signals.py`
+- 信息信号评分：`backend/scripts/score_information_signals.py`
+- 信息状态审计：`backend/scripts/audit_match_information_state.py`
 
 **WC26 赛程与模拟：**
 
@@ -228,7 +254,7 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 - 首发阵容、出场分钟、伤停、停赛、球员可用性。
 - 休息天数、旅行距离、场地、天气、海拔、时区。
 - FIFA ranking、Elo、赛事重要性、杯赛/友谊赛/淘汰赛标签。
-- 市场赔率快照，先作为 shadow benchmark，完成泄漏保护后再考虑进入融合。
+- 市场赔率快照与多博彩商共识，这是核心高价值赛前信号；必须带时间戳并通过泄漏保护。
 
 所有数据必须带 `source`、`source_time`、`available_at`、`match_id`、team id 映射。
 
@@ -258,10 +284,13 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### 版本历史
 
-当前主版本：**V4.7.0-alpha**
+当前主版本：**V4.10.0-alpha**
 
 | 版本 | 日期 | 关键变更 |
 |------|------|---------|
+| **V4.10.0-alpha** | 2026-07-07 | Real-time information state engine: evidence ledger + structured signal scoring + signal attribution + information-state preflight |
+| **V4.9.0-alpha** | 2026-07-05 | Accuracy Data OS: repair report v2 + accuracy todo backlog + experiment preflight + structured pre-match signals + FeatureSnapshot v2 + proposal-only self-evolution |
+| **V4.8.0-alpha** | 2026-07-04 | Accuracy Engine: registry v2 + PredictionKernel + shadow candidate experiments + generic proposal ledger |
 | **V4.7.0-alpha** | 2026-07-03 | 三源比分矩阵融合 + 学习引擎比分归因 + BacktestGate proposal-only 权重候选 + snapshot 可回放元数据 + stacking 安全门 |
 | **V4.5.0-beta** | 2026-07-01 | A3 Stacking元学习器(7组件×3结果=21维LR) + B1加权共形预测(α=0.1 halflife=30d) + DC半衰期学习(180d最优) + 全文档化魔数注册表 |
 | **V4.4.2-beta** | 2026-06-30 | 全流水线回测验证 + 有效权重报告 + P1-2参数验证 |
@@ -293,19 +322,20 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### Current Status
 
-WC26 Predict is in **Phase 4: A3 Stacking + B1 Weighted Conformal**, actively making real-time predictions for WC 2026 knockout stage matches.
+WC26 Predict is in the **V4.10 Information State Engine** phase: turn live news, injuries, lineups, weather, odds, and market consensus into traceable, scored, replayable pre-match evidence.
 
-**V4.7.0-alpha (2026-07-03) State:**
+**V4.10.0-alpha (2026-07-07) State:**
 
-- **Component accuracy (58-match cumulative)**: Market 85%, DC 77%, Pi 69%, Elo 69%, Enhancer 23%
-- **Weights**: `WORLD_CUP_V4.7.0_ALPHA` — dc=0.90 elo=0.12 pi=0.17 weibull=0.10 market_max=0.30
-- **58/104 matches completed** (54 group + 4 knockout), 46 remaining
+- **Tests**: `551 passed, 4 skipped` on the latest full local suite; V4.10 information-state engine tests are included in full validation.
+- **Code version**: `4.10.0-alpha`; current WC weight labels remain group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`; V4.10 does not auto-apply production weights.
+- **Local sample registry**: `87` canonical result samples, `32` strict eligible backtest samples, `47` diagnostic samples, `8` rejected samples, and `source_result_conflicts=0`. Accuracy claims must state the sample definition.
 - **Fusion chain**: DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market (7-stage sequential fusion) + motivation factor + 12% draw floor + adaptive divergence guard + dynamic market boost + DC half-life learning (180d optimal) + A3 Stacking meta-learner (21-dim features) + B1 Weighted Conformal Prediction (α=0.1)
-- **Post-match**: 58 complete review reports in `reports/postmatch/` with component-level Brier/LogLoss/direction accuracy
-- **New**: V4.7-alpha score-matrix fusion, score-level learning attribution, BacktestGate proposal-only weight candidates, replayable snapshot metadata, and stacking learner safety gates.
-- **Known risk**: NegBin-DC feature overlap (NegBin derived from DC xG); A3 did not outperform sequential fusion in walk-forward CV (+0.058 Brier delta)
-- **Self-evolution**: Pi weight 0.12 → 0.17 (67% direction correct in latest panel, best non-market component)
-- **Known issues**: Enhancer systematically biased toward underdogs (23% cumulative direction correct), divergence guard (dc=0.68) effectively suppresses impact
+- **Post-match data completeness**: local DB has `20` `postmatch_process_eval` rows and `34` `match_team_statistics` rows. Strict backtests must not mix all schedule-finished rows without registry filtering.
+- **DB integrity**: SQLite `PRAGMA integrity_check=ok` and `PRAGMA foreign_key_check=0`; historical orphan rows are preserved in `data_integrity_quarantine` for auditability.
+- **New**: V4.10 Information State Engine: evidence ledger, structured shadow signals, signal scoring, post-match signal attribution, and information-state audit payloads in prediction feature snapshots.
+- **Known risk**: strict evidence is still limited to `32` samples, `18` below the `50+` target; dynamic candidates remain shadow-only until paired proper-scoring gates pass.
+- **Self-evolution**: proposal-only. The system can write `model_change_proposals`, but no proposal is auto-applied to production weights, calibrators, or artifacts.
+- **Known issues**: diagnostic/rejected samples are mostly missing pre-match snapshots, timestamp evidence, or current probabilities; data repair has higher priority than adding more production models.
 
 ### Project Goals
 
@@ -353,11 +383,11 @@ backend/app/services/weights.py          Weight config (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           Model artifacts (calibrator, ratings)
 backend/model_artifacts/dc_cache/        Disk-cached models (DC + Enhancer)
 backend/scripts/             CLI scripts (predict, review, simulate, train)
-backend/tests/               Tests (466 passed)
+backend/tests/               Tests (551 passed, 4 skipped)
 backend/dashboard/           Streamlit research dashboard (9 pages)
 backend/data/                SQLite database + data files
-reports/                     Prediction reports
-reports/postmatch/           Post-match review reports
+reports/                     Current prediction reports
+reports/postmatch/           Current post-match review reports
 docs/                        Architecture & compliance docs
 ```
 
@@ -421,13 +451,25 @@ cd backend
 
 # 1. Run tests
 python -m pytest tests/ -q --tb=short
-# Expected: 466 passed
+# Expected: 551 passed, 4 skipped
 
 # 2. Check API health
 python -c "from app.main import app; print('FastAPI app loaded OK')"
 
 # 3. Environment check
 python scripts/verify_env.py
+```
+
+**Production traceability audit:**
+
+```bash
+cd backend
+python scripts/audit_entrypoints.py
+python scripts/audit_report_paths.py
+python scripts/audit_db_integrity.py
+python scripts/preflight_accuracy_experiments.py
+python scripts/audit_public_outputs.py
+python scripts/audit_match_information_state.py --match-id 199 --home "Portugal" --away "Spain"
 ```
 
 ### Common Commands
@@ -450,6 +492,19 @@ python scripts/auto_postmatch.py
 # Single match review
 python scripts/postmatch_review.py
 ```
+
+**Current entrypoint allowlist:**
+
+- Pre-match prediction: `backend/scripts/predict_match_full.py`
+- Post-match review: `backend/scripts/run_postmatch_complete.py`
+- Accuracy experiments: `backend/scripts/run_accuracy_experiments.py`
+- Experiment preflight: `backend/scripts/preflight_accuracy_experiments.py`
+- DB audit: `backend/scripts/audit_db_integrity.py`
+- Public output audit: `backend/scripts/audit_public_outputs.py`
+- Evidence collection: `backend/scripts/collect_match_evidence.py`
+- Signal extraction: `backend/scripts/extract_information_signals.py`
+- Signal scoring: `backend/scripts/score_information_signals.py`
+- Information-state audit: `backend/scripts/audit_match_information_state.py`
 
 **WC26 Schedule & Simulation:**
 
@@ -501,7 +556,7 @@ High-priority data for the next phase:
 - Starting lineups, minutes played, injuries, suspensions, player availability.
 - Rest days, travel distance, venue, weather, altitude, timezone.
 - FIFA ranking, Elo, competition importance, cup/friendly/knockout tags.
-- Market odds snapshots — shadow benchmark first, fusion only after leak protection.
+- Market odds snapshots and multi-bookmaker consensus — high-value pre-match signals that must carry timestamps and leakage protection.
 
 All data must carry: `source`, `source_time`, `available_at`, `match_id`, team id mapping.
 
@@ -531,10 +586,13 @@ See [`docs/COMPLIANCE_AND_OUTPUT_POLICY.md`](docs/COMPLIANCE_AND_OUTPUT_POLICY.m
 
 ### Version History
 
-Current version: **V4.7.0-alpha**
+Current version: **V4.10.0-alpha**
 
 | Version | Date | Key Changes |
 |------|------|---------|
+| **V4.10.0-alpha** | 2026-07-07 | Real-time information state engine: evidence ledger + structured signal scoring + signal attribution + information-state preflight |
+| **V4.9.0-alpha** | 2026-07-05 | Accuracy Data OS: repair report v2 + accuracy todo backlog + experiment preflight + structured pre-match signals + FeatureSnapshot v2 + proposal-only self-evolution |
+| **V4.8.0-alpha** | 2026-07-04 | Accuracy Engine: registry v2 + PredictionKernel + shadow candidate experiments + generic proposal ledger |
 | **V4.7.0-alpha** | 2026-07-03 | Score-matrix fusion + score-level learning attribution + BacktestGate proposal-only weight candidates + replayable snapshot metadata + stacking safety gates |
 | **V4.5.0-beta** | 2026-07-01 | A3 Stacking meta-learner (7 components × 3 outcomes = 21-dim LR) + B1 Weighted Conformal Prediction (α=0.1 halflife=30d) + DC half-life learning (180d optimal) + complete magic number registry |
 | **V4.4.2-beta** | 2026-06-30 | Full-pipeline backtest verification + effective weights report + P1-2 parameter validation |

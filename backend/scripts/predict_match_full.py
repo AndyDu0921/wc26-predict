@@ -13,7 +13,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-if sys.platform == "win32":
+if sys.platform == "win32" and "pytest" not in sys.modules:
     sys.stdout = io.TextIOWrapper(
         sys.stdout.buffer,
         encoding="utf-8",
@@ -27,6 +27,18 @@ from app.core.verification_gates import (
     format_gate_results,
     all_errors_passed,
 )
+from app.services.evaluation_registry import DEFAULT_DB_PATH
+from app.services.information_state_engine import (
+    audit_match_information_state,
+    collect_match_evidence,
+    extract_information_signals,
+    score_information_signals,
+)
+from app.services.closed_loop_feature_snapshot import (
+    persist_feature_snapshot_from_latest_prematch,
+)
+from scripts.audit_match_closed_loop import audit_match_closed_loop
+from scripts.backfill_prediction_persistence import repair_match as repair_prediction_persistence
 
 
 def _parse_args() -> argparse.Namespace:
@@ -134,6 +146,48 @@ def main() -> int:
         print(format_gate_results(preflight_warnings, "Pre-flight Gate"), file=sys.stderr)
         # Non-fatal: continue but with degraded confidence
 
+    information_state_audit = None
+    try:
+        if not args.no_save:
+            collect_match_evidence(
+                DEFAULT_DB_PATH,
+                match_id=args.match_id or None,
+                home_team=args.home,
+                away_team=args.away,
+            )
+            extract_information_signals(
+                DEFAULT_DB_PATH,
+                match_id=args.match_id or None,
+                home_team=args.home,
+                away_team=args.away,
+                kickoff_at=args.match_date,
+                persist=True,
+            )
+            score_information_signals(
+                DEFAULT_DB_PATH,
+                match_id=args.match_id or None,
+                home_team=args.home,
+                away_team=args.away,
+            )
+        information_state_audit = audit_match_information_state(
+            DEFAULT_DB_PATH,
+            match_id=args.match_id or None,
+            home_team=args.home,
+            away_team=args.away,
+            kickoff_at=args.match_date,
+        )
+        missing = information_state_audit.get("missing", [])
+        print(
+            "[Information State] "
+            f"quality={information_state_audit.get('quality_score', 0):.2f} "
+            f"evidence={information_state_audit.get('evidence_count', 0)} "
+            f"signals={information_state_audit.get('signal_count', 0)} "
+            f"missing={','.join(missing) if missing else 'none'}",
+            file=sys.stderr,
+        )
+    except Exception as exc:
+        print(f"[Information State] audit failed: {exc}", file=sys.stderr)
+
     pipeline = PredictionPipeline.from_artifacts(mode=args.mode)
     result = pipeline.predict_sync(
         args.home,
@@ -149,6 +203,8 @@ def main() -> int:
         enable_weather=not args.no_weather,
     )
     payload = result.to_dict()
+    if information_state_audit is not None:
+        payload["information_state_audit"] = information_state_audit
 
     # ── Post-flight gate ───────────────────────────────────────────
     probs_for_gate = payload.get("prediction", {}) if isinstance(payload, dict) else {}
@@ -180,9 +236,40 @@ def main() -> int:
             is_neutral,
         )
 
+    closed_loop_exit_code = 0
+    if not args.no_save and args.match_id:
+        import sqlite3
+
+        with sqlite3.connect(str(DEFAULT_DB_PATH)) as conn:
+            conn.row_factory = sqlite3.Row
+            payload["prediction_persistence_repair"] = repair_prediction_persistence(
+                conn,
+                args.match_id,
+                persist=True,
+            )
+        feature_result = persist_feature_snapshot_from_latest_prematch(
+            DEFAULT_DB_PATH,
+            match_id=args.match_id,
+        )
+        payload["feature_snapshot_persistence"] = feature_result
+        closed_loop_audit = audit_match_closed_loop(
+            DEFAULT_DB_PATH,
+            match_ids=[args.match_id],
+            phase="pre",
+        )
+        payload["closed_loop_audit"] = closed_loop_audit
+        if not closed_loop_audit.get("passed"):
+            closed_loop_exit_code = 3
+            missing = closed_loop_audit.get("matches", [{}])[0].get("missing", [])
+            print(
+                "[Closed Loop] incomplete pre-match persistence: "
+                + (",".join(missing) if missing else "unknown"),
+                file=sys.stderr,
+            )
+
     print("=== PREDICTION JSON ===")
     print(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
-    return 0
+    return closed_loop_exit_code
 
 
 if __name__ == "__main__":

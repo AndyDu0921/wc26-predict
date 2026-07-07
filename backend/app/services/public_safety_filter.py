@@ -1,6 +1,8 @@
-"""Public safety filter — forbidden terms detection and content auditing.
+"""Public safety filter — unsafe advice detection and content auditing.
 
-Forbidden terms list from action plan Section 8 (Output Filtering Rules).
+Market odds/bookmaker references are allowed as research evidence in V4.9.
+This filter blocks promotional or advice-like gambling language, not raw
+market data needed for model quality.
 
 Design: Pure functions, no side effects, importable from anywhere.
 """
@@ -13,16 +15,28 @@ logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from typing import Any
 
-# ── Forbidden terms (action plan Section 8.1) ──
-# These must NEVER appear in creator_safe or public_safe output.
+# ── Forbidden advice/promotional terms ──
+# Raw odds and bookmaker names are allowed as data.  The blocked terms below
+# target calls to action, guaranteed outcomes, and monetized tip language.
 
 CREATOR_SAFE_FORBIDDEN = [
-    # Chinese — betting/gambling
-    "赔率", "盘口", "博彩", "投注", "竞彩", "下注", "庄家", "博彩公司",
-    # English — betting/gambling
-    "betting", "odds", "bookmaker", "handicap", "spread",
-    "over/under", "moneyline", "wager", "stake", "payout",
-    "ROI", "盈利", "稳赚", "必中", "命中率", "带单",
+    "建议投注",
+    "推荐投注",
+    "竞彩推荐",
+    "下注",
+    "带单",
+    "推单",
+    "稳赚",
+    "必中",
+    "包赢",
+    "盈利保证",
+    "betting tips",
+    "bet this",
+    "odds pick",
+    "guaranteed prediction",
+    "sure win",
+    "lock pick",
+    "wager now",
 ]
 
 # ── Additional forbidden for public_safe (action plan Section 8.2) ──

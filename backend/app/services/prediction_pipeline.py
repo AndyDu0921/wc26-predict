@@ -29,12 +29,11 @@ from app.services.model_cache_disk import (
     save_enhancer_to_disk,
 )
 from app.services.pi_ratings import PiRatingWrapper
+from app.services.prediction_kernel_adapter import run_prediction_kernel_from_components
 from app.services.prediction_result import DegradedReason, PredictionResult, SourceStatus
-from app.services.score_matrix_calibrator import (
-    SCORE_MATRIX_CALIBRATION_ENABLED,
-    calibrate_score_matrix,
-)
+from app.services.score_matrix_calibrator import SCORE_MATRIX_CALIBRATION_ENABLED
 from app.services.signal_adjuster import SignalAdjuster
+from app.core.score_matrix_fusion import build_score_matrix_fusion
 from app.core.ko_draw_guard import check_ko_draw_guard, enforce_ko_draw_post_calibration, _is_ko_stage
 from app.core.weibull_scenario import classify_weibull_scenario, resolve_weibull_action
 from app.core.engine import apply_market_consensus_gate
@@ -54,10 +53,10 @@ FRIENDLY_COMPETITION_WEIGHT = 0.5
 from app.core.engine import (
     WC_XG_CALIBRATION_FACTOR, NEGBIN_R, NEGBIN_FUSION_WEIGHT,
     negbin_pmf as _negbin_pmf,
-    negbin_score_matrix,
-    fuse_score_matrices,
     fuse_dc_enhancer_adaptive,
     enforce_draw_floor,
+    DRAW_FLOOR,
+    KO_DRAW_FLOOR,
     run_core_fusion,
     apply_market_boost,
     CoreFusionResult,
@@ -605,19 +604,23 @@ class PredictionPipeline:
                 severity="warning", detail=str(exc),
             ))
 
-        core = run_core_fusion(
-            dc_probs=dc_pred,
-            dc_home_xg=float(dc_pred.get("home_xg", 0)),
-            dc_away_xg=float(dc_pred.get("away_xg", 0)),
-            dc_base_weight=wc.dc_enhancer_blend,
-            enh_probs=enh_raw,
-            weibull_probs=wb_pred if weibull_effective_weight > 0 else None,
+        kernel_result = run_prediction_kernel_from_components(
+            home_team=home_team,
+            away_team=away_team,
+            competition=competition,
+            stage=stage,
+            is_neutral=is_neutral,
+            dc_pred=dc_pred,
+            dc_weight=wc.dc_enhancer_blend,
+            enhancer_probs=enh_raw,
+            weibull_probs=wb_pred,
             weibull_weight=weibull_effective_weight,
-            elo_probs={"home_win_prob": elo_pred.home_win_prob, "draw_prob": elo_pred.draw_prob, "away_win_prob": elo_pred.away_win_prob},
+            elo_pred=elo_pred,
             elo_weight=wc.elo,
-            pi_probs=pi_pred,
+            pi_pred=pi_pred,
             pi_weight=wc.pi if pi_pred else 0.0,
         )
+        core = kernel_result.core_fusion
         clean = dict(core.probs)
         divergence_pp = core.dc_enhancer_divergence_pp
         direction_conflict = core.dc_enhancer_direction_conflict
@@ -877,11 +880,12 @@ class PredictionPipeline:
                     mb_result.divergence * 100, mb_result.market_weight_used,
                 )
 
-        # ── 13.4 Draw floor (V4.2.1) ──
+        # ── 13.4 Draw floor (V4.8.1: KO-aware) ──
         if is_wc_comp:
-            clean, draw_floor_applied = self._enforce_draw_floor(clean)
+            draw_floor = KO_DRAW_FLOOR if (stage and _is_ko_stage(stage)) else DRAW_FLOOR
+            clean, draw_floor_applied = self._enforce_draw_floor(clean, floor=draw_floor)
             if draw_floor_applied:
-                logger.info("Draw floor applied: draw bumped to 12%%")
+                logger.info("Draw floor applied: draw bumped to %.0f%%", draw_floor * 100)
 
         # ── 13.5 Isotonic calibration (R4-C7: was disabled stub) ──
         # Calibrates the final probability vector after market blending.
@@ -939,8 +943,6 @@ class PredictionPipeline:
         calibrated_top_scores: list[dict[str, Any]] | None = None
         calibrated_score_matrix: list[list[float]] | None = None
         source_score_matrices: dict[str, list[list[float]]] = {}
-        nb_mat: list[list[float]] | None = None
-        wb_mat: list[list[float]] | None = None
 
         raw_score_matrix = dc_pred.get("score_matrix")
         if SCORE_MATRIX_CALIBRATION_ENABLED and raw_score_matrix:
@@ -948,74 +950,28 @@ class PredictionPipeline:
                 dc_home_xg = float(dc_pred.get("home_xg", 0))
                 dc_away_xg = float(dc_pred.get("away_xg", 0))
                 tau_rho = getattr(self._dc, "rho", -0.30) if hasattr(self._dc, "rho") else -0.30
-
-                # Build source matrices
-                matrices: list[list[list[float]]] = []
-                matrix_weights: list[float] = []
-
-                # Source 1: DC (Poisson+τ) — always available
-                matrices.append(raw_score_matrix)
-                matrix_weights.append(0.40)
-                score_matrix_diag["fusion_sources"].append("dc")
-
-                # Source 2: NegBin+τ — Sarmanov-NB model (Michels et al. 2023)
-                if dc_home_xg > 0 and dc_away_xg > 0:
-                    nb_mat = negbin_score_matrix(
-                        dc_home_xg, dc_away_xg, max_g=5, tau_rho=tau_rho,
-                    )
-                    matrices.append(nb_mat)
-                    matrix_weights.append(0.35)
-                    score_matrix_diag["fusion_sources"].append("negbin")
-
-                # Source 3: Weibull Copula (Boshnakov et al. 2017)
+                wb_score_matrix = None
                 if hasattr(self, "_weibull") and self._weibull is not None:
-                    wb_mat = self._weibull.predict_score_matrix(
+                    wb_score_matrix = self._weibull.predict_score_matrix(
                         home_team, away_team, is_neutral,
                     )
-                    if wb_mat is not None:
-                        matrices.append(wb_mat)
-                        matrix_weights.append(0.25)
-                        score_matrix_diag["fusion_sources"].append("weibull")
-
-                # Fuse matrices with outcome-constrained calibration
-                if len(matrices) >= 2:
-                    fused_matrix = fuse_score_matrices(
-                        matrices, matrix_weights,
-                        final_probs={
-                            "home_win_prob": clean["home_win_prob"],
-                            "draw_prob": clean["draw_prob"],
-                            "away_win_prob": clean["away_win_prob"],
-                        },
-                    )
-                    # Re-extract top-3 from fused matrix
-                    G = len(fused_matrix) - 1
-                    flat: list[tuple[int, int, float]] = []
-                    for h in range(G + 1):
-                        for a in range(G + 1):
-                            flat.append((h, a, fused_matrix[h][a]))
-                    top3: list[dict[str, Any]] = []
-                    for home_g, away_g, prob in sorted(flat, key=lambda x: x[2], reverse=True)[:3]:
-                        top3.append({"score": f"{home_g}:{away_g}", "prob": round(prob, 4)})
-                    calibrated_top_scores = top3
-                    calibrated_score_matrix = fused_matrix
-                    score_matrix_diag["calibration_applied"] = True
-                    logger.debug(
-                        "Score matrix fused from %d sources: %s",
-                        len(matrices), score_matrix_diag["fusion_sources"],
-                    )
-                else:
-                    # Fallback: single-source calibration (original path)
-                    cal_result = calibrate_score_matrix(
-                        raw_matrix=raw_score_matrix,
-                        final_probs={
-                            "home_win_prob": clean["home_win_prob"],
-                            "draw_prob": clean["draw_prob"],
-                            "away_win_prob": clean["away_win_prob"],
-                        },
-                    )
-                    calibrated_top_scores = cal_result["top3_scores"]
-                    calibrated_score_matrix = cal_result["calibrated_matrix"]
-                    score_matrix_diag = cal_result
+                score_fusion = build_score_matrix_fusion(
+                    raw_score_matrix=raw_score_matrix,
+                    final_probs={
+                        "home_win_prob": clean["home_win_prob"],
+                        "draw_prob": clean["draw_prob"],
+                        "away_win_prob": clean["away_win_prob"],
+                    },
+                    home_xg=dc_home_xg,
+                    away_xg=dc_away_xg,
+                    tau_rho=tau_rho,
+                    weibull_score_matrix=wb_score_matrix,
+                    max_goals=5,
+                )
+                calibrated_top_scores = score_fusion.top_scores
+                calibrated_score_matrix = score_fusion.score_matrix
+                score_matrix_diag = score_fusion.diagnostics
+                source_score_matrices = score_fusion.source_score_matrices
             except Exception as exc:
                 logger.warning(
                     "Score matrix fusion failed — using raw DC: %s", exc
@@ -1024,14 +980,6 @@ class PredictionPipeline:
                     "calibration_applied": False,
                     "error": str(exc),
                 }
-
-        # Build source score matrices dict for post-match evaluation
-        if raw_score_matrix:
-            source_score_matrices["dc"] = raw_score_matrix
-        if nb_mat is not None:
-            source_score_matrices["negbin"] = nb_mat
-        if wb_mat is not None:
-            source_score_matrices["weibull"] = wb_mat
 
         # ── 13.7 KO draw guard (P0-2) ──
         # Check for implausibly low draw probability in knockout matches
@@ -1282,6 +1230,7 @@ class PredictionPipeline:
                 "market_weight_used": market_weight_used,
                 "calibration_applied": calibration_applied,
                 "score_matrix_calibration": score_matrix_diag,
+                "prediction_kernel": kernel_result.provenance,
                 "ko_draw_guard": ko_draw_guard_result,
                 "ko_post_cal_guard": ko_post_cal_guard_result,
                 "weibull_scenario": weibull_scenario_result,
@@ -1579,24 +1528,24 @@ class PredictionPipeline:
                     severity="warning", detail=str(exc),
                 ))
 
-        # ── 3. Core Fusion: NegBin → Weibull → Elo → Pi (V4.3.0: unified) ──
-        core = run_core_fusion(
-            dc_probs=dc_pred,
-            dc_home_xg=float(dc_pred.get("home_xg", 0)),
-            dc_away_xg=float(dc_pred.get("away_xg", 0)),
-            dc_base_weight=wc.dc,
-            enh_probs=enh_probs_std if has_enhancer else None,
-            weibull_probs=wb_pred if weibull_effective_weight_sync > 0 else None,
+        # ── 3. Core Fusion: NegBin → Weibull → Elo → Pi (shared kernel) ──
+        kernel_result_sync = run_prediction_kernel_from_components(
+            home_team=home_team,
+            away_team=away_team,
+            competition=competition,
+            stage=stage,
+            is_neutral=effective_is_neutral,
+            dc_pred=dc_pred,
+            dc_weight=wc.dc,
+            enhancer_probs=enh_probs_std if has_enhancer else None,
+            weibull_probs=wb_pred,
             weibull_weight=weibull_effective_weight_sync,
-            elo_probs={
-                "home_win_prob": elo_pred.home_win_prob,
-                "draw_prob": elo_pred.draw_prob,
-                "away_win_prob": elo_pred.away_win_prob,
-            } if has_elo and elo_pred is not None else None,
+            elo_pred=elo_pred if has_elo else None,
             elo_weight=wc.elo if has_elo else 0.0,
-            pi_probs=pi_pred_for_core,
+            pi_pred=pi_pred_for_core if has_pi else None,
             pi_weight=wc.pi if has_pi and pi_pred_for_core is not None else 0.0,
         )
+        core = kernel_result_sync.core_fusion
         fused = dict(core.probs)
         negbin_applied = core.negbin_applied
 
@@ -1743,7 +1692,7 @@ class PredictionPipeline:
         signal_risk_tags: list[str] = []
         try:
             from app.services.signal_adjuster_sync import apply_signal_adjustments, load_approved_signals
-            approved = load_approved_signals(home_team, away_team)
+            approved = load_approved_signals(home_team, away_team, match_id=match_id)
             if approved:
                 news_signals_available = True
                 news_signals_count = len(approved)
@@ -1759,6 +1708,7 @@ class PredictionPipeline:
                     away_prob=fused["away_win_prob"],
                     home_team=home_team,
                     away_team=away_team,
+                    match_id=match_id,
                     signals=approved,
                 )
                 quality.model_components["news_signals"] = "applied"
@@ -2109,8 +2059,6 @@ class PredictionPipeline:
         calibrated_top_scores: list[dict[str, Any]] | None = None
         calibrated_score_matrix: list[list[float]] | None = None
         source_score_matrices_sync: dict[str, list[list[float]]] = {}
-        nb_mat_sync: list[list[float]] | None = None
-        wb_mat_sync: list[list[float]] | None = None
 
         raw_score_matrix = dc_pred.get("score_matrix")
         if SCORE_MATRIX_CALIBRATION_ENABLED and raw_score_matrix:
@@ -2118,69 +2066,28 @@ class PredictionPipeline:
                 dc_home_xg = float(dc_pred.get("home_xg", 0))
                 dc_away_xg = float(dc_pred.get("away_xg", 0))
                 tau_rho = getattr(self._dc, "rho", -0.30) if hasattr(self._dc, "rho") else -0.30
-
-                # Build source matrices
-                matrices: list[list[list[float]]] = []
-                matrix_weights: list[float] = []
-
-                # Source 1: DC (Poisson+τ) — always available
-                matrices.append(raw_score_matrix)
-                matrix_weights.append(0.40)
-                score_matrix_diag["fusion_sources"].append("dc")
-
-                # Source 2: NegBin+τ — Sarmanov-NB model (Michels et al. 2023)
-                if dc_home_xg > 0 and dc_away_xg > 0:
-                    nb_mat_sync = negbin_score_matrix(
-                        dc_home_xg, dc_away_xg, max_g=5, tau_rho=tau_rho,
-                    )
-                    matrices.append(nb_mat_sync)
-                    matrix_weights.append(0.35)
-                    score_matrix_diag["fusion_sources"].append("negbin")
-
-                # Source 3: Weibull Copula (Boshnakov et al. 2017)
+                wb_score_matrix = None
                 if hasattr(self, "_weibull") and self._weibull is not None:
-                    wb_mat_sync = self._weibull.predict_score_matrix(
+                    wb_score_matrix = self._weibull.predict_score_matrix(
                         home_team, away_team, effective_is_neutral,
                     )
-                    if wb_mat_sync is not None:
-                        matrices.append(wb_mat_sync)
-                        matrix_weights.append(0.25)
-                        score_matrix_diag["fusion_sources"].append("weibull")
-
-                # Fuse matrices with outcome-constrained calibration
-                if len(matrices) >= 2:
-                    fused_matrix = fuse_score_matrices(
-                        matrices, matrix_weights,
-                        final_probs={
-                            "home_win_prob": fused["home_win_prob"],
-                            "draw_prob": fused["draw_prob"],
-                            "away_win_prob": fused["away_win_prob"],
-                        },
-                    )
-                    G = len(fused_matrix) - 1
-                    flat_sync: list[tuple[int, int, float]] = []
-                    for h in range(G + 1):
-                        for a in range(G + 1):
-                            flat_sync.append((h, a, fused_matrix[h][a]))
-                    top3_sync: list[dict[str, Any]] = []
-                    for home_g, away_g, prob in sorted(flat_sync, key=lambda x: x[2], reverse=True)[:3]:
-                        top3_sync.append({"score": f"{home_g}:{away_g}", "prob": round(prob, 4)})
-                    calibrated_top_scores = top3_sync
-                    calibrated_score_matrix = fused_matrix
-                    score_matrix_diag["calibration_applied"] = True
-                else:
-                    # Fallback: single-source calibration
-                    cal_result = calibrate_score_matrix(
-                        raw_matrix=raw_score_matrix,
-                        final_probs={
-                            "home_win_prob": fused["home_win_prob"],
-                            "draw_prob": fused["draw_prob"],
-                            "away_win_prob": fused["away_win_prob"],
-                        },
-                    )
-                    calibrated_top_scores = cal_result["top3_scores"]
-                    calibrated_score_matrix = cal_result["calibrated_matrix"]
-                    score_matrix_diag = cal_result
+                score_fusion = build_score_matrix_fusion(
+                    raw_score_matrix=raw_score_matrix,
+                    final_probs={
+                        "home_win_prob": fused["home_win_prob"],
+                        "draw_prob": fused["draw_prob"],
+                        "away_win_prob": fused["away_win_prob"],
+                    },
+                    home_xg=dc_home_xg,
+                    away_xg=dc_away_xg,
+                    tau_rho=tau_rho,
+                    weibull_score_matrix=wb_score_matrix,
+                    max_goals=5,
+                )
+                calibrated_top_scores = score_fusion.top_scores
+                calibrated_score_matrix = score_fusion.score_matrix
+                score_matrix_diag = score_fusion.diagnostics
+                source_score_matrices_sync = score_fusion.source_score_matrices
             except Exception as exc:
                 logger.warning(
                     "Score matrix fusion failed (sync) — using raw DC: %s", exc
@@ -2189,14 +2096,6 @@ class PredictionPipeline:
                     "calibration_applied": False,
                     "error": str(exc),
                 }
-
-        # Build source score matrices dict for post-match evaluation
-        if raw_score_matrix:
-            source_score_matrices_sync["dc"] = raw_score_matrix
-        if nb_mat_sync is not None:
-            source_score_matrices_sync["negbin"] = nb_mat_sync
-        if wb_mat_sync is not None:
-            source_score_matrices_sync["weibull"] = wb_mat_sync
 
         # ── 10.7 KO draw guard (P0-2) ──
         ko_draw_guard_result: dict[str, Any] = {"checked": False, "triggered": False}
@@ -2457,6 +2356,7 @@ class PredictionPipeline:
                 "market_weight_used": market_weight_used,
                 "calibration_applied": calibration_applied,
                 "score_matrix_calibration": score_matrix_diag,
+                "prediction_kernel": kernel_result_sync.provenance,
                 "ko_draw_guard": ko_draw_guard_result,
                 "ko_post_cal_guard": ko_post_cal_guard_result,
                 "weibull_scenario": weibull_scenario_result,

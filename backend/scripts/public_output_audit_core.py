@@ -1,23 +1,15 @@
-#!/usr/bin/env python3
-"""Audit public-facing outputs for odds and bookmaker leakage."""
+"""Shared public-output audit helpers.
+
+Market odds and bookmaker consensus are allowed as research evidence. The audit
+only blocks advice-like or guaranteed-outcome language.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Iterable
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_DIR.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.public_safety_filter import (
     CREATOR_SAFE_FORBIDDEN,
@@ -26,6 +18,8 @@ from app.services.public_safety_filter import (
 )
 
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_DIR.parent
 TEXT_SUFFIXES = {
     ".md",
     ".txt",
@@ -35,9 +29,10 @@ TEXT_SUFFIXES = {
     ".csv",
 }
 DEFAULT_PATHS = (REPO_ROOT / "reports",)
+ARCHIVE_DIR_NAMES = {"archive"}
 
 
-def iter_public_files(paths: Iterable[Path]) -> Iterable[Path]:
+def iter_public_files(paths: Iterable[Path], *, include_archive: bool = False) -> Iterable[Path]:
     """Yield public text files under the provided paths."""
     for path in paths:
         resolved = path.resolve()
@@ -48,17 +43,19 @@ def iter_public_files(paths: Iterable[Path]) -> Iterable[Path]:
                 yield resolved
             continue
         for child in resolved.rglob("*"):
+            if not include_archive and _under_archive(child, resolved):
+                continue
             if child.is_file() and child.suffix.lower() in TEXT_SUFFIXES:
                 yield child
 
 
-def audit_paths(paths: Iterable[Path], *, mode: str = "creator_safe") -> dict:
+def audit_paths(paths: Iterable[Path], *, mode: str = "creator_safe", include_archive: bool = False) -> dict:
     """Scan public files and return a structured audit result."""
     terms = list(CREATOR_SAFE_FORBIDDEN)
     if mode == "public_safe":
         terms.extend(PUBLIC_SAFE_EXTRA_FORBIDDEN)
 
-    files = list(iter_public_files(paths))
+    files = list(iter_public_files(paths, include_archive=include_archive))
     findings = []
     for file_path in files:
         try:
@@ -86,14 +83,15 @@ def audit_paths(paths: Iterable[Path], *, mode: str = "creator_safe") -> dict:
     return {
         "passed": not findings,
         "mode": mode,
+        "include_archive": include_archive,
         "files_scanned": len(files),
         "findings": findings,
     }
 
 
-def _parse_args() -> argparse.Namespace:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scan public outputs for odds/bookmaker leakage",
+        description="Scan public outputs for unsafe betting-advice language",
     )
     parser.add_argument(
         "paths",
@@ -105,21 +103,26 @@ def _parse_args() -> argparse.Namespace:
         choices=("creator_safe", "public_safe"),
         default="creator_safe",
     )
+    parser.add_argument(
+        "--include-archive",
+        action="store_true",
+        help="Also scan reports/archive historical files.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON output")
     return parser.parse_args()
 
 
 def main() -> int:
-    args = _parse_args()
+    args = parse_args()
     paths = [Path(item) for item in args.paths] if args.paths else list(DEFAULT_PATHS)
-    result = audit_paths(paths, mode=args.mode)
+    result = audit_paths(paths, mode=args.mode, include_archive=args.include_archive)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif result["passed"]:
         print(
             f"PASS: scanned {result['files_scanned']} public files; "
-            "no forbidden odds/bookmaker terms found."
+            "no unsafe betting-advice terms found."
         )
     else:
         print(
@@ -137,5 +140,9 @@ def main() -> int:
     return 0 if result["passed"] else 1
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+def _under_archive(path: Path, root: Path) -> bool:
+    try:
+        relative = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return any(part.lower() in ARCHIVE_DIR_NAMES for part in relative.parts[:-1])

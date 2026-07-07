@@ -143,7 +143,7 @@ async def _sync_to_prediction_runs(
     prt_value = run_type_map.get(run_type, "manual")
 
     evaluation_sample = result.get("evaluation_sample") or evaluation_sample_from_prediction_dict(result)
-    feature_snapshot = _build_prediction_run_feature_snapshot(result, adjustment_log, evaluation_sample)
+    approved_signals = _collect_approved_signal_payloads(result, adjustment_log)
 
     now_ts = datetime.now(timezone.utc).isoformat()
     as_of_ts = str(m.get("as_of") or m.get("generated_at") or now_ts)
@@ -152,6 +152,13 @@ async def _sync_to_prediction_runs(
     try:
         from sqlalchemy import text
         async with AsyncSessionLocal() as db:
+            approved_signals = await _hydrate_approved_signals_from_db(approved_signals, db)
+            feature_snapshot = _build_prediction_run_feature_snapshot(
+                result,
+                adjustment_log,
+                evaluation_sample,
+                approved_signals,
+            )
             await db.execute(
                 text(
                     "INSERT INTO prediction_runs "
@@ -182,7 +189,7 @@ async def _sync_to_prediction_runs(
                     "confidence_score": round(float(confidence_score), 4),
                     "risk_tags": _json_dumps(risk_tags),
                     "feature_snapshot": _json_dumps(feature_snapshot),
-                    "approved_signals": _json_dumps([]),
+                    "approved_signals": _json_dumps(approved_signals),
                     "created_at": now_ts,
                 },
             )
@@ -278,6 +285,160 @@ def _extract_market_probs(result: dict[str, Any]) -> dict[str, float] | None:
     return normalize_1x2_payload(component_market)
 
 
+def _collect_approved_signal_payloads(
+    result: dict[str, Any],
+    adjustment_log: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Collect model-used signal evidence from legacy and canonical payloads."""
+    seen: set[str] = set()
+    collected: list[dict[str, Any]] = []
+
+    def add_many(value: Any) -> None:
+        if not value:
+            return
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            normalized = _normalize_approved_signal_payload(item)
+            if not normalized:
+                continue
+            signal_id = str(normalized.get("id") or "").strip()
+            if not signal_id or signal_id in seen:
+                continue
+            seen.add(signal_id)
+            collected.append(normalized)
+
+    prediction = result.get("prediction") or {}
+    meta = result.get("meta") or {}
+    pipeline = result.get("pipeline") or result.get("pipeline_params") or {}
+    adjustment = result.get("adjustment") or {}
+
+    for container in (result, prediction, meta, pipeline, adjustment):
+        if isinstance(container, dict):
+            add_many(container.get("approved_signals"))
+            add_many(container.get("news_signals"))
+            add_many(container.get("news_signal_ids"))
+
+    add_many(result.get("signals"))
+    add_many(result.get("active_events"))
+    add_many(result.get("active_event_ids"))
+
+    for entry in adjustment_log or []:
+        if not isinstance(entry, dict):
+            continue
+        signal_id = entry.get("signal_id") or entry.get("id")
+        if signal_id:
+            add_many([{"id": signal_id}])
+
+    return collected
+
+
+def _normalize_approved_signal_payload(item: Any) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    if isinstance(item, str):
+        item = {"id": item}
+    if not isinstance(item, dict):
+        return None
+
+    signal_id = str(item.get("id") or item.get("signal_id") or "").strip()
+    if not signal_id:
+        return None
+
+    key_players = item.get("key_players", [])
+    if isinstance(key_players, str):
+        key_players = [key_players]
+    if not isinstance(key_players, list):
+        key_players = []
+
+    payload = dict(item)
+    payload["id"] = signal_id
+    payload["signal_type"] = str(payload.get("signal_type") or "unknown")
+    payload["impact_direction"] = str(payload.get("impact_direction") or "neutral")
+    payload["summary_zh"] = str(payload.get("summary_zh") or "")
+    payload["source_reliability"] = float(payload.get("source_reliability") or 0.0)
+    payload["confidence"] = float(payload.get("confidence") or 0.0)
+    payload["key_players"] = [str(player) for player in key_players if player]
+    if "team" not in payload and payload.get("team_name"):
+        payload["team"] = payload.get("team_name")
+    return payload
+
+
+async def _hydrate_approved_signals_from_db(
+    signals: list[dict[str, Any]],
+    db: Any,
+) -> list[dict[str, Any]]:
+    """Hydrate signal IDs with DB evidence when available.
+
+    This is best-effort: unresolved IDs remain in the payload with safe defaults
+    so downstream post-match signal evaluation can still detect the missing link.
+    """
+    if not signals:
+        return []
+    signal_ids = [str(signal.get("id")) for signal in signals if signal.get("id")]
+    if not signal_ids:
+        return signals
+    try:
+        from sqlalchemy import text
+
+        placeholders = ", ".join(f":sig_{idx}" for idx, _ in enumerate(signal_ids))
+        params = {f"sig_{idx}": signal_id for idx, signal_id in enumerate(signal_ids)}
+        result = await db.execute(
+            text(
+                f"""
+                SELECT ns.id, ns.team_id, t.name AS team, ns.signal_type,
+                       ns.impact_direction, ns.evidence_id, ns.confidence,
+                       ns.summary_zh, ns.player_name, ns.claim,
+                       ns.evidence_snippet, ns.normalized_availability,
+                       ns.expected_minutes_delta, ns.effective_until,
+                       ns.contradiction_risk, ns.conflict_group_id,
+                       ns.source_reliability, ns.reviewed_at, ns.key_players
+                FROM news_signals ns
+                LEFT JOIN teams t ON t.id = ns.team_id
+                WHERE ns.id IN ({placeholders})
+                """
+            ),
+            params,
+        )
+        rows = result.mappings().all()
+    except Exception:
+        logging.getLogger(__name__).debug("approved signal hydration skipped", exc_info=True)
+        return signals
+
+    by_id = {str(row["id"]): row for row in rows}
+    hydrated: list[dict[str, Any]] = []
+    for signal in signals:
+        signal_id = str(signal.get("id") or "")
+        row = by_id.get(signal_id)
+        if row is None:
+            missing = dict(signal)
+            missing.setdefault("source_status", "missing_news_signal")
+            hydrated.append(_normalize_approved_signal_payload(missing) or missing)
+            continue
+        payload = {
+            "id": signal_id,
+            "team_id": str(row["team_id"]) if row["team_id"] else None,
+            "team": row["team"],
+            "signal_type": row["signal_type"],
+            "impact_direction": row["impact_direction"],
+            "evidence_id": row["evidence_id"],
+            "confidence": row["confidence"],
+            "summary_zh": row["summary_zh"],
+            "player_name": row["player_name"],
+            "claim": row["claim"],
+            "evidence_snippet": row["evidence_snippet"],
+            "normalized_availability": row["normalized_availability"],
+            "expected_minutes_delta": row["expected_minutes_delta"],
+            "effective_until": row["effective_until"],
+            "contradiction_risk": row["contradiction_risk"],
+            "conflict_group_id": row["conflict_group_id"],
+            "source_reliability": row["source_reliability"],
+            "reviewed_at": row["reviewed_at"],
+            "key_players": _json_load(row["key_players"], []),
+        }
+        hydrated.append(_normalize_approved_signal_payload({**signal, **payload}) or payload)
+    return hydrated
+
+
 def _build_snapshot_pipeline_params(
     pipeline: dict[str, Any],
     meta: dict[str, Any],
@@ -314,10 +475,13 @@ def _build_prediction_run_feature_snapshot(
     result: dict[str, Any],
     adjustment_log: list[dict[str, Any]],
     evaluation_sample: dict[str, Any],
+    approved_signals: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     meta = result["meta"]
     pipeline = result.get("pipeline") or result.get("pipeline_params") or {}
+    information_state = _build_information_state_payload(result, meta)
     return {
+        "schema_version": "prediction_run_feature_snapshot.v4_10",
         "training_rows": pipeline.get("training_rows", meta.get("training_rows")),
         "match_context": {
             "home_team_name": meta["home_team"],
@@ -326,6 +490,9 @@ def _build_prediction_run_feature_snapshot(
             "is_neutral": meta.get("is_neutral", False),
         },
         "adjustment_log": adjustment_log,
+        "approved_signal_ids": [
+            signal.get("id") for signal in (approved_signals or []) if signal.get("id")
+        ],
         "prediction_mode": "script_snapshot",
         "source": "snapshot.py -> save_prediction_snapshot()",
         "weight_config": deepcopy(meta.get("weight_config") or {}),
@@ -343,6 +510,7 @@ def _build_prediction_run_feature_snapshot(
                 result.get("calibration_applied", False),
             )
         ),
+        "information_state": information_state,
         "evaluation_sample": evaluation_sample,
     }
 
@@ -368,3 +536,41 @@ def _json_dumps(obj: Any) -> str:
     """JSON-serialize an object to string for raw SQL insertion."""
     import json
     return json.dumps(obj, ensure_ascii=False, default=str)
+
+
+def _json_load(raw: Any, default: Any = None) -> Any:
+    import json
+    if raw is None or raw == "":
+        return default
+    if isinstance(raw, (dict, list)):
+        return raw
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
+def _build_information_state_payload(
+    result: dict[str, Any],
+    meta: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach V4.10 replayable information state without affecting prediction."""
+    try:
+        from app.services.evaluation_registry import DEFAULT_DB_PATH
+        from app.services.information_state_engine import build_match_information_state_snapshot
+
+        return build_match_information_state_snapshot(
+            DEFAULT_DB_PATH,
+            match_id=str(meta.get("match_id") or ""),
+            home_team=str(meta.get("home_team") or ""),
+            away_team=str(meta.get("away_team") or ""),
+            kickoff_at=meta.get("match_date"),
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).debug("information state snapshot skipped", exc_info=True)
+        return {
+            "schema_version": "information_state_snapshot.v1",
+            "audit": {"quality_score": 0.0, "missing": ["information_state_unavailable"], "error": str(exc)},
+            "signals": [],
+            "shadow_only": True,
+        }
