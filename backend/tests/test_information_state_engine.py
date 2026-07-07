@@ -137,6 +137,38 @@ def test_low_confidence_signal_stays_shadow_rejected(tmp_path):
     assert scored["signals"][0]["shadow_adjustment"]["shadow_only"] is True
 
 
+def test_news_extraction_respects_team_clause_and_injury_negation(tmp_path):
+    db_path = _db(tmp_path)
+    upsert_evidence_item(
+        db_path,
+        EvidenceInput(
+            evidence_type="news",
+            source_url="https://example.test/team-news",
+            title="Alpha vs Beta team news",
+            content="Alpha have no fresh injury concerns; Beta could be without two wingers after both missed the prior match.",
+            published_at="2026-07-07T08:00:00+00:00",
+            available_at="2026-07-07T08:00:00+00:00",
+            reliability_score=0.8,
+            match_id="m1",
+            home_team="Alpha",
+            away_team="Beta",
+        ),
+    )
+
+    extracted = extract_information_signals(
+        db_path,
+        match_id="m1",
+        home_team="Alpha",
+        away_team="Beta",
+    )
+
+    assert extracted["signals_extracted"] == 1
+    signal = extracted["signals"][0]
+    assert signal["team"] == "Beta"
+    assert signal["signal_type"] == "injury"
+    assert signal["direction"] == "negative"
+
+
 def test_signal_evaluation_is_idempotent_and_proposal_only(tmp_path):
     db_path = _db(tmp_path)
     upsert_evidence_item(

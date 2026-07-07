@@ -130,3 +130,52 @@ def test_historical_dixon_coles_alias_participates_in_attribution():
 
     assert db.added is log
     assert log.dc_marginal is not None
+    assert log.model_was_right is True
+
+
+def test_learning_log_records_wrong_prediction_boolean():
+    class _Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return None
+
+    class _Db:
+        def __init__(self):
+            self.added = None
+
+        async def execute(self, *args, **kwargs):
+            return _Result()
+
+        def add(self, value):
+            self.added = value
+
+    snapshot = _snapshot(
+        id=None,
+        match_id="200",
+        baseline_probs={"home": 0.55, "draw": 0.20, "away": 0.25},
+        adjusted_probs={"home": 0.55, "draw": 0.20, "away": 0.25},
+        component_probs={},
+        market_probs=None,
+        fused_score_matrix=None,
+        source_score_matrices=None,
+        pipeline_params={},
+    )
+    db = _Db()
+
+    log = asyncio.run(
+        LearningEngine()._attribute_error(
+            snapshot,
+            actual_index=2,
+            db=db,
+            verified_result_id=None,
+            learning_weight=1.0,
+            tier="full",
+            home_goals=1,
+            away_goals=4,
+        )
+    )
+
+    assert db.added is log
+    assert log.model_was_right is False

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -756,27 +757,46 @@ def _signals_from_evidence(row: sqlite3.Row, *, kickoff_at: str | None) -> list[
     if not teams:
         return []
 
-    signal_type, direction = _classify_signal(evidence_type, content, metadata)
-    if signal_type is None:
-        return []
     source_status = "used_pre_match"
     if _is_after(row["available_at"], kickoff_at):
         source_status = "after_kickoff_excluded_from_strict"
-    team = str(metadata.get("team") or _infer_team(content, teams) or teams[0])
-    player = metadata.get("player")
+
+    candidate_texts: list[tuple[str, str]] = []
+    if evidence_type in {"news", "injury", "lineup", "manual_event"}:
+        for clause in _split_signal_clauses(content):
+            if _is_availability_clear_clause(clause):
+                continue
+            for team_name in teams:
+                if team_name.lower() in clause.lower() or _norm(metadata.get("team")) == _norm(team_name):
+                    candidate_texts.append((team_name, clause))
+        if not candidate_texts and metadata.get("team"):
+            candidate_texts.append((str(metadata["team"]), content))
+    else:
+        candidate_texts.append((str(metadata.get("team") or _infer_team(content, teams) or teams[0]), content))
+
+    signals: list[dict[str, Any]] = []
     confidence = _clamp(float(row["reliability_score"] or 0.5), 0.0, 1.0)
-    base = SIGNAL_BASE_MAGNITUDE.get(signal_type, SIGNAL_BASE_MAGNITUDE["other"])
-    magnitude = round(base * confidence, 4)
-    signal_key = _stable_key(
-        row["id"],
-        row["match_id"] or "",
-        team,
-        player or "",
-        signal_type,
-        direction,
-    )
-    return [
-        {
+    player = metadata.get("player")
+    seen: set[tuple[str, str, str]] = set()
+    for team, text in candidate_texts:
+        signal_type, direction = _classify_signal(evidence_type, text, metadata)
+        if signal_type is None:
+            continue
+        key = (team, signal_type, direction)
+        if key in seen:
+            continue
+        seen.add(key)
+        base = SIGNAL_BASE_MAGNITUDE.get(signal_type, SIGNAL_BASE_MAGNITUDE["other"])
+        magnitude = round(base * confidence, 4)
+        signal_key = _stable_key(
+            row["id"],
+            row["match_id"] or "",
+            team,
+            player or "",
+            signal_type,
+            direction,
+        )
+        signals.append({
             "id": str(uuid4()),
             "signal_key": signal_key,
             "match_id": row["match_id"],
@@ -797,10 +817,10 @@ def _signals_from_evidence(row: sqlite3.Row, *, kickoff_at: str | None) -> list[
                 "direction": direction,
                 "shadow_only": True,
             },
-            "summary": _summary_for_signal(signal_type, direction, team, player, content),
+            "summary": _summary_for_signal(signal_type, direction, team, player, text),
             "metadata": {"evidence_type": evidence_type, **metadata},
-        }
-    ]
+        })
+    return signals
 
 
 def _upsert_signal(conn: sqlite3.Connection, signal: dict[str, Any]) -> dict[str, Any]:
@@ -1035,7 +1055,7 @@ def _classify_signal(
             return "suspension", "negative"
         if any(term in text for term in ("return", "fit", "available", "复出", "恢复")):
             return "return", "positive"
-        if any(term in text for term in ("injury", "injured", "out", "doubtful", "伤", "缺阵")) or event_type == "injury":
+        if any(term in text for term in ("injury", "injured", "out", "doubtful", "without", "missed", "伤", "缺阵")) or event_type == "injury":
             return "injury", "negative"
         if "rotation" in text or event_type == "rotation_hint":
             return "rotation", "negative"
@@ -1043,7 +1063,7 @@ def _classify_signal(
             return "lineup", "neutral"
         if event_type == "motivation":
             return "morale", "positive"
-    if any(term in text for term in ("injury", "injured", "out", "doubtful", "伤", "缺阵")):
+    if any(term in text for term in ("injury", "injured", "out", "doubtful", "without", "missed", "伤", "缺阵")):
         return "injury", "negative"
     if any(term in text for term in ("returns", "return", "fit", "available", "复出", "恢复")):
         return "return", "positive"
@@ -1056,6 +1076,27 @@ def _classify_signal(
     if any(term in text for term in ("travel", "fatigue", "rest", "疲劳", "旅行")):
         return "fatigue", "negative"
     return None, "neutral"
+
+
+def _split_signal_clauses(content: str) -> list[str]:
+    clauses = [
+        " ".join(part.split())
+        for part in re.split(r"[\n.;。；]+", content or "")
+    ]
+    return [clause for clause in clauses if clause]
+
+
+def _is_availability_clear_clause(clause: str) -> bool:
+    text = clause.lower()
+    clear_terms = (
+        "no fresh injury concerns",
+        "no injury concerns",
+        "no fresh injuries",
+        "no new injuries",
+        "clean bill of health",
+        "fully fit squad",
+    )
+    return any(term in text for term in clear_terms)
 
 
 def _infer_team(content: str, teams: list[str]) -> str | None:

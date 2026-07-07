@@ -558,5 +558,50 @@
         "away": 2.63
       }
     ]
+  },
+  "Argentina|Egypt": {
+    "home_odds": 1.38,
+    "draw_odds": 4.5,
+    "away_odds": 8.5,
+    "home_prob": 0.71,
+    "draw_prob": 0.2,
+    "away_prob": 0.09,
+    "sample_bookmakers": 7,
+    "cv_home": 0.03,
+    "cv_draw": 0.04,
+    "cv_away": 0.06,
+    "source": "web_search_consensus",
+    "fetched_at": "2026-07-08T00:00:00+08:00",
+    "bookmakers": [
+      "BetMGM",
+      "DraftKings",
+      "FanDuel",
+      "Caesars",
+      "bet365",
+      "BetOnline",
+      "BetWay"
+    ]
+  },
+  "Colombia|Switzerland": {
+    "home_odds": 2.3,
+    "draw_odds": 3.1,
+    "away_odds": 3.6,
+    "home_prob": 0.43,
+    "draw_prob": 0.3,
+    "away_prob": 0.27,
+    "sample_bookmakers": 6,
+    "cv_home": 0.04,
+    "cv_draw": 0.03,
+    "cv_away": 0.05,
+    "source": "web_search_consensus",
+    "fetched_at": "2026-07-07T20:00:00+08:00",
+    "bookmakers": [
+      "BetOnline",
+      "DraftKings",
+      "BetMGM",
+      "Lucky Rebel",
+      "BetNow",
+      "bet365"
+    ]
   }
 }

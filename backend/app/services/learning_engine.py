@@ -422,6 +422,7 @@ class LearningEngine:
             status=learning_status,
             error_magnitude=final_brier,
             error_direction=direction,
+            model_was_right=pred_index == actual_index,
             dc_error_contribution=dc_contrib,
             enhancer_error_contribution=enhancer_contrib,
             elo_error_contribution=elo_contrib,

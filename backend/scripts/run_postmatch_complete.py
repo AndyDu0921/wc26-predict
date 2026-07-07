@@ -22,15 +22,17 @@ import argparse
 import asyncio
 import io
 import json
+import math
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 
-# Fix Windows GBK encoding for emoji characters
-if sys.platform == 'win32':
+# Fix Windows GBK encoding for emoji characters in direct CLI runs.
+if sys.platform == 'win32' and "pytest" not in sys.modules:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -49,6 +51,7 @@ from app.services.result_verification import (
     get_verification_service,
     SourceTier,
 )
+from scripts.audit_match_closed_loop import audit_match_closed_loop
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Step-by-step pipeline
@@ -171,6 +174,127 @@ def _fmt_metric(value, digits: int = 3) -> str:
         return f"{float(value):.{digits}f}"
     except (TypeError, ValueError):
         return "N/A"
+
+
+def _learning_log_prediction_run_id(learning_log: PredictionLearningLog | None) -> str | None:
+    if learning_log is None:
+        return None
+    raw = str(getattr(learning_log, "prediction_run_id", "") or "").strip()
+    return raw or None
+
+
+def _score_hit_metrics(top_scores, home_score: int, away_score: int) -> tuple[bool, bool]:
+    if not isinstance(top_scores, list):
+        return False, False
+    actual_score = f"{home_score}:{away_score}"
+    valid_scores = [item for item in top_scores if isinstance(item, dict)]
+    exact_hit = bool(valid_scores and str(valid_scores[0].get("score")) == actual_score)
+    top3_hit = any(str(item.get("score")) == actual_score for item in valid_scores[:3])
+    return exact_hit, top3_hit
+
+
+def _calibration_bucket(probs: list[float]) -> int:
+    return min(10, max(1, int(max(probs) * 10) + 1))
+
+
+async def _upsert_postmatch_eval(
+    db,
+    *,
+    prediction_run_id: str,
+    home_score: int,
+    away_score: int,
+    probs: list[float],
+    top_scores,
+    brier: float,
+) -> dict[str, object]:
+    """Create or update postmatch_eval idempotently for one prediction run."""
+    actual_idx = 0 if home_score > away_score else (1 if home_score == away_score else 2)
+    actual_result = ["H", "D", "A"][actual_idx]
+    log_loss = -math.log(max(float(probs[actual_idx]), 1e-12))
+    exact_hit, top3_hit = _score_hit_metrics(top_scores, home_score, away_score)
+    bucket = _calibration_bucket([float(value) for value in probs])
+    notes = {
+        "source": "run_postmatch_complete.py",
+        "idempotency_key": prediction_run_id,
+        "probabilities_changed": False,
+        "reason": "closed_loop_postmatch_eval_sync",
+    }
+    existing = (
+        await db.execute(
+            text(
+                """
+                SELECT id
+                FROM postmatch_eval
+                WHERE prediction_run_id = :prediction_run_id
+                LIMIT 1
+                """
+            ),
+            {"prediction_run_id": prediction_run_id},
+        )
+    ).mappings().first()
+    params = {
+        "prediction_run_id": prediction_run_id,
+        "actual_home_goals": int(home_score),
+        "actual_away_goals": int(away_score),
+        "actual_result": actual_result,
+        "brier_score": float(brier),
+        "log_loss": float(log_loss),
+        "exact_score_hit": int(exact_hit),
+        "top3_hit": int(top3_hit),
+        "calibration_bucket": int(bucket),
+        "notes": json.dumps(notes, ensure_ascii=False, sort_keys=True),
+    }
+    if existing is None:
+        eval_id = uuid4().hex
+        await db.execute(
+            text(
+                """
+                INSERT INTO postmatch_eval (
+                    id, prediction_run_id, actual_home_goals, actual_away_goals,
+                    actual_result, brier_score, log_loss, exact_score_hit,
+                    top3_hit, calibration_bucket, notes, created_at
+                ) VALUES (
+                    :id, :prediction_run_id, :actual_home_goals, :actual_away_goals,
+                    :actual_result, :brier_score, :log_loss, :exact_score_hit,
+                    :top3_hit, :calibration_bucket, :notes, :created_at
+                )
+                """
+            ),
+            {**params, "id": eval_id, "created_at": datetime.now(timezone.utc).isoformat()},
+        )
+        action = "inserted"
+    else:
+        eval_id = str(existing["id"])
+        await db.execute(
+            text(
+                """
+                UPDATE postmatch_eval
+                SET actual_home_goals = :actual_home_goals,
+                    actual_away_goals = :actual_away_goals,
+                    actual_result = :actual_result,
+                    brier_score = :brier_score,
+                    log_loss = :log_loss,
+                    exact_score_hit = :exact_score_hit,
+                    top3_hit = :top3_hit,
+                    calibration_bucket = :calibration_bucket,
+                    notes = :notes
+                WHERE prediction_run_id = :prediction_run_id
+                """
+            ),
+            params,
+        )
+        action = "updated"
+    return {
+        "persisted": True,
+        "action": action,
+        "postmatch_eval_id": eval_id,
+        "prediction_run_id": prediction_run_id,
+        "actual_result": actual_result,
+        "log_loss": log_loss,
+        "exact_score_hit": exact_hit,
+        "top3_hit": top3_hit,
+        "calibration_bucket": bucket,
+    }
 
 
 def _lookup_process_eval_detail(home_team: str, away_team: str) -> dict[str, object]:
@@ -814,9 +938,36 @@ async def run_complete_postmatch(
             "evaluations": [],
             "persisted": False,
         }
+        postmatch_eval_summary = {
+            "persisted": False,
+            "action": "skipped",
+            "reason": "dry_run" if dry_run else "not_attempted",
+        }
+        learning_log_for_signal = pipeline_data.get("learning_log")
+        signal_prediction_run_id = _learning_log_prediction_run_id(learning_log_for_signal)
         if not dry_run:
+            if not signal_prediction_run_id:
+                pipeline_status["output_report"] = "incomplete"
+                raise RuntimeError(
+                    "Learning log has no prediction_run_id; closed-loop postmatch_eval cannot be written"
+                )
+            postmatch_eval_summary = await _upsert_postmatch_eval(
+                db,
+                prediction_run_id=signal_prediction_run_id,
+                home_score=home_score,
+                away_score=away_score,
+                probs=[pred_h, pred_d, pred_a],
+                top_scores=snapshot.top_scores,
+                brier=brier,
+            )
+            pipeline_data["postmatch_eval"] = postmatch_eval_summary
             await db.commit()
             print(f"  ✅ 7a: DB committed")
+            print(
+                "  ✅ Postmatch eval: "
+                f"{postmatch_eval_summary.get('action')} "
+                f"(top3={postmatch_eval_summary.get('top3_hit')})"
+            )
             try:
                 signal_eval_summary = evaluate_match_signals(
                     DEFAULT_DB_PATH,
@@ -825,7 +976,7 @@ async def run_complete_postmatch(
                     away_team=away_team,
                     home_score=home_score,
                     away_score=away_score,
-                    prediction_run_id=None,
+                    prediction_run_id=signal_prediction_run_id,
                     dry_run=False,
                 )
                 print(
@@ -849,7 +1000,7 @@ async def run_complete_postmatch(
                     away_team=away_team,
                     home_score=home_score,
                     away_score=away_score,
-                    prediction_run_id=None,
+                    prediction_run_id=signal_prediction_run_id,
                     dry_run=True,
                 )
             except Exception:
@@ -900,6 +1051,12 @@ async def run_complete_postmatch(
 | Failure Type | {learning_weight_detail.get('failure_type') or 'N/A'} |
 | Learning Weight | {learning_log.learning_weight:.4f} |
 | Learning Formula | {formula} |
+| Score Log Loss | {_fmt_metric(learning_log.score_log_loss, 4)} |
+| Exact Score Hit | {bool(learning_log.score_exact_hit)} |
+| Top-3 Score Hit | {bool(learning_log.score_top3_hit)} |
+| DC Score Log Loss | {_fmt_metric(learning_log.dc_score_log_loss, 4)} |
+| NegBin Score Log Loss | {_fmt_metric(learning_log.negbin_score_log_loss, 4)} |
+| Weibull Score Log Loss | {_fmt_metric(learning_log.weibull_score_log_loss, 4)} |
 | DC Marginal | {_fmt_metric(learning_log.dc_marginal, 4)} |
 | Enhancer Marginal | {_fmt_metric(learning_log.enhancer_marginal, 4)} |
 | Elo Marginal | {_fmt_metric(learning_log.elo_marginal, 4)} |
@@ -1018,6 +1175,7 @@ metadata:
 - **Failure type**: {lw_detail.get('failure_type') or 'N/A'}
 - **Learning weight**: {lw_formula}
 - **xG**: predicted {_fmt_metric(pred_hxg)}-{_fmt_metric(pred_axg)}, actual {_fmt_metric(home_xg)}-{_fmt_metric(away_xg)}
+- **Score metrics**: log loss {_fmt_metric(getattr(learning_log, 'score_log_loss', None), 4)}, exact hit {bool(getattr(learning_log, 'score_exact_hit', False))}, top-3 hit {bool(getattr(learning_log, 'score_top3_hit', False))}
 
 ## Component Review
 
@@ -1036,10 +1194,23 @@ metadata:
             print(f"  [DRY-RUN] 7c: Would write → memory/{memory_filename}")
 
         pipeline_status["output_report"] = "passed"
+        closed_loop_audit = None
+        if not dry_run:
+            closed_loop_audit = audit_match_closed_loop(
+                DEFAULT_DB_PATH,
+                match_ids=[match_uuid],
+                phase="post",
+            )
+            if closed_loop_audit.get("passed"):
+                print("  ✅ Closed-loop audit: postmatch complete")
+            else:
+                pipeline_status["output_report"] = "incomplete"
+                missing = closed_loop_audit.get("matches", [{}])[0].get("missing", [])
+                print(f"  ⚠ Closed-loop audit incomplete: {', '.join(missing)}")
 
         # Generate summary
         summary = {
-            "status": "COMPLETE",
+            "status": "COMPLETE" if pipeline_status["output_report"] == "passed" else "INCOMPLETE",
             "pipeline_status": pipeline_status,
             "match_id": match_uuid,
             "home_team": home_team,
@@ -1051,7 +1222,9 @@ metadata:
             "data_completeness": "full" if not missing_stats else "partial",
             "report_file": str(report_path) if not dry_run else None,
             "memory_file": str(memory_path) if not dry_run else None,
+            "postmatch_eval": postmatch_eval_summary,
             "signal_evaluations": signal_eval_summary.get("signals_evaluated", 0),
+            "closed_loop_audit": closed_loop_audit,
         }
 
         print(f"\n{'='*70}")
@@ -1159,6 +1332,9 @@ Examples:
         print(f"   Error: {summary.get('error', 'Unknown')}")
         print(f"   Fix: {summary.get('fix', 'See logs above')}")
         sys.exit(1)
+    if summary["status"] == "INCOMPLETE":
+        print("\n⚠ Pipeline finished with closed-loop gaps; see audit output above.")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-if sys.platform == "win32":
+if sys.platform == "win32" and "pytest" not in sys.modules:
     sys.stdout = io.TextIOWrapper(
         sys.stdout.buffer,
         encoding="utf-8",
@@ -34,6 +34,11 @@ from app.services.information_state_engine import (
     extract_information_signals,
     score_information_signals,
 )
+from app.services.closed_loop_feature_snapshot import (
+    persist_feature_snapshot_from_latest_prematch,
+)
+from scripts.audit_match_closed_loop import audit_match_closed_loop
+from scripts.backfill_prediction_persistence import repair_match as repair_prediction_persistence
 
 
 def _parse_args() -> argparse.Namespace:
@@ -231,9 +236,40 @@ def main() -> int:
             is_neutral,
         )
 
+    closed_loop_exit_code = 0
+    if not args.no_save and args.match_id:
+        import sqlite3
+
+        with sqlite3.connect(str(DEFAULT_DB_PATH)) as conn:
+            conn.row_factory = sqlite3.Row
+            payload["prediction_persistence_repair"] = repair_prediction_persistence(
+                conn,
+                args.match_id,
+                persist=True,
+            )
+        feature_result = persist_feature_snapshot_from_latest_prematch(
+            DEFAULT_DB_PATH,
+            match_id=args.match_id,
+        )
+        payload["feature_snapshot_persistence"] = feature_result
+        closed_loop_audit = audit_match_closed_loop(
+            DEFAULT_DB_PATH,
+            match_ids=[args.match_id],
+            phase="pre",
+        )
+        payload["closed_loop_audit"] = closed_loop_audit
+        if not closed_loop_audit.get("passed"):
+            closed_loop_exit_code = 3
+            missing = closed_loop_audit.get("matches", [{}])[0].get("missing", [])
+            print(
+                "[Closed Loop] incomplete pre-match persistence: "
+                + (",".join(missing) if missing else "unknown"),
+                file=sys.stderr,
+            )
+
     print("=== PREDICTION JSON ===")
     print(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
-    return 0
+    return closed_loop_exit_code
 
 
 if __name__ == "__main__":
