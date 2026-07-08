@@ -276,6 +276,7 @@ def main():
             data_quality_score=data_quality,
             snapshot_complete=(snap is not None),
             match_context=cfg.get("context", {}),
+            process_verified=classification.get("process_verified", True),
         )
         tier = get_learning_tier(lw)
 

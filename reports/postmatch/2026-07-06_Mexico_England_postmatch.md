@@ -41,7 +41,7 @@
 | Home xG | 0.591 | 1.551 |
 | Away xG | 0.775 | 1.944 |
 
-**Stats Completeness**: Full  
+**Stats Completeness**: Full
 **Learning Data Quality**: 0.9
 
 ## 📈 Learning Engine
@@ -54,10 +54,53 @@
 | Failure Type | MODEL_INPUT_ERROR |
 | Learning Weight | 0.4500 |
 | Learning Formula | 0.50 × 0.90 × 1.00 |
+| Score Log Loss | 5.1438 |
+| Exact Score Hit | False |
+| Top-3 Score Hit | False |
+| DC Score Log Loss | 5.6649 |
+| NegBin Score Log Loss | 4.6427 |
+| Weibull Score Log Loss | 7.0249 |
 | DC Marginal | -0.3161 |
 | Enhancer Marginal | -0.0418 |
 | Elo Marginal | -0.0507 |
 
+
+## 🧭 Rich Match Data / Game State
+
+| Metric | Value |
+|:---|:---|
+| Rich Data Tier | basic_only |
+| Event Quality Score | 0.0000 |
+| Raw / Events / Shots / Lineups / Player Stats | 0 / 0 / 0 / 0 / 0 |
+| Missing Rich Data | official_raw_payload, event_timeline, lineups, player_minutes, shot_events, player_statistics |
+| Comeback Profile | unavailable |
+| Max Deficit For Winner | N/A |
+| Late Comeback | False |
+
+### Goal Timeline
+
+| Minute | Team | Player | Score |
+|:---:|:---|:---|:---:|
+| N/A | N/A | N/A | N/A |
+
+### Game-State Segments
+
+| Window | Score | Leader | Shots | xG |
+|:---:|:---:|:---:|:---:|:---:|
+| N/A | N/A | N/A | N/A | N/A |
+
+**Leakage Policy**: post-match-only; never joined into same-match pre-match strict features.
+
+
+## 🧠 Information-State Signal Attribution
+
+| Team | Signal | Direction | Verdict | Contribution |
+|:---|:---|:---:|:---:|---:|
+| N/A | N/A | N/A | no_signals | 0.0000 |
+
+**Signal Evaluations**: 0
+**Policy**: proposal-only; no automatic production weight change.
+
 ---
 
-*Generated: 2026-07-06T09:19:45.048578+00:00 | Pipeline: run_postmatch_complete.py*
+*Generated: 2026-07-08T12:54:35.916060+00:00 | Pipeline: run_postmatch_complete.py*

@@ -309,6 +309,7 @@ def main():
         data_quality_score=data_quality,
         snapshot_complete=True,
         match_context=match_context,
+        process_verified=classification.get("process_verified", True),
     )
     tier = get_learning_tier(lw)
 

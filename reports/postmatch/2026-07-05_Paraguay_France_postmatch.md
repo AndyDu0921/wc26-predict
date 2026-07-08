@@ -1,7 +1,7 @@
-# 🏆 Post-Match Review: Brazil vs Norway
+# 🏆 Post-Match Review: Paraguay vs France
 
 **Date**: 2026-07-05
-**Score**: 1 - 2
+**Score**: 0 - 1
 **Verified**: ✅ (2 sources)
 
 ---
@@ -10,12 +10,12 @@
 
 | | Home | Draw | Away |
 |:---|---:|---:|---:|
-| Predicted | 48.8% | 20.7% | 30.5% |
+| Predicted | 2.0% | 15.8% | 82.2% |
 | Actual | — | — | 100% |
 
-- **Favorite**: home
-- **Direction**: ❌ WRONG
-- **Brier Score**: 0.7643
+- **Favorite**: away
+- **Direction**: ✅ CORRECT
+- **Brier Score**: 0.0573
 
 ---
 
@@ -23,14 +23,14 @@
 
 | Component | Probabilities (H/D/A) | Fav | Dir | Brier |
 |:---|---:|:---:|:---:|---:|
-| DC           |  35.0% /  25.1% /  40.0% | A | ✅ | 0.5454 |
-| Enhancer     |  25.1% /  18.3% /  56.6% | A | ✅ | 0.2850 |
-| DC+Enhancer  |  34.0% /  24.4% /  41.6% | A | ✅ | 0.5155 |
-| NegBin       |  37.1% /  20.7% /  42.2% | A | ✅ | 0.5140 |
-| Weibull      |  31.3% /  39.1% /  29.7% | D | ❌ | 0.7453 |
-| Elo          |  50.4% /  22.8% /  26.7% | H | ❌ | 0.8436 |
-| Pi           |  52.0% /  20.1% /  27.9% | H | ❌ | 0.8316 |
-| Market       |  53.4% /  25.6% /  21.0% | H | ❌ | 0.9748 |
+| DC           |   8.9% /  19.7% /  71.5% | A | ✅ | 0.1279 |
+| Enhancer     |   3.9% /  12.1% /  84.0% | A | ✅ | 0.0419 |
+| DC+Enhancer  |   8.4% /  18.9% /  72.7% | A | ✅ | 0.1172 |
+| NegBin       |   9.4% /  16.3% /  74.3% | A | ✅ | 0.1014 |
+| Weibull      |   0.3% /   4.3% /  95.4% | A | ✅ | 0.0040 |
+| Elo          |  17.3% /  19.7% /  63.0% | A | ✅ | 0.2055 |
+| Pi           |  33.4% /  20.5% /  46.1% | A | ✅ | 0.4436 |
+| Market       |   4.9% /  15.0% /  80.1% | A | ✅ | 0.0646 |
 
 ---
 
@@ -38,31 +38,31 @@
 
 | Metric | Prediction | Actual |
 |:---|---:|---:|
-| Home xG | 1.294 | 1.053 |
-| Away xG | 1.400 | 2.614 |
+| Home xG | 0.480 | 0.170 |
+| Away xG | 1.835 | 1.290 |
 
 **Stats Completeness**: Full
-**Learning Data Quality**: 0.9
+**Learning Data Quality**: N/A
 
 ## 📈 Learning Engine
 
 | Metric | Value |
 |:---|---:|
-| Brier Score | 0.7643 |
-| Direction | overestimate_home |
+| Brier Score | 0.0573 |
+| Direction | correct |
 | Status | active |
-| Failure Type | MODEL_INPUT_ERROR |
-| Learning Weight | 0.4500 |
-| Learning Formula | 0.50 × 0.90 × 1.00 |
-| Score Log Loss | 2.7424 |
-| Exact Score Hit | False |
-| Top-3 Score Hit | False |
-| DC Score Log Loss | 2.4465 |
-| NegBin Score Log Loss | 2.5998 |
-| Weibull Score Log Loss | 2.4255 |
-| DC Marginal | -0.0973 |
-| Enhancer Marginal | 0.0134 |
-| Elo Marginal | -0.0358 |
+| Failure Type | GOOD_PREDICTION |
+| Learning Weight | 1.0000 |
+| Learning Formula | N/A |
+| Score Log Loss | 1.4367 |
+| Exact Score Hit | True |
+| Top-3 Score Hit | True |
+| DC Score Log Loss | 1.7076 |
+| NegBin Score Log Loss | 2.0587 |
+| Weibull Score Log Loss | 0.6629 |
+| DC Marginal | 0.0623 |
+| Enhancer Marginal | 0.1261 |
+| Elo Marginal | 0.0993 |
 
 
 ## 🧭 Rich Match Data / Game State
@@ -103,4 +103,4 @@
 
 ---
 
-*Generated: 2026-07-08T12:54:16.222786+00:00 | Pipeline: run_postmatch_complete.py*
+*Generated: 2026-07-08T12:53:38.252329+00:00 | Pipeline: run_postmatch_complete.py*

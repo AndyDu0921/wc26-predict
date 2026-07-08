@@ -47,14 +47,28 @@ def classify_failure(
     data_quality_score: float,
     match_context: Optional[Dict[str, Any]] = None,
     component_signals: Optional[Dict[str, bool]] = None,
+    outcome_verified: bool = True,
 ) -> Dict[str, Any]:
     """Classify the failure mode for a completed match.
+
+    Two independent layers are assessed:
+      * OUTCOME layer — was the H/D/A prediction right? This is learnable
+        whenever the final score is independently verified, regardless of
+        whether match statistics (xG/shots) were collected.
+      * PROCESS layer — xG direction / dominance attribution. This needs
+        reliable match statistics (``data_quality_score >= 0.65`` and xG).
+
+    ``DATA_QUALITY_FAILURE`` (zero learning) is reserved for the case where the
+    OUTCOME itself cannot be trusted — an unverified score or a multi-source
+    conflict on the result. Missing match STATISTICS alone no longer discards a
+    match: outcome-level learning proceeds (weight naturally attenuated by
+    ``data_quality_score``) and only the process-level attribution is withheld.
 
     Args:
         outcome_correct: Was the H/D/A prediction correct?
         xg_direction_correct: 1 if predicted xG winner == actual xG winner, 0 if not, None if unknown.
         xg_mae: Mean absolute error of predicted vs actual xG.
-        data_quality_score: 0-1 quality score for the match data.
+        data_quality_score: 0-1 quality score for the match STATISTICS.
         match_context: Optional dict with flags like:
             venue_home_advantage_missed (bool)
             elo_default_value (bool) — one team had Elo=1500 default
@@ -62,19 +76,25 @@ def classify_failure(
             penalty_before_minute (int or None)
             early_injury_minute (int or None)
             home_team_travel_advantage (str or None)
+            outcome_conflict (bool) — multi-source disagreement on the final score
         component_signals: Optional dict with flags:
             market_high_consensus_correct (bool) — 8+ bookmakers all correct, fusion ignored
             weibull_extreme_wrong (bool)
             pi_single_upset_overreaction (bool)
+        outcome_verified: Is the final score independently verified? Post-match
+            callers always have a verified score, so this defaults to True. Pass
+            False only when the outcome itself is unknown/disputed.
 
     Returns:
-        Dict with 'model_failure_type', 'base_learning_weight', 'reason'.
+        Dict with 'model_failure_type', 'base_learning_weight', 'reason',
+        'process_verified'.
     """
     ctx = match_context or {}
     sig = component_signals or {}
 
-    # --- Gate 1: Data quality ---
-    if data_quality_score < 0.65:
+    # --- Gate 1: Outcome trustworthiness ---
+    # Only an untrustworthy OUTCOME zeroes out learning — not missing statistics.
+    if not outcome_verified or ctx.get("outcome_conflict"):
         return _result("DATA_QUALITY_FAILURE", _check_unknown=False)
 
     # --- Gate 2: Event distortion ---
@@ -101,8 +121,9 @@ def classify_failure(
         return _result("PI_OVERREACTION")
 
     # --- Gate 5: Process-based classification ---
-    # Requires xG data
-    if xg_direction_correct is not None and xg_mae is not None:
+    # Requires reliable match STATISTICS (quality gate) AND xG data.
+    stats_reliable = data_quality_score >= 0.65
+    if stats_reliable and xg_direction_correct is not None and xg_mae is not None:
         if outcome_correct and xg_direction_correct == 1 and xg_mae <= 0.45:
             return _result("GOOD_PREDICTION")
         if outcome_correct and (xg_direction_correct == 0 or xg_mae > 0.75):
@@ -112,11 +133,13 @@ def classify_failure(
         if xg_mae > 0.75 or xg_direction_correct == 0:
             return _result("MODEL_STRUCTURE_ERROR")
 
-    # --- Gate 6: Fallback (no xG data available) ---
+    # --- Gate 6: Outcome-only learning (process data unavailable/unreliable) ---
+    # The score is verified but statistics/xG are missing, so we can only judge
+    # the outcome. process_verified=False keeps this out of the full learning
+    # tier and flags the report; the weight is further attenuated by data quality.
     if outcome_correct:
-        return _result("GOOD_PREDICTION")  # Generous: assume good if no process data
-    else:
-        return _result("MODEL_STRUCTURE_ERROR")  # Conservative: assume model issue
+        return _result("GOOD_PREDICTION", process_verified=False)
+    return _result("MODEL_STRUCTURE_ERROR", process_verified=False)
 
 
 def compute_learning_weight(
@@ -124,6 +147,7 @@ def compute_learning_weight(
     data_quality_score: float,
     snapshot_complete: bool = True,
     match_context: Optional[Dict[str, Any]] = None,
+    process_verified: bool = True,
 ) -> float:
     """Compute the final learning weight for a match.
 
@@ -134,6 +158,10 @@ def compute_learning_weight(
         data_quality_score: 0-1 from quality module.
         snapshot_complete: Is the prediction snapshot complete?
         match_context: Additional context (future use).
+        process_verified: Whether process-level attribution was verified. When
+            False (outcome-only learning), the weight is capped below the full
+            tier so an unverified-process match can never drive a production
+            weight proposal.
 
     Returns:
         Learning weight 0.0-1.0.
@@ -150,6 +178,10 @@ def compute_learning_weight(
     if ctx.get("multi_source_conflict"):
         weight *= 0.6
 
+    # Outcome-only learning must not reach the full (proposal-eligible) tier.
+    if not process_verified:
+        weight = min(weight, LEARNING_TIER_FULL - 0.05)
+
     return round(max(0.0, min(1.0, weight)), 4)
 
 
@@ -163,10 +195,12 @@ def get_learning_tier(weight: float) -> str:
         return "record_only"
 
 
-def _result(label: str, _check_unknown: bool = True) -> Dict[str, Any]:
+def _result(label: str, _check_unknown: bool = True, process_verified: bool = True) -> Dict[str, Any]:
     base = LEARNING_WEIGHT_BY_LABEL.get(label, 0.0)
+    reason = label if process_verified else f"{label} (outcome-only; process unverified)"
     return {
         "model_failure_type": label,
         "base_learning_weight": base,
-        "reason": label,
+        "reason": reason,
+        "process_verified": process_verified,
     }

@@ -10,6 +10,7 @@ from app.services.match_stats.failure_classifier import (
     compute_learning_weight,
     get_learning_tier,
     LEARNING_WEIGHT_BY_LABEL,
+    LEARNING_TIER_FULL,
 )
 
 
@@ -206,14 +207,69 @@ class TestFailureClassifier:
         assert result["base_learning_weight"] == 1.0
 
     def test_data_quality_failure(self):
+        # DATA_QUALITY_FAILURE now means the OUTCOME itself is untrustworthy
+        # (unverified score), not merely missing statistics.
         result = classify_failure(
             outcome_correct=False,
             xg_direction_correct=0,
             xg_mae=1.0,
-            data_quality_score=0.50,  # Below 0.65 threshold
+            data_quality_score=0.50,
+            outcome_verified=False,
         )
         assert result["model_failure_type"] == "DATA_QUALITY_FAILURE"
         assert result["base_learning_weight"] == 0.0
+
+    def test_outcome_conflict_is_data_quality_failure(self):
+        # A multi-source conflict on the final score also zeroes out learning.
+        result = classify_failure(
+            outcome_correct=True,
+            xg_direction_correct=1,
+            xg_mae=0.30,
+            data_quality_score=0.90,
+            match_context={"outcome_conflict": True},
+        )
+        assert result["model_failure_type"] == "DATA_QUALITY_FAILURE"
+
+    def test_missing_stats_but_outcome_correct_still_learns(self):
+        # #195 CAN-MAR scenario: score verified (0-3) and direction correct,
+        # but no xG/stats collected (data_quality_score low). Outcome-level
+        # learning must proceed at a reduced (diagnostic) weight — not be
+        # discarded as DATA_QUALITY_FAILURE.
+        result = classify_failure(
+            outcome_correct=True,
+            xg_direction_correct=None,
+            xg_mae=None,
+            data_quality_score=0.35,
+        )
+        assert result["model_failure_type"] == "GOOD_PREDICTION"
+        assert result["process_verified"] is False
+        lw = compute_learning_weight(
+            "GOOD_PREDICTION", 0.35, snapshot_complete=True,
+            process_verified=result["process_verified"],
+        )
+        assert lw == pytest.approx(0.35)
+        assert get_learning_tier(lw) == "diagnostic"
+
+    def test_missing_stats_but_outcome_wrong(self):
+        # Verified score, wrong prediction, no process data → conservative
+        # MODEL_STRUCTURE_ERROR flagged as process-unverified.
+        result = classify_failure(
+            outcome_correct=False,
+            xg_direction_correct=None,
+            xg_mae=None,
+            data_quality_score=0.35,
+        )
+        assert result["model_failure_type"] == "MODEL_STRUCTURE_ERROR"
+        assert result["process_verified"] is False
+
+    def test_outcome_only_weight_capped_below_full_tier(self):
+        # Even with high data quality, outcome-only learning cannot reach the
+        # full (proposal-eligible) tier.
+        lw = compute_learning_weight(
+            "GOOD_PREDICTION", 0.95, snapshot_complete=True, process_verified=False,
+        )
+        assert lw < LEARNING_TIER_FULL
+        assert get_learning_tier(lw) != "full"
 
     def test_event_distorted_red_card(self):
         result = classify_failure(
