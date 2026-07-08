@@ -22,6 +22,10 @@ CURRENT_ENTRYPOINTS = [
     "backend/scripts/extract_information_signals.py",
     "backend/scripts/score_information_signals.py",
     "backend/scripts/audit_match_information_state.py",
+    "backend/scripts/collect_official_match_data.py",
+    "backend/scripts/normalize_match_events.py",
+    "backend/scripts/build_game_state_segments.py",
+    "backend/scripts/audit_rich_postmatch_data.py",
 ]
 REMOVED_ENTRYPOINTS = [
     "backend/scripts/daily_ops.py",

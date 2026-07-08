@@ -88,3 +88,10 @@ class PredictionLearningLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Context
     context_tags: Mapped[dict | None] = mapped_column(JSONVariant)
     signal_verdicts: Mapped[dict | None] = mapped_column(JSONVariant)
+
+    # V4.11 Match Data OS: post-match-only rich game-state diagnostics.
+    # These fields describe the finished match and must not be joined into
+    # pre-match strict feature snapshots for the same game.
+    game_state_profile: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
+    comeback_profile: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
+    event_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)

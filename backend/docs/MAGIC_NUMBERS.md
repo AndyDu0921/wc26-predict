@@ -1,8 +1,8 @@
 # Magic Number 中央注册表
 
 > **维护规则**: 每次修改常量 → 必须更新此表。每次新增常量 → 必须在此表注册。
-> **最后更新**: 2026-07-07
-> **对应版本**: V4.10.0-alpha
+> **最后更新**: 2026-07-08
+> **对应版本**: V4.11.0-alpha
 
 本文档是 WC26 Predict 系统中所有硬编码常量的单一真相来源。每个值附设定依据、历史来源和修改记录。
 
@@ -56,6 +56,17 @@
 | Weibull max cell probability gate | 0.16 | 单格概率超过 16% 判为异常稀疏/畸高，保留审计但不参与 fused score matrix | V4.9.0-alpha |
 | Weibull nonzero share gate | 0.50 | 非零格子占比低于 50% 判为过度稀疏 | V4.9.0-alpha |
 | Weibull xG direction gate | abs(xG gap) >= 0.25 | Top score 方向与 xG 明显冲突时 shadow-only | V4.9.0-alpha |
+
+### Match Data OS / Game-State Engine（V4.11-alpha）
+
+| 常量 | 值 | 设定依据 | 引入版本 |
+|:---|:---|:---|:---|
+| Game-state segment windows | `0-15,16-30,31-45,46-60,61-75,76-90,91-105,106-120` | 按常见比赛阶段、半场、晚段和加时拆分赛后过程；只用于 postmatch learning，不进同场赛前 strict feature | V4.11.0-alpha |
+| Event quality: any event timeline | `+0.35` | 有事件时间线是 rich postmatch 的基础 | V4.11.0-alpha |
+| Event quality: goal timeline present | `+0.25` | 进球时间线支持比分状态和 comeback profile | V4.11.0-alpha |
+| Event quality: shot events present | `+0.20` | 射门事件支持阶段压力和 shot momentum 诊断 | V4.11.0-alpha |
+| Event quality: shot xG present | `+0.10` | shot-level xG 可做更细过程归因 | V4.11.0-alpha |
+| Event quality: cards/substitutions present | `+0.10` | 红黄牌和换人是关键转折点/人员影响诊断输入 | V4.11.0-alpha |
 
 ### 自适应 DC 分歧（内联常量）
 

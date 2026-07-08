@@ -47,6 +47,7 @@ from app.models.prediction_learning_log import PredictionLearningLog
 from app.services.learning_engine import get_learning_engine
 from app.services.evaluation_registry import DEFAULT_DB_PATH
 from app.services.information_state_engine import evaluate_match_signals
+from app.services.match_data.rich_context import load_rich_postmatch_context
 from app.services.result_verification import (
     get_verification_service,
     SourceTier,
@@ -174,6 +175,33 @@ def _fmt_metric(value, digits: int = 3) -> str:
         return f"{float(value):.{digits}f}"
     except (TypeError, ValueError):
         return "N/A"
+
+
+def _rich_timeline_markdown(rich_context: dict) -> str:
+    timeline = rich_context.get("goal_timeline") or []
+    if not timeline:
+        return "| N/A | N/A | N/A | N/A |"
+    return "\n".join(
+        f"| {point.get('display_minute', 'N/A')} | "
+        f"{point.get('team') or point.get('side') or 'N/A'} | "
+        f"{point.get('player') or 'N/A'} | "
+        f"{point.get('home')}-{point.get('away')} |"
+        for point in timeline[:12]
+    )
+
+
+def _rich_segment_markdown(rich_context: dict) -> str:
+    segments = rich_context.get("segment_summary") or []
+    if not segments:
+        return "| N/A | N/A | N/A | N/A | N/A |"
+    return "\n".join(
+        f"| {segment.get('window')} | "
+        f"{segment.get('score_start')} → {segment.get('score_end')} | "
+        f"{segment.get('leader_start')} → {segment.get('leader_end')} | "
+        f"{segment.get('home_shots')}-{segment.get('away_shots')} | "
+        f"{_fmt_metric(segment.get('home_xg'), 3)}-{_fmt_metric(segment.get('away_xg'), 3)} |"
+        for segment in segments
+    )
 
 
 def _learning_log_prediction_run_id(learning_log: PredictionLearningLog | None) -> str | None:
@@ -741,6 +769,25 @@ async def run_complete_postmatch(
             if v is not None and k != "data_source":
                 print(f"     {k}: {v}")
 
+        rich_context = load_rich_postmatch_context(
+            DEFAULT_DB_PATH,
+            match_id=match_uuid,
+            home_team=getattr(snapshot, "home_team", None),
+            away_team=getattr(snapshot, "away_team", None),
+            home_score=home_score,
+            away_score=away_score,
+        )
+        pipeline_data["rich_postmatch"] = rich_context
+        print(
+            "  Rich postmatch data: "
+            f"{rich_context.get('tier')} "
+            f"(quality={float(rich_context.get('event_quality_score', 0.0)):.4f}, "
+            f"events={rich_context.get('counts', {}).get('events', 0)}, "
+            f"shots={rich_context.get('counts', {}).get('shots', 0)})"
+        )
+        if rich_context.get("missing"):
+            print(f"     missing rich data: {', '.join(rich_context['missing'])}")
+
         # ═══════════════════════════════════════════════════════════
         # STEP 4: Update match_results table
         # ═══════════════════════════════════════════════════════════
@@ -898,10 +945,20 @@ async def run_complete_postmatch(
         learning_log_for_context = pipeline_data.get("learning_log")
         if learning_log_for_context is not None:
             base_context = learning_log_for_context.context_tags or {}
+            rich_for_context = pipeline_data.get("rich_postmatch") or {}
             learning_log_for_context.context_tags = {
                 **base_context,
                 "component_attribution": component_rows,
+                "rich_postmatch_tier": rich_for_context.get("tier"),
+                "game_state_profile": rich_for_context.get("game_state_profile"),
+                "comeback_profile": rich_for_context.get("comeback_profile"),
             }
+            if hasattr(learning_log_for_context, "game_state_profile"):
+                learning_log_for_context.game_state_profile = rich_for_context.get("game_state_profile")
+            if hasattr(learning_log_for_context, "comeback_profile"):
+                learning_log_for_context.comeback_profile = rich_for_context.get("comeback_profile")
+            if hasattr(learning_log_for_context, "event_quality_score"):
+                learning_log_for_context.event_quality_score = rich_for_context.get("event_quality_score")
         for row in component_rows:
             print(
                 f"     {str(row['label']):12s}: "
@@ -1084,6 +1141,35 @@ async def run_complete_postmatch(
 **Signal Evaluations**: {signal_eval_summary.get('signals_evaluated', 0)}
 **Policy**: proposal-only; no automatic production weight change.
 """
+        rich_context = pipeline_data.get("rich_postmatch") or {}
+        comeback = rich_context.get("comeback_profile") or {}
+        rich_section = f"""
+## 🧭 Rich Match Data / Game State
+
+| Metric | Value |
+|:---|:---|
+| Rich Data Tier | {rich_context.get('tier', 'basic_only')} |
+| Event Quality Score | {_fmt_metric(rich_context.get('event_quality_score'), 4)} |
+| Raw / Events / Shots / Lineups / Player Stats | {rich_context.get('counts', {}).get('raw', 0)} / {rich_context.get('counts', {}).get('events', 0)} / {rich_context.get('counts', {}).get('shots', 0)} / {rich_context.get('counts', {}).get('lineups', 0)} / {rich_context.get('counts', {}).get('player_stats', 0)} |
+| Missing Rich Data | {', '.join(rich_context.get('missing') or []) if rich_context.get('missing') else 'none'} |
+| Comeback Profile | {comeback.get('profile_label', 'unavailable')} |
+| Max Deficit For Winner | {comeback.get('max_deficit', 'N/A')} |
+| Late Comeback | {bool(comeback.get('late_comeback'))} |
+
+### Goal Timeline
+
+| Minute | Team | Player | Score |
+|:---:|:---|:---|:---:|
+{_rich_timeline_markdown(rich_context)}
+
+### Game-State Segments
+
+| Window | Score | Leader | Shots | xG |
+|:---:|:---:|:---:|:---:|:---:|
+{_rich_segment_markdown(rich_context)}
+
+**Leakage Policy**: post-match-only; never joined into same-match pre-match strict features.
+"""
 
         # Build full report
         report_md = f"""# 🏆 Post-Match Review: {home_team} vs {away_team}
@@ -1125,6 +1211,7 @@ async def run_complete_postmatch(
 **Stats Completeness**: {'Full' if not missing_stats else f'Partial — missing: {", ".join(missing_stats)}'}
 **Learning Data Quality**: {learning_weight_detail.get('learning_data_quality') if learning_weight_detail.get('learning_data_quality') is not None else 'N/A'}
 {learning_section}
+{rich_section}
 {signal_section}
 ---
 
@@ -1176,6 +1263,7 @@ metadata:
 - **Learning weight**: {lw_formula}
 - **xG**: predicted {_fmt_metric(pred_hxg)}-{_fmt_metric(pred_axg)}, actual {_fmt_metric(home_xg)}-{_fmt_metric(away_xg)}
 - **Score metrics**: log loss {_fmt_metric(getattr(learning_log, 'score_log_loss', None), 4)}, exact hit {bool(getattr(learning_log, 'score_exact_hit', False))}, top-3 hit {bool(getattr(learning_log, 'score_top3_hit', False))}
+- **Rich postmatch data**: {rich_context.get('tier', 'basic_only')} / quality {_fmt_metric(rich_context.get('event_quality_score'), 4)} / comeback {comeback.get('profile_label', 'unavailable')}
 
 ## Component Review
 
@@ -1224,6 +1312,9 @@ metadata:
             "memory_file": str(memory_path) if not dry_run else None,
             "postmatch_eval": postmatch_eval_summary,
             "signal_evaluations": signal_eval_summary.get("signals_evaluated", 0),
+            "rich_postmatch_tier": rich_context.get("tier"),
+            "event_quality_score": rich_context.get("event_quality_score"),
+            "comeback_profile": rich_context.get("comeback_profile"),
             "closed_loop_audit": closed_loop_audit,
         }
 

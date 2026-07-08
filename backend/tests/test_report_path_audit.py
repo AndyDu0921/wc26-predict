@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from scripts.audit_entrypoints import audit_entrypoints
+from scripts.audit_entrypoints import CURRENT_ENTRYPOINTS, audit_entrypoints
 from scripts.audit_report_paths import (
     audit_report_paths,
     build_archive_manifest,
@@ -118,18 +118,7 @@ def test_entrypoint_audit_flags_missing_current_and_stale_references(tmp_path: P
     (tmp_path / "docs").mkdir()
     (tmp_path / "scripts").mkdir()
     (tmp_path / ".github").mkdir()
-    for rel_path in [
-        "backend/scripts/predict_match_full.py",
-        "backend/scripts/run_postmatch_complete.py",
-        "backend/scripts/run_accuracy_experiments.py",
-        "backend/scripts/preflight_accuracy_experiments.py",
-        "backend/scripts/audit_db_integrity.py",
-        "backend/scripts/audit_public_outputs.py",
-        "backend/scripts/collect_match_evidence.py",
-        "backend/scripts/extract_information_signals.py",
-        "backend/scripts/score_information_signals.py",
-        "backend/scripts/audit_match_information_state.py",
-    ]:
+    for rel_path in CURRENT_ENTRYPOINTS:
         (tmp_path / rel_path).write_text("# ok\n", encoding="utf-8")
     (tmp_path / "README.md").write_text("Use daily_ops.py", encoding="utf-8")
     (tmp_path / "CONTRIBUTING.md").write_text("ok", encoding="utf-8")
@@ -147,18 +136,7 @@ def test_entrypoint_audit_passes_clean_current_entrypoints(tmp_path: Path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "scripts").mkdir()
     (tmp_path / ".github").mkdir()
-    for rel_path in [
-        "backend/scripts/predict_match_full.py",
-        "backend/scripts/run_postmatch_complete.py",
-        "backend/scripts/run_accuracy_experiments.py",
-        "backend/scripts/preflight_accuracy_experiments.py",
-        "backend/scripts/audit_db_integrity.py",
-        "backend/scripts/audit_public_outputs.py",
-        "backend/scripts/collect_match_evidence.py",
-        "backend/scripts/extract_information_signals.py",
-        "backend/scripts/score_information_signals.py",
-        "backend/scripts/audit_match_information_state.py",
-    ]:
+    for rel_path in CURRENT_ENTRYPOINTS:
         (tmp_path / rel_path).write_text("# ok\n", encoding="utf-8")
     (tmp_path / "README.md").write_text("Use run_accuracy_experiments.py", encoding="utf-8")
     (tmp_path / "CONTRIBUTING.md").write_text("ok", encoding="utf-8")

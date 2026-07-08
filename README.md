@@ -5,9 +5,9 @@
 > 2026 世界杯概率预测研究系统。目标只有一个：在可审计、可复现、无数据泄漏的前提下，把预测做得更准。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-V4.10.0_alpha-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/phase-V4.10_Information_State_Engine-orange?style=flat-square" alt="phase">
-  <img src="https://img.shields.io/badge/backend_tests-551_passed_4_skipped-success?style=flat-square" alt="backend tests">
+  <img src="https://img.shields.io/badge/version-V4.11.0_alpha-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/phase-V4.11_Match_Data_OS-orange?style=flat-square" alt="phase">
+  <img src="https://img.shields.io/badge/backend_tests-561_passed_4_skipped-success?style=flat-square" alt="backend tests">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/model_loading-disk_cache_only-brightgreen?style=flat-square" alt="model loading">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
@@ -19,18 +19,18 @@
 
 ### 当前结论
 
-WC26 Predict 现在处在 **V4.10 Information State Engine** 阶段：把实时新闻、伤停、阵容、天气、赔率/市场共识升级为可追溯、可打分、可回放、可赛后验证的赛前信息资产。
+WC26 Predict 现在处在 **V4.11 Match Data OS + Game-State Engine** 阶段：在 V4.10 赛前信息状态引擎之上，把 FIFA 官方赛后数据、事件时间线、阵容分钟、球员统计和比赛状态分段纳入可追溯的赛后复盘与自进化学习资产。
 
-**V4.10.0-alpha（2026-07-07）当前状态：**
+**V4.11.0-alpha（2026-07-08）当前状态：**
 
-- **测试状态**：`551 passed, 4 skipped`（最近一次本地后端全量测试；V4.10 信息状态引擎已纳入全量验证）。
-- **代码版本**：`4.10.0-alpha`；当前代码中的 WC 权重标签仍为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；V4.10 不改生产权重。
-- **本地样本口径**：evaluation registry 显示 `87` 个 canonical result 样本，其中 `32` 个 strict eligible backtest 样本、`47` 个 diagnostic 样本、`8` 个 rejected 样本，`source_result_conflicts=0`；任何准确率结论必须先说明采用哪个口径。
+- **测试状态**：`561 passed, 4 skipped`（最近一次本地后端全量测试；V4.11 Match Data OS 已纳入全量验证）。
+- **代码版本**：`4.11.0-alpha`；当前代码中的 WC 权重标签仍为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；V4.11 不改生产权重。
+- **本地样本口径**：evaluation registry 显示 `91` 个 canonical result 样本，其中 `36` 个 strict eligible backtest 样本、`47` 个 diagnostic 样本、`8` 个 rejected 样本，`source_result_conflicts=0`；任何准确率结论必须先说明采用哪个口径。
 - **预测流水线**：DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market（7 级顺序融合）+ 战意因子 + 平局下限 12% + 分歧自适应 + 动态市场提升 + DC半衰期学习(180d最优) + A3 Stacking元学习器(21维特征) + B1加权共形预测(α=0.1)
 - **复盘数据完整性**：当前 DB `postmatch_process_eval` 为 `20` 条、`match_team_statistics` 为 `34` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
 - **数据库完整性**：SQLite `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行保留在 `data_integrity_quarantine` 供审计。
-- **新功能**：V4.10 Information State Engine：`evidence_items` 证据账本、`information_state_signals` 结构化信号、`signal_evaluations` 赛后信号归因、赛前信息状态审计、FeatureSnapshot V4.10 信息状态 payload。
-- **已知风险**：strict 样本仍只有 `32` 场，距离 `50+` 目标仍差 `18` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
+- **新功能**：V4.11 Match Data OS：`match_data_raw` 官方赛后 raw ledger、`match_events` 事件时间线、`shot_events` 射门事件、`match_lineups` / `player_match_minutes` 阵容分钟、`match_player_statistics` 球员统计、`match_game_state_segments` 比赛状态分段；赛后报告会在有 rich data 时输出 goal timeline、game-state segments 和 comeback profile。
+- **已知风险**：strict 样本仍只有 `36` 场，距离 `50+` 目标仍差 `14` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
 
 ### 系统目标
 
@@ -72,13 +72,14 @@ flowchart LR
 backend/app/                 FastAPI 后端与核心服务
 backend/app/core/engine.py   纯融合引擎 (NegBin, DC-Enhancer, DrawFloor) — 零 IO
 backend/app/services/        预测、快照、学习、验证、评估服务 (40+ 文件)
+backend/app/services/match_data/        V4.11 官方赛后数据、事件标准化、比赛状态引擎
 backend/app/models/          SQLAlchemy ORM 模型 (22+ 表)
 backend/app/routers/         FastAPI 路由 (9个)
 backend/app/services/weights.py          权重配置 (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           模型工件 (calibrator, ratings)
 backend/model_artifacts/dc_cache/        模型磁盘缓存 (DC + Enhancer)
 backend/scripts/             CLI 脚本 (预测、复盘、模拟、训练)
-backend/tests/               测试 (551 passed, 4 skipped)
+backend/tests/               测试 (561 passed, 4 skipped)
 backend/dashboard/           Streamlit 本地研究工作台 (9 页面)
 backend/data/                SQLite 数据库 + 数据文件
 reports/                     当前预测报告
@@ -146,7 +147,7 @@ cd backend
 
 # 1. 运行测试
 python -m pytest tests/ -q --tb=short
-# 预期: 551 passed, 4 skipped
+# 预期: 561 passed, 4 skipped
 
 # 2. 检查 API 健康状态
 python -c "from app.main import app; print('FastAPI app loaded OK')"
@@ -165,6 +166,8 @@ python scripts/audit_db_integrity.py
 python scripts/preflight_accuracy_experiments.py
 python scripts/audit_public_outputs.py
 python scripts/audit_match_information_state.py --match-id 199 --home "Portugal" --away "Spain"
+python scripts/audit_rich_postmatch_data.py --match-id 194 --json
+python scripts/audit_rich_postmatch_data.py --match-id 194 --json
 ```
 
 ### 常用命令
@@ -178,7 +181,7 @@ cd backend
 python scripts/predict_match_full.py --home "Brazil" --away "Germany" \
   --competition "FIFA World Cup 2026" --stage "Group A - Matchday 1"
 
-# 批量运行赛后复盘 + 自进化
+# 单场运行赛后复盘 + 自进化
 python scripts/run_postmatch_complete.py
 
 # 每日自动复盘
@@ -187,6 +190,30 @@ python scripts/auto_postmatch.py
 # 单场复盘审查
 python scripts/postmatch_review.py
 ```
+
+**V4.11 官方赛后数据 / Match Data OS：**
+
+```bash
+cd backend
+
+# 1. 采集 FIFA 官方 Match Centre / report 原始证据
+python scripts/collect_official_match_data.py \
+  --match-id 194 \
+  --source-url "https://www.fifa.com/en/match-centre/match/17/285023/289288/400021528"
+
+# 2. 标准化事件、射门、阵容、球员统计
+python scripts/normalize_match_events.py \
+  --match-id 194 --home-team "Argentina" --away-team "Egypt"
+
+# 3. 生成比赛状态分段与 comeback profile
+python scripts/build_game_state_segments.py \
+  --match-id 194 --home-score 3 --away-score 2
+
+# 4. 审计 rich postmatch 数据完整性
+python scripts/audit_rich_postmatch_data.py --match-id 194 --json
+```
+
+这些数据只属于赛后复盘和 proposal-only 自进化，不进入同场赛前 strict feature snapshot。
 
 **当前入口白名单：**
 
@@ -200,6 +227,10 @@ python scripts/postmatch_review.py
 - 信息信号抽取：`backend/scripts/extract_information_signals.py`
 - 信息信号评分：`backend/scripts/score_information_signals.py`
 - 信息状态审计：`backend/scripts/audit_match_information_state.py`
+- 官方赛后数据采集：`backend/scripts/collect_official_match_data.py`
+- 事件/阵容标准化：`backend/scripts/normalize_match_events.py`
+- 比赛状态分段：`backend/scripts/build_game_state_segments.py`
+- rich postmatch 审计：`backend/scripts/audit_rich_postmatch_data.py`
 
 **WC26 赛程与模拟：**
 
@@ -284,10 +315,11 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### 版本历史
 
-当前主版本：**V4.10.0-alpha**
+当前主版本：**V4.11.0-alpha**
 
 | 版本 | 日期 | 关键变更 |
 |------|------|---------|
+| **V4.11.0-alpha** | 2026-07-08 | Match Data OS: FIFA 官方赛后 raw ledger + 事件/射门/阵容/球员统计标准化 + game-state segments + comeback profile + rich postmatch 审计 |
 | **V4.10.0-alpha** | 2026-07-07 | Real-time information state engine: evidence ledger + structured signal scoring + signal attribution + information-state preflight |
 | **V4.9.0-alpha** | 2026-07-05 | Accuracy Data OS: repair report v2 + accuracy todo backlog + experiment preflight + structured pre-match signals + FeatureSnapshot v2 + proposal-only self-evolution |
 | **V4.8.0-alpha** | 2026-07-04 | Accuracy Engine: registry v2 + PredictionKernel + shadow candidate experiments + generic proposal ledger |
@@ -322,18 +354,18 @@ V3.5 之后，任何"更准"的结论必须满足这些门槛：
 
 ### Current Status
 
-WC26 Predict is in the **V4.10 Information State Engine** phase: turn live news, injuries, lineups, weather, odds, and market consensus into traceable, scored, replayable pre-match evidence.
+WC26 Predict is in the **V4.11 Match Data OS + Game-State Engine** phase: on top of V4.10 pre-match information state, official FIFA post-match data, event timelines, lineup minutes, player stats, and game-state segments are now traceable post-match learning assets.
 
-**V4.10.0-alpha (2026-07-07) State:**
+**V4.11.0-alpha (2026-07-08) State:**
 
-- **Tests**: `551 passed, 4 skipped` on the latest full local suite; V4.10 information-state engine tests are included in full validation.
-- **Code version**: `4.10.0-alpha`; current WC weight labels remain group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`; V4.10 does not auto-apply production weights.
-- **Local sample registry**: `87` canonical result samples, `32` strict eligible backtest samples, `47` diagnostic samples, `8` rejected samples, and `source_result_conflicts=0`. Accuracy claims must state the sample definition.
+- **Tests**: `561 passed, 4 skipped` on the latest full local suite; V4.11 Match Data OS tests are included in full validation.
+- **Code version**: `4.11.0-alpha`; current WC weight labels remain group `WORLD_CUP_V4.7.0_ALPHA` and knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`; V4.11 does not auto-apply production weights.
+- **Local sample registry**: `91` canonical result samples, `36` strict eligible backtest samples, `47` diagnostic samples, `8` rejected samples, and `source_result_conflicts=0`. Accuracy claims must state the sample definition.
 - **Fusion chain**: DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market (7-stage sequential fusion) + motivation factor + 12% draw floor + adaptive divergence guard + dynamic market boost + DC half-life learning (180d optimal) + A3 Stacking meta-learner (21-dim features) + B1 Weighted Conformal Prediction (α=0.1)
 - **Post-match data completeness**: local DB has `20` `postmatch_process_eval` rows and `34` `match_team_statistics` rows. Strict backtests must not mix all schedule-finished rows without registry filtering.
 - **DB integrity**: SQLite `PRAGMA integrity_check=ok` and `PRAGMA foreign_key_check=0`; historical orphan rows are preserved in `data_integrity_quarantine` for auditability.
-- **New**: V4.10 Information State Engine: evidence ledger, structured shadow signals, signal scoring, post-match signal attribution, and information-state audit payloads in prediction feature snapshots.
-- **Known risk**: strict evidence is still limited to `32` samples, `18` below the `50+` target; dynamic candidates remain shadow-only until paired proper-scoring gates pass.
+- **New**: V4.11 Match Data OS: official post-match raw ledger, event timeline, shot events, lineups/player minutes, player statistics, game-state segments, goal timeline, and comeback profile for rich post-match reviews.
+- **Known risk**: strict evidence is still limited to `36` samples, `14` below the `50+` target; dynamic candidates remain shadow-only until paired proper-scoring gates pass.
 - **Self-evolution**: proposal-only. The system can write `model_change_proposals`, but no proposal is auto-applied to production weights, calibrators, or artifacts.
 - **Known issues**: diagnostic/rejected samples are mostly missing pre-match snapshots, timestamp evidence, or current probabilities; data repair has higher priority than adding more production models.
 
@@ -377,13 +409,14 @@ flowchart LR
 backend/app/                 FastAPI backend & core services
 backend/app/core/engine.py   Pure fusion engine (NegBin, DC-Enhancer, DrawFloor) — zero IO
 backend/app/services/        Prediction, snapshot, learning, verification, evaluation (40+ files)
+backend/app/services/match_data/        V4.11 official post-match data, event normalization, game-state engine
 backend/app/models/          SQLAlchemy ORM models (22+ tables)
 backend/app/routers/         FastAPI routes (9 endpoints)
 backend/app/services/weights.py          Weight config (WORLD_CUP_V4.7.0_ALPHA)
 backend/artifacts/           Model artifacts (calibrator, ratings)
 backend/model_artifacts/dc_cache/        Disk-cached models (DC + Enhancer)
 backend/scripts/             CLI scripts (predict, review, simulate, train)
-backend/tests/               Tests (551 passed, 4 skipped)
+backend/tests/               Tests (561 passed, 4 skipped)
 backend/dashboard/           Streamlit research dashboard (9 pages)
 backend/data/                SQLite database + data files
 reports/                     Current prediction reports
@@ -451,7 +484,7 @@ cd backend
 
 # 1. Run tests
 python -m pytest tests/ -q --tb=short
-# Expected: 551 passed, 4 skipped
+# Expected: 561 passed, 4 skipped
 
 # 2. Check API health
 python -c "from app.main import app; print('FastAPI app loaded OK')"
@@ -483,7 +516,7 @@ cd backend
 python scripts/predict_match_full.py --home "Brazil" --away "Germany" \
   --competition "FIFA World Cup 2026" --stage "Group A - Matchday 1"
 
-# Batch post-match review + self-evolution
+# Single-match post-match review + self-evolution
 python scripts/run_postmatch_complete.py
 
 # Daily automated review
@@ -492,6 +525,30 @@ python scripts/auto_postmatch.py
 # Single match review
 python scripts/postmatch_review.py
 ```
+
+**V4.11 Official Post-match Data / Match Data OS:**
+
+```bash
+cd backend
+
+# 1. Capture FIFA official Match Centre / report raw evidence
+python scripts/collect_official_match_data.py \
+  --match-id 194 \
+  --source-url "https://www.fifa.com/en/match-centre/match/17/285023/289288/400021528"
+
+# 2. Normalize events, shots, lineups, and player stats
+python scripts/normalize_match_events.py \
+  --match-id 194 --home-team "Argentina" --away-team "Egypt"
+
+# 3. Build game-state segments and comeback profile
+python scripts/build_game_state_segments.py \
+  --match-id 194 --home-score 3 --away-score 2
+
+# 4. Audit rich post-match completeness
+python scripts/audit_rich_postmatch_data.py --match-id 194 --json
+```
+
+These records are post-match-only learning evidence and must not be joined into the same-match pre-match strict feature snapshot.
 
 **Current entrypoint allowlist:**
 
@@ -505,6 +562,10 @@ python scripts/postmatch_review.py
 - Signal extraction: `backend/scripts/extract_information_signals.py`
 - Signal scoring: `backend/scripts/score_information_signals.py`
 - Information-state audit: `backend/scripts/audit_match_information_state.py`
+- Official post-match collection: `backend/scripts/collect_official_match_data.py`
+- Event/lineup normalization: `backend/scripts/normalize_match_events.py`
+- Game-state segments: `backend/scripts/build_game_state_segments.py`
+- Rich post-match audit: `backend/scripts/audit_rich_postmatch_data.py`
 
 **WC26 Schedule & Simulation:**
 

@@ -1,8 +1,8 @@
 # WC26 Predict 技术审计与优化记录
 
 日期: 2026-07-03  
-更新: 2026-07-07（V4.10 Information State Engine 落地后事实校准）
-范围: 后端预测链路、复盘学习、权重自进化、评估样本登记、候选实验框架、市场数据链路、实时信息状态引擎、技术债清理。静态前端暂不纳入本次优化范围。
+更新: 2026-07-08（V4.11 Match Data OS + Game-State Engine 落地后事实校准）
+范围: 后端预测链路、复盘学习、权重自进化、评估样本登记、候选实验框架、市场数据链路、实时信息状态引擎、官方赛后 rich data、技术债清理。静态前端暂不纳入本次优化范围。
 
 ## 结论
 
@@ -10,7 +10,7 @@
 2. 新模型不应直接上线。动态双变量 Poisson / 动态贝叶斯类模型值得进入候选池，但必须先通过成对 walk-forward 回测与 `BacktestGate`。
 3. 复盘系统可以进化，但前提是只让 verified / full-tier 样本驱动参数候选，并且候选必须持久化、可审计、不过闸不生效。
 4. 市场赔率/多博彩商共识是重要预测信号，不再视为污染；只禁止投注建议、保证收益、带单等诱导性语言。
-5. V4.10-alpha 后续修复确认：本地 DB 已升级到 Alembic `g7b8c9d0e1f2`；`model_weight_proposals`、学习日志比分字段、Accuracy Engine 审计表、通用 `model_change_proposals`、结构化情报 FeatureSnapshot v2、`prediction_snapshots` score matrix 审计字段、V4.10 evidence/signal/evaluation 表均已落库或可物化。
+5. V4.11-alpha 后续修复确认：Alembic head 扩展到 `h8c9d0e1f2g3`；`model_weight_proposals`、学习日志比分字段、Accuracy Engine 审计表、通用 `model_change_proposals`、结构化情报 FeatureSnapshot v2、`prediction_snapshots` score matrix 审计字段、V4.10 evidence/signal/evaluation 表、V4.11 Match Data OS rich-postmatch 表均已落库或可物化。
 
 ## 已落地改动
 
@@ -31,7 +31,7 @@
 - V4.8 新增 shadow candidate pool 与统一 experiment runner：动态 DC、动态双变量 Poisson、Bayesian weighted dynamic、covariate ML、Dirichlet calibration、stacking optimizer 均只离线评估。
 - V4.8 新增 `model_change_proposals` 通用提案 ledger：自进化只能生成 proposal，不会自动改生产权重、校准器或模型 artifacts。
 - V4.8 关键数据口径修复：`wc26_schedule` 可在无冲突时补齐 canonical result；schedule-only 样本使用 `match_date + kickoff_time` 做 kickoff source，并保留审计来源。
-- V4.8/V4.9 新增并扩展 `feature_snapshots` 物化：当前 registry 可构建 `32` 条 strict 样本；payload 不包含真实比分字段。
+- V4.8/V4.9 新增并扩展 `feature_snapshots` 物化：当前 registry 可构建 `36` 条 strict 样本；payload 不包含真实比分字段。
 - V4.9 新增 evaluation registry repair report v2：逐场给出 `missing_pre_match_snapshot`、`snapshot_or_kickoff_time_unknown`、`missing_current_probabilities`、赛后快照、结果冲突的修复动作，并输出 priority、blocking level、repair order 和 action groups；只允许真实赛前证据提升 strict。
 - V4.9 新增 accuracy todo backlog：从 registry、repair report、DB integrity、市场赔率覆盖、阵容/伤停覆盖和 `prediction_pipeline.py` 规模生成只读 TODO，不创建快照、概率、权重或报告。
 - V4.9 新增 strict sample repair queue：逐场检查本地 `pre_match_snapshots` / `prediction_snapshots` 是否存在真实赛前概率证据；当前本地没有更多 diagnostic 样本可直接提升 strict。
@@ -45,23 +45,29 @@
 - V4.10 新增 Information State Engine：`evidence_items` 统一保存新闻、伤停、阵容、天气、赔率/市场共识和赛程上下文证据；`information_state_signals` 保存结构化 shadow 信号；`signal_evaluations` 保存赛后信号级归因。
 - V4.10 新增信息状态 CLI：`collect_match_evidence.py`、`extract_information_signals.py`、`score_information_signals.py`、`audit_match_information_state.py`；预测入口会自动执行信息状态采集/抽取/评分/审计的本地闭环。
 - V4.10 扩展 `prediction_runs.input_feature_snapshot` 和 `feature_snapshots.payload`：新增 information-state audit、missing-data gate、shadow signals 和 strict-readiness 诊断；不改变生产概率和权重。
+- V4.11 新增 Match Data OS：`match_data_raw` 保存 FIFA 官方 Match Centre / report raw evidence、source URL、payload hash 和 provider 状态；`match_events`、`shot_events`、`match_lineups`、`player_match_minutes`、`match_player_statistics`、`match_game_state_segments` 保存标准化赛后 rich data。
+- V4.11 新增官方赛后数据 CLI：`collect_official_match_data.py`、`normalize_match_events.py`、`build_game_state_segments.py`、`audit_rich_postmatch_data.py`；FIFA 是首个 provider，schema 保持 provider-neutral。
+- V4.11 升级 `run_postmatch_complete.py`：有 rich postmatch data 时报告 goal timeline、game-state segments、event quality 和 comeback profile；没有 rich data 时基础复盘仍可执行并明确缺失项。
+- V4.11 扩展 `prediction_learning_log`：新增 `game_state_profile`、`comeback_profile`、`event_quality_score`，全部为 post-match-only 元数据，不进入同场赛前 strict feature snapshot。
 - V4.9 隔离旧根目录报告到 `reports/archive/legacy-root/`，并生成 manifest；默认公开输出审计不扫描 archive。
 - V4.9 新增数据库完整性审计/修复：`audit_db_integrity.py` 默认只读；apply 模式会先备份 DB，精确修复 team aliases，空 nullable FK 归一为 NULL，其余孤儿行隔离到 `data_integrity_quarantine`，不伪造父记录。
 - V4.9 删除确定过时的长文档：`docs/PRD_ARCHITECTURE_COMPLETE.md`、`docs/EXTERNAL_REVIEW_SUMMARY.md`、`backend/docs/POSTMATCH_SOP.md`，避免 V3/V4.5/V4.8 历史事实污染当前判断。
 
 ## 验证结果
 
-- 后端全量测试: `551 passed, 4 skipped`。
-- Evaluation registry v2 dry-run: `87` total samples, `87` canonical result rows, `62` match-result rows, `85` schedule-finished rows, `32` strict eligible samples, `47` diagnostic samples, `8` rejected samples, `22` registry process-eval matches, `0` source-result conflicts.
+- 后端全量测试: `561 passed, 4 skipped`。
+- Evaluation registry v2 dry-run: `91` total samples, `91` canonical result rows, `66` match-result rows, `89` schedule-finished rows, `36` strict eligible samples, `47` diagnostic samples, `8` rejected samples, `26` registry process-eval matches, `0` source-result conflicts.
 - Evaluation registry repair smoke: 非 strict 样本只有在真实赛前证据补齐后才可提升 strict；禁止 placeholder probability、赛后补预测、无时间戳信号进入 strict。
 - Feature snapshot materialization: `feature_snapshots` 表当前 `93` 条历史审计记录；payload 抽查无 actual-goal labels。
-- Candidate experiment smoke: 默认 `min_sample_count=30` 时 preflight 当前 ready（strict=32），但仍低于 50+ 目标；shadow candidate 的 CI 仍跨 0 时不得上线。
+- Candidate experiment smoke: 默认 `min_sample_count=30` 时 preflight 当前 ready（strict=36），但仍低于 50+ 目标；shadow candidate 的 CI 仍跨 0 时不得上线。
 - Proposal ledger smoke: `model_change_proposals` 当前 `30` 条，权重、数据修复、feature-rule、calibrator、stacking proposal 均保持 proposal-only。
-- Alembic 当前本地 head: `g7b8c9d0e1f2`
+- Alembic 当前本地 head: `h8c9d0e1f2g3`
 - DB integrity: `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行 `104` 条已隔离到 `data_integrity_quarantine` 并保留备份。
-- Report path audit: `prediction_snapshots.report_path` checked `5` rows, missing `0`, legacy root `0`, archive manifest `18` files, root report files `0`。
+- Report path audit: `prediction_snapshots.report_path` checked `7` rows, missing `0`, legacy root `0`, archive manifest `18` files, root report files `0`。
 - Entrypoint audit: current operation allowlist passes; Windows task registration script is disabled because the previous scheduler helper no longer exists。
 - V4.10 information-state CLI smoke: collect → extract → score → audit 在临时 DB 中通过；真实 DB 中 smoke 测试数据已清理，三张 V4.10 新表保持生产洁净。
+- V4.11 Match Data OS targeted tests: provider URL parsing、raw/normalized/segments 幂等存储、阿根廷式 late comeback profile、空 rich data `basic_only` 诊断均通过。
+- V4.11 FIFA official dry-run: 示例 Match Centre URL 识别 provider_match_id `400021528`，检测到结构化候选 payload；未写入样本数据。
 - 代码编译检查: 核心变更文件 `py_compile` 通过。
 
 ## 研究依据
