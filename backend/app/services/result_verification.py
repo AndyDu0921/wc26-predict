@@ -159,6 +159,23 @@ class ResultVerificationService:
                 f"Accepted: {sorted(_FINISHED_STATUSES)}"
             )
 
+        existing_result = await db.execute(
+            select(MatchResultVerification).where(
+                and_(
+                    MatchResultVerification.match_id == match_key,
+                    MatchResultVerification.home_goals == home_goals,
+                    MatchResultVerification.away_goals == away_goals,
+                    MatchResultVerification.source_name == source_name,
+                    MatchResultVerification.source_tier == source_tier,
+                    MatchResultVerification.match_status_at_source == normalized_status,
+                    MatchResultVerification.is_consensus == False,  # noqa: E712
+                )
+            )
+        )
+        existing = existing_result.scalars().first()
+        if existing is not None:
+            return existing
+
         record = MatchResultVerification(
             match_id=match_key,
             home_goals=home_goals,
@@ -197,6 +214,32 @@ class ResultVerificationService:
             is_verified=True only when 2+ trusted independent sources agree.
         """
         match_key = _match_id_key(match_id)
+        existing_consensus_result = await db.execute(
+            select(MatchResultVerification).where(
+                and_(
+                    MatchResultVerification.match_id == match_key,
+                    MatchResultVerification.is_consensus == True,  # noqa: E712
+                )
+            ).order_by(
+                MatchResultVerification.source_tier.asc(),
+                MatchResultVerification.created_at.desc(),
+            )
+        )
+        existing_consensus = existing_consensus_result.scalars().first()
+        if existing_consensus is not None:
+            source_names = sorted(
+                name for name in existing_consensus.source_name.split("|") if name
+            )
+            return ConsensusResult(
+                match_id=match_key,
+                home_goals=existing_consensus.home_goals,
+                away_goals=existing_consensus.away_goals,
+                source_count=len(source_names),
+                source_names=source_names,
+                is_verified=True,
+                verification_id=existing_consensus.id,
+            )
+
         # Read all non-consensus source rows for this match
         result = await db.execute(
             select(MatchResultVerification).where(

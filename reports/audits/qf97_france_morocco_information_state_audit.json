@@ -1,0 +1,26 @@
+{
+  "schema_version": "match_information_state_audit.v1",
+  "match_id": "201",
+  "home_team": "France",
+  "away_team": "Morocco",
+  "kickoff_at": "2026-07-10T04:00:00+08:00",
+  "checks": {
+    "market_odds": true,
+    "weather": true,
+    "news": false,
+    "injury_or_lineup": true,
+    "all_evidence_before_kickoff": true,
+    "has_structured_signals": true
+  },
+  "missing": [
+    "news"
+  ],
+  "evidence_count": 5,
+  "signal_count": 7,
+  "active_shadow_signal_count": 7,
+  "future_evidence_ids": [],
+  "quality_score": 0.8333,
+  "confidence_modifier": 0.975,
+  "strict_ready": true,
+  "notes": "Low quality does not block prediction; it must be shown and snapshotted."
+}

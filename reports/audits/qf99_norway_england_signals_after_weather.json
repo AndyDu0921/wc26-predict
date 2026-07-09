@@ -1,0 +1,143 @@
+{
+  "schema_version": "information_state_signal_extraction.v1",
+  "match_id": "203",
+  "home_team": "Norway",
+  "away_team": "England",
+  "evidence_count": 5,
+  "signals_extracted": 4,
+  "persisted": true,
+  "signals": [
+    {
+      "id": "4fd72f7e-56ac-428a-a694-14a9133caa78",
+      "created_at": "2026-07-09 03:59:58",
+      "updated_at": "2026-07-09T03:59:58.446818+00:00",
+      "signal_key": "42dbd9082ef898d45f0ee119ad64b783eba1702e28130f602d5f1df3c8a2e718",
+      "match_id": "203",
+      "team": "Norway",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.078,
+      "confidence": 0.78,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "0394a6f8-bfa1-4334-ba58-e60f9fe04f70"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Norway",
+        "direction": "neutral",
+        "probability_shift": 0.078,
+        "reason": "initial_v4_10_rule",
+        "shadow_only": true
+      },
+      "summary": "Norway: market_move/neutral - 2026 World Cup quarterfinal odds: Norway vs England Market odds evidence as-of collection: England listed around +125, Norway around +195, draw around +220. Use",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "market_odds",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "174f74f1-a2c8-4f3c-ab70-4d698a306842",
+      "created_at": "2026-07-09 03:59:58",
+      "updated_at": "2026-07-09T03:59:58.446818+00:00",
+      "signal_key": "19740d873e473e071981cd1af1a03f8040c91d434ee4c3cdbf779fbeaba63afd",
+      "match_id": "203",
+      "team": "Norway",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.0792,
+      "confidence": 0.66,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "406bf955-62a4-45e3-9bca-26c486d328bc"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Norway",
+        "direction": "negative",
+        "probability_shift": 0.0792,
+        "reason": "initial_v4_10_rule",
+        "shadow_only": true
+      },
+      "summary": "Norway: injury/negative - Team-news evidence: England training availability and illness/injury update before Norway",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "news",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "2a42bb15-88bf-4200-a41b-ce34903c0d55",
+      "created_at": "2026-07-09 03:59:58",
+      "updated_at": "2026-07-09T03:59:58.446818+00:00",
+      "signal_key": "16c10b0c4980550e303c9283d7c3073240a8898bec61abd3a8b3bacaefe77184",
+      "match_id": "203",
+      "team": "England",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.0792,
+      "confidence": 0.66,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "406bf955-62a4-45e3-9bca-26c486d328bc"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "England",
+        "direction": "negative",
+        "probability_shift": 0.0792,
+        "reason": "initial_v4_10_rule",
+        "shadow_only": true
+      },
+      "summary": "England: injury/negative - Team-news evidence: England training availability and illness/injury update before Norway",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "news",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "89808000-05ac-4393-97fb-b3e387bed6a8",
+      "created_at": "2026-07-09 04:01:23",
+      "updated_at": "2026-07-09 04:01:23",
+      "signal_key": "300a3fd346bf5c7d88ffde3c4698fe2d73e89cf4686895395bb595d0bb8376e2",
+      "match_id": "203",
+      "team": "Norway",
+      "player": null,
+      "signal_type": "weather",
+      "direction": "negative",
+      "magnitude": 0.0222,
+      "confidence": 0.74,
+      "available_at": "2026-07-09T04:01:14.848242+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "6b8585d2-4df8-4016-b5a3-750b0db549cb"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Norway",
+        "direction": "negative",
+        "probability_shift": 0.0222,
+        "shadow_only": true
+      },
+      "summary": "Norway: weather/negative - Miami Gardens match-day weather for Norway vs England Forecast evidence for Miami Gardens around the Norway vs England match window: humid, high near 93F/34C, i",
+      "metadata": {
+        "evidence_type": "weather",
+        "input_mode": "codex_weather_tool",
+        "shadow_only": true
+      }
+    }
+  ],
+  "notes": "Deterministic extractor; LLM extraction can feed the same tables but does not set probabilities."
+}

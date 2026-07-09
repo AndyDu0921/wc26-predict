@@ -522,6 +522,11 @@ def _normalize_shot(
 
 
 def _shot_from_event(event: MatchEvent) -> ShotEvent | None:
+    payload = dict(event.payload or {})
+    payload["_match_data_os"] = {
+        "derived_from_event": True,
+        "source_event_type": event.event_type,
+    }
     return ShotEvent(
         match_id=event.match_id,
         provider=event.provider,
@@ -536,7 +541,7 @@ def _shot_from_event(event: MatchEvent) -> ShotEvent | None:
         outcome=event.outcome or event.event_type,
         home_score_after=event.home_score_after,
         away_score_after=event.away_score_after,
-        payload=event.payload,
+        payload=payload,
     )
 
 

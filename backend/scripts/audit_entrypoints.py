@@ -16,6 +16,7 @@ CURRENT_ENTRYPOINTS = [
     "backend/scripts/run_postmatch_complete.py",
     "backend/scripts/run_accuracy_experiments.py",
     "backend/scripts/preflight_accuracy_experiments.py",
+    "backend/scripts/build_project_state_report.py",
     "backend/scripts/audit_db_integrity.py",
     "backend/scripts/audit_public_outputs.py",
     "backend/scripts/collect_match_evidence.py",

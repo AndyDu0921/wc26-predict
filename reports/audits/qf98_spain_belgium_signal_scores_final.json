@@ -1,0 +1,146 @@
+{
+  "schema_version": "information_state_signal_scoring.v1",
+  "match_id": "202",
+  "home_team": "Spain",
+  "away_team": "Belgium",
+  "signals_scored": 8,
+  "signals": [
+    {
+      "id": "bd4d9db7-b75a-4e0e-b5ea-186459e99421",
+      "signal_key": "35893e2a56061b241698b68b0f6a9a9d1cfe548b0f62371ae688a2508cdda616",
+      "team": "Spain",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.65,
+      "magnitude": 0.078,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.078,
+        "applies_to": "Spain",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "0839abe5-4fcc-4b07-92a7-9790e003d755",
+      "signal_key": "30bf44b2432bed1507161bb7c0f8ad20d721fa101de41b3ce340ebbcb405f984",
+      "team": "Spain",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.78,
+      "magnitude": 0.078,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.078,
+        "applies_to": "Spain",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "a617792e-4648-46a3-9c2c-c83caf5c3a08",
+      "signal_key": "c479257e250a341c3cabe27778ecd0c6975c7fa3a822e2390b1e7c18cc7f4ceb",
+      "team": "Spain",
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "confidence": 0.68,
+      "magnitude": 0.0408,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0408,
+        "applies_to": "Spain",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "6b05498a-5f44-4419-860e-bfc03652360a",
+      "signal_key": "73531fbf33ccd214386eb2f3c30919e8862b638504086a18a93f96f53b1cf449",
+      "team": "Belgium",
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "confidence": 0.68,
+      "magnitude": 0.0408,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0408,
+        "applies_to": "Belgium",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "7e40e3ee-3ff2-485b-ba15-b00155c50acb",
+      "signal_key": "0cb1f32fdcca595806d9fa63598301f00a543cd1f43ef0db4e5672b987837d31",
+      "team": "Spain",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.68,
+      "magnitude": 0.0816,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0816,
+        "applies_to": "Spain",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "10ec23dd-da28-406e-9917-b944377ca803",
+      "signal_key": "3482bd8a094ad482a74e053b9cb26c9f1ad6fcc6465e0ec4c2042328740e6262",
+      "team": "Belgium",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.68,
+      "magnitude": 0.0816,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0816,
+        "applies_to": "Belgium",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "c020d95d-b549-4229-8525-1f9eabee3d1c",
+      "signal_key": "1b97e4982eb813e59b3139f37ea0543d92de5250839882421bf0e49aa2a7f882",
+      "team": "Spain",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.85,
+      "magnitude": 0.085,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.085,
+        "applies_to": "Spain",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "97d74c1e-93c7-4f5d-8363-24df1cac5fee",
+      "signal_key": "e649aa1889979bd5abfec5cdabc0663c277327034f72659025ee0c1b20f5534b",
+      "team": "Spain",
+      "signal_type": "weather",
+      "direction": "negative",
+      "confidence": 0.85,
+      "magnitude": 0.0255,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0255,
+        "applies_to": "Spain",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    }
+  ],
+  "notes": "All adjustments are shadow-only and do not alter production probabilities."
+}

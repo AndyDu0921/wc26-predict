@@ -1,0 +1,24 @@
+{
+  "schema_version": "match_information_state_audit.v1",
+  "match_id": "203",
+  "home_team": "Norway",
+  "away_team": "England",
+  "kickoff_at": "2026-07-12T05:00:00+08:00",
+  "checks": {
+    "market_odds": true,
+    "weather": true,
+    "news": true,
+    "injury_or_lineup": true,
+    "all_evidence_before_kickoff": true,
+    "has_structured_signals": true
+  },
+  "missing": [],
+  "evidence_count": 7,
+  "signal_count": 6,
+  "active_shadow_signal_count": 6,
+  "future_evidence_ids": [],
+  "quality_score": 1.0,
+  "confidence_modifier": 1.0,
+  "strict_ready": true,
+  "notes": "Low quality does not block prediction; it must be shown and snapshotted."
+}

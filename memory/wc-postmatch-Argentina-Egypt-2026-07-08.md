@@ -10,11 +10,14 @@ metadata:
 - **Brier**: 0.3184
 - **Direction**: correct
 - **Prediction**: 54.0% / 21.4% / 24.7% (favored: home)
-- **Stats completeness**: full
+- **Stats completeness**: partial
 - **Failure type**: MODEL_INPUT_ERROR
 - **Learning weight**: 0.50 × 1.00 × 1.00 = 0.5000
 - **xG**: predicted 0.935-0.603, actual 2.840-0.980
 - **Score metrics**: log loss 4.5056, exact hit False, top-3 hit False
+- **Rich postmatch data**: goal_timeline_complete / quality 0.9000 / comeback late_comeback
+- **Rich data coverage**: events=yes, goals=yes, lineups=yes, minutes=yes, shot map=no, shot xG=no, player stats=no
+- **Rich data warnings**: no_full_shot_map, no_shot_xg, no_technical_player_statistics, player_stats_event_derived_only, shot_events_from_event_timeline_only
 
 ## Component Review
 

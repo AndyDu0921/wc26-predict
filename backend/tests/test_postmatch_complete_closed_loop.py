@@ -7,6 +7,7 @@ import pytest
 
 from scripts.run_postmatch_complete import (
     _learning_log_prediction_run_id,
+    _official_score_from_payload,
     _upsert_postmatch_eval,
 )
 
@@ -41,6 +42,19 @@ def test_learning_log_prediction_run_id_helper():
     assert _learning_log_prediction_run_id(None) is None
     assert _learning_log_prediction_run_id(SimpleNamespace(prediction_run_id="")) is None
     assert _learning_log_prediction_run_id(SimpleNamespace(prediction_run_id="run-1")) == "run-1"
+
+
+def test_official_score_from_fifa_structured_payload():
+    payload = {
+        "structured_payloads": [
+            {
+                "HomeTeam": {"Score": 3},
+                "AwayTeam": {"Score": 2},
+            }
+        ]
+    }
+
+    assert _official_score_from_payload(payload) == (3, 2)
 
 
 def test_postmatch_eval_upsert_is_idempotent_by_prediction_run_id():

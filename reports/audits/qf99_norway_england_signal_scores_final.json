@@ -1,0 +1,112 @@
+{
+  "schema_version": "information_state_signal_scoring.v1",
+  "match_id": "203",
+  "home_team": "Norway",
+  "away_team": "England",
+  "signals_scored": 6,
+  "signals": [
+    {
+      "id": "65dc2023-bf9b-4d56-bbf3-835b565c09e3",
+      "signal_key": "42dbd9082ef898d45f0ee119ad64b783eba1702e28130f602d5f1df3c8a2e718",
+      "team": "Norway",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.78,
+      "magnitude": 0.078,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.078,
+        "applies_to": "Norway",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "1d7aea66-2944-4a22-a758-be3dacc7632f",
+      "signal_key": "19740d873e473e071981cd1af1a03f8040c91d434ee4c3cdbf779fbeaba63afd",
+      "team": "Norway",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.66,
+      "magnitude": 0.0792,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0792,
+        "applies_to": "Norway",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "5b888c6b-da20-4af1-85f3-5d94bd9684fd",
+      "signal_key": "16c10b0c4980550e303c9283d7c3073240a8898bec61abd3a8b3bacaefe77184",
+      "team": "England",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.66,
+      "magnitude": 0.0792,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0792,
+        "applies_to": "England",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "aa7dc4bb-b21d-4116-bf6f-a41d40ae157e",
+      "signal_key": "d898240dc9def80ed19e130a8c2a8a5497fd2f7c4162bd3bd23f1024843bb189",
+      "team": "Norway",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.85,
+      "magnitude": 0.085,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.085,
+        "applies_to": "Norway",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "f1e48411-486a-470a-a142-79722ffde17a",
+      "signal_key": "3bc8794b0736e2a47624e820feacd0d6ee7276f347fab279756c08ea0e4f11ca",
+      "team": "Norway",
+      "signal_type": "weather",
+      "direction": "negative",
+      "confidence": 0.85,
+      "magnitude": 0.0255,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0255,
+        "applies_to": "Norway",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "f9e8a291-368b-4d39-a7de-517541a30c96",
+      "signal_key": "300a3fd346bf5c7d88ffde3c4698fe2d73e89cf4686895395bb595d0bb8376e2",
+      "team": "Norway",
+      "signal_type": "weather",
+      "direction": "negative",
+      "confidence": 0.74,
+      "magnitude": 0.0222,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0222,
+        "applies_to": "Norway",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    }
+  ],
+  "notes": "All adjustments are shadow-only and do not alter production probabilities."
+}

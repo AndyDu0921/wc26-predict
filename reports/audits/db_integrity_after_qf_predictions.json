@@ -1,0 +1,184 @@
+{
+  "schema_version": "db_integrity_audit.v1",
+  "db_path": "D:\\hermes agent\\2026世界杯分析\\backend\\data\\local_stage2.db",
+  "generated_at": "2026-07-09T04:07:50.341535+00:00",
+  "integrity_check": "ok",
+  "foreign_key_violation_count": 3,
+  "affected_row_count": 3,
+  "violation_counts_by_table": {
+    "match_team_statistics": 2,
+    "postmatch_process_eval": 1
+  },
+  "violation_counts_by_parent": {
+    "wc26_schedule": 3
+  },
+  "planned_actions": [
+    {
+      "action": "quarantine_orphan_child_row",
+      "table_name": "match_team_statistics",
+      "rowid": 71442,
+      "violations": [
+        {
+          "table_name": "match_team_statistics",
+          "rowid": 71442,
+          "parent_table": "wc26_schedule",
+          "fk_id": 0,
+          "child_columns": [
+            "match_id"
+          ],
+          "parent_columns": [
+            "id"
+          ],
+          "child_values": [
+            "archive_201_colombia_switzerland_20260708"
+          ],
+          "row_payload": {
+            "id": 71442,
+            "match_id": "archive_201_colombia_switzerland_20260708",
+            "team_name": "Colombia",
+            "side": "home",
+            "goals": 0,
+            "xg": 1.09,
+            "shots_total": 15,
+            "shots_on_target": 3,
+            "shots_inside_box": null,
+            "big_chances": null,
+            "corners": 7,
+            "possession_pct": 46.6,
+            "passes_attempted": 547,
+            "pass_accuracy_pct": null,
+            "final_third_entries": null,
+            "tackles": 17,
+            "interceptions": 13,
+            "clearances": 22,
+            "fouls": 21,
+            "yellow_cards": 2,
+            "red_cards": 0,
+            "saves": 2,
+            "penalties_awarded": 0,
+            "penalties_scored": 0,
+            "own_goals": 0,
+            "provider": "ESPN boxscore / ESPN-xGC xG cross-check",
+            "data_quality_score": 1.0,
+            "is_primary": 1,
+            "conflict_flag": 0,
+            "created_at": "2026-07-08 03:01:39"
+          }
+        }
+      ],
+      "reason": "child row references missing parent row; no safe parent can be fabricated"
+    },
+    {
+      "action": "quarantine_orphan_child_row",
+      "table_name": "match_team_statistics",
+      "rowid": 71443,
+      "violations": [
+        {
+          "table_name": "match_team_statistics",
+          "rowid": 71443,
+          "parent_table": "wc26_schedule",
+          "fk_id": 0,
+          "child_columns": [
+            "match_id"
+          ],
+          "parent_columns": [
+            "id"
+          ],
+          "child_values": [
+            "archive_201_colombia_switzerland_20260708"
+          ],
+          "row_payload": {
+            "id": 71443,
+            "match_id": "archive_201_colombia_switzerland_20260708",
+            "team_name": "Switzerland",
+            "side": "away",
+            "goals": 0,
+            "xg": 0.39,
+            "shots_total": 7,
+            "shots_on_target": 2,
+            "shots_inside_box": null,
+            "big_chances": null,
+            "corners": 3,
+            "possession_pct": 53.4,
+            "passes_attempted": 631,
+            "pass_accuracy_pct": null,
+            "final_third_entries": null,
+            "tackles": 12,
+            "interceptions": 14,
+            "clearances": 35,
+            "fouls": 22,
+            "yellow_cards": 3,
+            "red_cards": 0,
+            "saves": 3,
+            "penalties_awarded": 0,
+            "penalties_scored": 0,
+            "own_goals": 0,
+            "provider": "ESPN boxscore / ESPN-xGC xG cross-check",
+            "data_quality_score": 1.0,
+            "is_primary": 1,
+            "conflict_flag": 0,
+            "created_at": "2026-07-08 03:01:39"
+          }
+        }
+      ],
+      "reason": "child row references missing parent row; no safe parent can be fabricated"
+    },
+    {
+      "action": "quarantine_orphan_child_row",
+      "table_name": "postmatch_process_eval",
+      "rowid": 27,
+      "violations": [
+        {
+          "table_name": "postmatch_process_eval",
+          "rowid": 27,
+          "parent_table": "wc26_schedule",
+          "fk_id": 0,
+          "child_columns": [
+            "match_id"
+          ],
+          "parent_columns": [
+            "id"
+          ],
+          "child_values": [
+            "archive_201_colombia_switzerland_20260708"
+          ],
+          "row_payload": {
+            "id": 27,
+            "match_id": "archive_201_colombia_switzerland_20260708",
+            "predicted_home_xg": 1.2800985894087178,
+            "predicted_away_xg": 1.3418355671185829,
+            "actual_home_xg": 1.09,
+            "actual_away_xg": 0.39,
+            "actual_home_goals": 0,
+            "actual_away_goals": 0,
+            "xg_home_error": -0.1901,
+            "xg_away_error": -0.9518,
+            "xg_mae": 0.5709,
+            "xg_direction_correct": 0,
+            "predicted_total_goals": 2.6219,
+            "actual_total_xg": 1.48,
+            "total_xg_error": -1.1419,
+            "finishing_delta_home": -1.09,
+            "finishing_delta_away": -0.39,
+            "shot_volume_delta_home": null,
+            "shot_volume_delta_away": null,
+            "dominance_index_home": 0.6514,
+            "dominance_index_away": 0.3486,
+            "process_winner": "home",
+            "outcome_correct": 0,
+            "process_correct": 0,
+            "xg_result_alignment": "contradicted",
+            "process_label": "PROCESS_CONTRADICTED",
+            "model_failure_type": "MODEL_INPUT_ERROR",
+            "learning_weight": 0.5,
+            "recommended_action": "tier=diagnostic",
+            "notes": "{\"classification_reason\": \"MODEL_INPUT_ERROR\", \"base_learning_weight\": 0.5, \"match_context\": {\"venue_home_advantage_missed\": true, \"elo_default_value\": false}, \"component_signals\": {\"market_high_consensus_correct\": false, \"weibull_extreme_wrong\": false, \"pi_single_upset_overreaction\": false}}",
+            "created_at": "2026-07-08 03:01:51"
+          }
+        }
+      ],
+      "reason": "child row references missing parent row; no safe parent can be fabricated"
+    }
+  ],
+  "notes": "Dry-run audit. Apply mode only normalizes nullable empty-string FKs or quarantines orphan child rows; it never fabricates parent rows."
+}

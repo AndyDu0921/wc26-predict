@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-V4.11.0_alpha-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/phase-V4.11_Match_Data_OS-orange?style=flat-square" alt="phase">
-  <img src="https://img.shields.io/badge/backend_tests-561_passed_4_skipped-success?style=flat-square" alt="backend tests">
+  <img src="https://img.shields.io/badge/backend_tests-569_passed_4_skipped-success?style=flat-square" alt="backend tests">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/model_loading-disk_cache_only-brightgreen?style=flat-square" alt="model loading">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
@@ -21,15 +21,27 @@
 
 WC26 Predict 现在处在 **V4.11 Match Data OS + Game-State Engine** 阶段：在 V4.10 赛前信息状态引擎之上，把 FIFA 官方赛后数据、事件时间线、阵容分钟、球员统计和比赛状态分段纳入可追溯的赛后复盘与自进化学习资产。
 
+**AI 接手前必须先读：**
+
+- 当前项目事实源：[docs/CURRENT_PROJECT_STATE.md](docs/CURRENT_PROJECT_STATE.md)
+- AI 交接协议：[docs/AI_HANDOFF_PROTOCOL.md](docs/AI_HANDOFF_PROTOCOL.md)
+- 机器可读状态报告：`reports/audits/current_project_state.json`
+
+刷新状态报告：
+
+```powershell
+backend/.venv/Scripts/python.exe backend/scripts/build_project_state_report.py --output reports/audits/current_project_state.json
+```
+
 **V4.11.0-alpha（2026-07-08）当前状态：**
 
-- **测试状态**：`561 passed, 4 skipped`（最近一次本地后端全量测试；V4.11 Match Data OS 已纳入全量验证）。
+- **测试状态**：`569 passed, 4 skipped`（最近一次本地后端全量测试；V4.11 Match Data OS 与 Project State OS 已纳入全量验证）。
 - **代码版本**：`4.11.0-alpha`；当前代码中的 WC 权重标签仍为 group `WORLD_CUP_V4.7.0_ALPHA`、knockout `WORLD_CUP_KNOCKOUT_V4.8.1_ALPHA`；V4.11 不改生产权重。
 - **本地样本口径**：evaluation registry 显示 `91` 个 canonical result 样本，其中 `36` 个 strict eligible backtest 样本、`47` 个 diagnostic 样本、`8` 个 rejected 样本，`source_result_conflicts=0`；任何准确率结论必须先说明采用哪个口径。
 - **预测流水线**：DC → Enhancer → NegBin(5%) → Weibull → Elo → Pi → Market（7 级顺序融合）+ 战意因子 + 平局下限 12% + 分歧自适应 + 动态市场提升 + DC半衰期学习(180d最优) + A3 Stacking元学习器(21维特征) + B1加权共形预测(α=0.1)
-- **复盘数据完整性**：当前 DB `postmatch_process_eval` 为 `20` 条、`match_team_statistics` 为 `34` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
+- **复盘数据完整性**：当前 DB `postmatch_process_eval` 为 `24` 条、`match_team_statistics` 为 `42` 条；strict 回测不能直接把所有已完赛 schedule 样本混入。
 - **数据库完整性**：SQLite `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=0`；历史孤儿行保留在 `data_integrity_quarantine` 供审计。
-- **新功能**：V4.11 Match Data OS：`match_data_raw` 官方赛后 raw ledger、`match_events` 事件时间线、`shot_events` 射门事件、`match_lineups` / `player_match_minutes` 阵容分钟、`match_player_statistics` 球员统计、`match_game_state_segments` 比赛状态分段；赛后报告会在有 rich data 时输出 goal timeline、game-state segments 和 comeback profile。
+- **新功能**：V4.11 Match Data OS：`match_data_raw` 官方赛后 raw ledger、`match_events` 事件时间线、`shot_events` 射门事件、`match_lineups` / `player_match_minutes` 阵容分钟、`match_player_statistics` 球员统计、`match_game_state_segments` 比赛状态分段；赛后报告会在有 rich data 时输出 goal timeline、game-state segments 和 comeback profile。Project State OS 已新增机器可读状态报告和 AI 交接协议。
 - **已知风险**：strict 样本仍只有 `36` 场，距离 `50+` 目标仍差 `14` 场；任何候选模型都不能据此上线，只能进入 shadow/proposal 流程。
 
 ### 系统目标

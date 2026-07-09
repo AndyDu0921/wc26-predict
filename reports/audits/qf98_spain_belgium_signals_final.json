@@ -1,0 +1,267 @@
+{
+  "schema_version": "information_state_signal_extraction.v1",
+  "match_id": "202",
+  "home_team": "Spain",
+  "away_team": "Belgium",
+  "evidence_count": 9,
+  "signals_extracted": 8,
+  "persisted": true,
+  "signals": [
+    {
+      "id": "bd4d9db7-b75a-4e0e-b5ea-186459e99421",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "35893e2a56061b241698b68b0f6a9a9d1cfe548b0f62371ae688a2508cdda616",
+      "match_id": "202",
+      "team": "Spain",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.078,
+      "confidence": 0.65,
+      "available_at": "2026-07-05T00:00:00+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "13b3cdff-a5bb-4399-829c-4fa7dbf2e9e4"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Spain",
+        "direction": "negative",
+        "probability_shift": 0.078,
+        "shadow_only": true
+      },
+      "summary": "Spain: injury/negative - Spain could be without Nico Williams and Yeremy Pino after both missed the Austria match",
+      "metadata": {
+        "evidence_type": "news",
+        "news_article_id": "7ff76041a9755900ada6e3311869adf4"
+      }
+    },
+    {
+      "id": "0839abe5-4fcc-4b07-92a7-9790e003d755",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "30bf44b2432bed1507161bb7c0f8ad20d721fa101de41b3ce340ebbcb405f984",
+      "match_id": "202",
+      "team": "Spain",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.078,
+      "confidence": 0.78,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "18e43c33-bc4e-424b-b5c8-66279e6ff9b9"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Spain",
+        "direction": "neutral",
+        "probability_shift": 0.078,
+        "shadow_only": true
+      },
+      "summary": "Spain: market_move/neutral - 2026 World Cup quarterfinal odds: Spain vs Belgium Market odds evidence as-of collection: Spain listed as favorite around -135 moneyline, Belgium around +425, d",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "market_odds",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "a617792e-4648-46a3-9c2c-c83caf5c3a08",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "c479257e250a341c3cabe27778ecd0c6975c7fa3a822e2390b1e7c18cc7f4ceb",
+      "match_id": "202",
+      "team": "Spain",
+      "player": null,
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "magnitude": 0.0408,
+      "confidence": 0.68,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "0499454d-3038-4d50-b2a4-b75ae76d3a9a"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Spain",
+        "direction": "neutral",
+        "probability_shift": 0.0408,
+        "shadow_only": true
+      },
+      "summary": "Spain: lineup/neutral - Spain vs Belgium lineups, team news and suspensions",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "news",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "6b05498a-5f44-4419-860e-bfc03652360a",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "73531fbf33ccd214386eb2f3c30919e8862b638504086a18a93f96f53b1cf449",
+      "match_id": "202",
+      "team": "Belgium",
+      "player": null,
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "magnitude": 0.0408,
+      "confidence": 0.68,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "0499454d-3038-4d50-b2a4-b75ae76d3a9a"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Belgium",
+        "direction": "neutral",
+        "probability_shift": 0.0408,
+        "shadow_only": true
+      },
+      "summary": "Belgium: lineup/neutral - Spain vs Belgium lineups, team news and suspensions",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "news",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "7e40e3ee-3ff2-485b-ba15-b00155c50acb",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "0cb1f32fdcca595806d9fa63598301f00a543cd1f43ef0db4e5672b987837d31",
+      "match_id": "202",
+      "team": "Spain",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.0816,
+      "confidence": 0.68,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "0499454d-3038-4d50-b2a4-b75ae76d3a9a"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Spain",
+        "direction": "negative",
+        "probability_shift": 0.0816,
+        "shadow_only": true
+      },
+      "summary": "Spain: injury/negative - Team-news evidence: Spain and Belgium quarterfinal preview notes both sides' expected lineup and suspension/injury context",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "news",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "10ec23dd-da28-406e-9917-b944377ca803",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "3482bd8a094ad482a74e053b9cb26c9f1ad6fcc6465e0ec4c2042328740e6262",
+      "match_id": "202",
+      "team": "Belgium",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.0816,
+      "confidence": 0.68,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "0499454d-3038-4d50-b2a4-b75ae76d3a9a"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Belgium",
+        "direction": "negative",
+        "probability_shift": 0.0816,
+        "shadow_only": true
+      },
+      "summary": "Belgium: injury/negative - Team-news evidence: Spain and Belgium quarterfinal preview notes both sides' expected lineup and suspension/injury context",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "news",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "c020d95d-b549-4229-8525-1f9eabee3d1c",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "1b97e4982eb813e59b3139f37ea0543d92de5250839882421bf0e49aa2a7f882",
+      "match_id": "202",
+      "team": "Spain",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.085,
+      "confidence": 0.85,
+      "available_at": "2026-07-09T03:59:45.374207+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "a9ab6457-48cd-40f2-8430-b07c6c8bf5ad"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Spain",
+        "direction": "neutral",
+        "probability_shift": 0.085,
+        "shadow_only": true
+      },
+      "summary": "Spain: market_move/neutral - market_odds snapshot for Spain vs Belgium {\"home_prob\": 0.5879882402351954, \"draw_prob\": 0.2403401931961361, \"away_prob\": 0.17167156656866864, \"vig\": 0.04019222",
+      "metadata": {
+        "evidence_type": "market_odds",
+        "snapshot_id": "659ed40f-62c4-48dd-9998-c1f1a1173ee0",
+        "source_column": "odds_snapshot"
+      }
+    },
+    {
+      "id": "97d74c1e-93c7-4f5d-8363-24df1cac5fee",
+      "created_at": "2026-07-09 04:02:42",
+      "updated_at": "2026-07-09 04:02:42",
+      "signal_key": "e649aa1889979bd5abfec5cdabc0663c277327034f72659025ee0c1b20f5534b",
+      "match_id": "202",
+      "team": "Spain",
+      "player": null,
+      "signal_type": "weather",
+      "direction": "negative",
+      "magnitude": 0.0255,
+      "confidence": 0.85,
+      "available_at": "2026-07-09T03:59:45.374207+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "faa68cd0-ebf4-4a11-ab8b-11c875a7b3a5"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Spain",
+        "direction": "negative",
+        "probability_shift": 0.0255,
+        "shadow_only": true
+      },
+      "summary": "Spain: weather/negative - weather snapshot for Spain vs Belgium {\"temperature_c\": 18.6, \"precipitation_mm\": 0.0, \"wind_speed_kmh\": 4.9, \"humidity_percent\": 85.0, \"weather_code\": 0, \"weat",
+      "metadata": {
+        "evidence_type": "weather",
+        "snapshot_id": "659ed40f-62c4-48dd-9998-c1f1a1173ee0",
+        "source_column": "weather_snapshot"
+      }
+    }
+  ],
+  "notes": "Deterministic extractor; LLM extraction can feed the same tables but does not set probabilities."
+}

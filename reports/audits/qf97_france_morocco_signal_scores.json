@@ -1,0 +1,95 @@
+{
+  "schema_version": "information_state_signal_scoring.v1",
+  "match_id": "201",
+  "home_team": "France",
+  "away_team": "Morocco",
+  "signals_scored": 5,
+  "signals": [
+    {
+      "id": "a2f7e9ab-0b33-4609-ba3d-eca1b544aab1",
+      "signal_key": "8b4e4fae0a20e8599f54f4909de4884d709875d6f7a0217bb8844d1a572a67c5",
+      "team": "France",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.82,
+      "magnitude": 0.0984,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0984,
+        "applies_to": "France",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "7defec4a-ce04-4718-a7d7-6acdd92c6625",
+      "signal_key": "00d710bce726fb88bd15712e7b65243ddf6ad4a1d658176ad4f3d1632aa8f6dd",
+      "team": "France",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.78,
+      "magnitude": 0.078,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.078,
+        "applies_to": "France",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "4f93725d-64cc-436e-a5e7-f690bd72570d",
+      "signal_key": "afa8c2532c857f6048c89eef09d2409009ddfc1c509fab258de9f3c67060a74f",
+      "team": "France",
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "confidence": 0.7,
+      "magnitude": 0.042,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.042,
+        "applies_to": "France",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "fc06e845-be05-494c-a048-99e7a903a42e",
+      "signal_key": "a09be258178b4e7ec0b4fd135dc1cb9b828b5afd2a95f6f4c437189a38726287",
+      "team": "Morocco",
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "confidence": 0.7,
+      "magnitude": 0.042,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.042,
+        "applies_to": "Morocco",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "81532028-e202-4264-b36a-dc7ee3c1581f",
+      "signal_key": "f8c2f0c51482c7f0563e6c042b9fff94fb9a489aa3ae1bdf43692a3cf9fac055",
+      "team": "Morocco",
+      "signal_type": "return",
+      "direction": "positive",
+      "confidence": 0.7,
+      "magnitude": 0.056,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.056,
+        "applies_to": "Morocco",
+        "direction": "positive",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    }
+  ],
+  "notes": "All adjustments are shadow-only and do not alter production probabilities."
+}

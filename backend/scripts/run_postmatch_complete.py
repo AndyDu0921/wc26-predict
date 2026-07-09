@@ -48,6 +48,7 @@ from app.services.learning_engine import get_learning_engine
 from app.services.evaluation_registry import DEFAULT_DB_PATH
 from app.services.information_state_engine import evaluate_match_signals
 from app.services.match_data.rich_context import load_rich_postmatch_context
+from app.services.match_data.storage import load_latest_raw_payload
 from app.services.result_verification import (
     get_verification_service,
     SourceTier,
@@ -204,6 +205,27 @@ def _rich_segment_markdown(rich_context: dict) -> str:
     )
 
 
+def _rich_coverage_text(rich_context: dict) -> str:
+    coverage = rich_context.get("coverage") or {}
+    if not coverage:
+        return "N/A"
+    keys = [
+        ("event_timeline", "events"),
+        ("goal_timeline", "goals"),
+        ("lineups", "lineups"),
+        ("player_minutes", "minutes"),
+        ("true_shot_map", "shot map"),
+        ("shot_xg", "shot xG"),
+        ("technical_player_statistics", "player stats"),
+    ]
+    return ", ".join(f"{label}={'yes' if coverage.get(key) else 'no'}" for key, label in keys)
+
+
+def _rich_warnings_text(rich_context: dict) -> str:
+    warnings = rich_context.get("warnings") or []
+    return ", ".join(str(item) for item in warnings) if warnings else "none"
+
+
 def _learning_log_prediction_run_id(learning_log: PredictionLearningLog | None) -> str | None:
     if learning_log is None:
         return None
@@ -219,6 +241,44 @@ def _score_hit_metrics(top_scores, home_score: int, away_score: int) -> tuple[bo
     exact_hit = bool(valid_scores and str(valid_scores[0].get("score")) == actual_score)
     top3_hit = any(str(item.get("score")) == actual_score for item in valid_scores[:3])
     return exact_hit, top3_hit
+
+
+def _official_score_from_match_data_os(match_id: str) -> tuple[int, int] | None:
+    try:
+        raw = load_latest_raw_payload(DEFAULT_DB_PATH, match_id, provider="fifa_official")
+    except Exception:
+        return None
+    if not raw or not isinstance(raw.get("payload"), dict):
+        return None
+    return _official_score_from_payload(raw["payload"])
+
+
+def _official_score_from_payload(payload: dict) -> tuple[int, int] | None:
+    candidates = []
+    if isinstance(payload.get("HomeTeam"), dict) and isinstance(payload.get("AwayTeam"), dict):
+        candidates.append(payload)
+    structured = payload.get("structured_payloads")
+    if isinstance(structured, list):
+        candidates.extend(item for item in structured if isinstance(item, dict))
+    for item in candidates:
+        home = item.get("HomeTeam") or {}
+        away = item.get("AwayTeam") or {}
+        if not isinstance(home, dict) or not isinstance(away, dict):
+            continue
+        home_score = _int_or_none(home.get("Score"))
+        away_score = _int_or_none(away.get("Score"))
+        if home_score is not None and away_score is not None:
+            return home_score, away_score
+    return None
+
+
+def _int_or_none(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return None
 
 
 def _calibration_bucket(probs: list[float]) -> int:
@@ -598,6 +658,27 @@ async def run_complete_postmatch(
                     print(f"  ⚠ URL fetch failed: HTTP {resp.status_code}")
             except Exception as e:
                 print(f"  ⚠ URL fetch error: {e}")
+
+        if not second_source_added:
+            official_score = _official_score_from_match_data_os(verification_match_id)
+            if official_score == (home_score, away_score):
+                await verification_service.add_source_result(
+                    db=db,
+                    match_id=verification_match_id,
+                    home_goals=home_score,
+                    away_goals=away_score,
+                    source_name="fifa_official_match_data_os",
+                    source_tier=SourceTier.OFFICIAL_COMPETITION,
+                    match_status="Finished",
+                    notes="Official FIFA structured payload captured by Match Data OS",
+                )
+                print("  + Source 2: fifa_official_match_data_os (tier 2, raw ledger verified ✅)")
+                second_source_added = True
+            elif official_score is not None:
+                print(
+                    "  ⚠ FIFA Match Data OS score mismatch: "
+                    f"{official_score[0]}-{official_score[1]} != {home_score}-{away_score}"
+                )
 
         if not second_source_added:
             second_tier = SourceTier.REPUTABLE_MEDIA if trust_db_score else SourceTier.OTHER
@@ -1150,6 +1231,8 @@ async def run_complete_postmatch(
 |:---|:---|
 | Rich Data Tier | {rich_context.get('tier', 'basic_only')} |
 | Event Quality Score | {_fmt_metric(rich_context.get('event_quality_score'), 4)} |
+| Data Coverage | {_rich_coverage_text(rich_context)} |
+| Data Warnings | {_rich_warnings_text(rich_context)} |
 | Raw / Events / Shots / Lineups / Player Stats | {rich_context.get('counts', {}).get('raw', 0)} / {rich_context.get('counts', {}).get('events', 0)} / {rich_context.get('counts', {}).get('shots', 0)} / {rich_context.get('counts', {}).get('lineups', 0)} / {rich_context.get('counts', {}).get('player_stats', 0)} |
 | Missing Rich Data | {', '.join(rich_context.get('missing') or []) if rich_context.get('missing') else 'none'} |
 | Comeback Profile | {comeback.get('profile_label', 'unavailable')} |
@@ -1264,6 +1347,8 @@ metadata:
 - **xG**: predicted {_fmt_metric(pred_hxg)}-{_fmt_metric(pred_axg)}, actual {_fmt_metric(home_xg)}-{_fmt_metric(away_xg)}
 - **Score metrics**: log loss {_fmt_metric(getattr(learning_log, 'score_log_loss', None), 4)}, exact hit {bool(getattr(learning_log, 'score_exact_hit', False))}, top-3 hit {bool(getattr(learning_log, 'score_top3_hit', False))}
 - **Rich postmatch data**: {rich_context.get('tier', 'basic_only')} / quality {_fmt_metric(rich_context.get('event_quality_score'), 4)} / comeback {comeback.get('profile_label', 'unavailable')}
+- **Rich data coverage**: {_rich_coverage_text(rich_context)}
+- **Rich data warnings**: {_rich_warnings_text(rich_context)}
 
 ## Component Review
 
