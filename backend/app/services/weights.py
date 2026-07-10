@@ -1,7 +1,7 @@
 """WeightConfig — single source of truth for prediction model weights.
 
-Replaces scattered hardcoded weights in snapshot.py, prediction_orchestrator.py,
-fast_predict.py, and learning_engine.py.
+Replaces scattered hardcoded weights in legacy prediction paths and
+learning_engine.py.
 
 Weights are read from model_weight_config DB table (auto-optimized by RPS),
 falling back to competition-aware defaults defined here.

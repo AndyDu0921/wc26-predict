@@ -1,0 +1,42 @@
+{
+  "schema_version": "entrypoint_audit.v1",
+  "generated_at": "2026-07-10T08:28:56.927012+00:00",
+  "passed": true,
+  "current_entrypoints": [
+    "backend/scripts/predict_match_full.py",
+    "backend/scripts/run_postmatch_complete.py",
+    "backend/scripts/run_accuracy_experiments.py",
+    "backend/scripts/preflight_accuracy_experiments.py",
+    "backend/scripts/build_project_state_report.py",
+    "backend/scripts/audit_db_integrity.py",
+    "backend/scripts/audit_public_outputs.py",
+    "backend/scripts/collect_match_evidence.py",
+    "backend/scripts/extract_information_signals.py",
+    "backend/scripts/score_information_signals.py",
+    "backend/scripts/audit_match_information_state.py",
+    "backend/scripts/collect_official_match_data.py",
+    "backend/scripts/normalize_match_events.py",
+    "backend/scripts/build_game_state_segments.py",
+    "backend/scripts/audit_rich_postmatch_data.py"
+  ],
+  "removed_entrypoints": [
+    "backend/scripts/daily_ops.py",
+    "backend/scripts/audit_public_outputs_no_odds.py",
+    "backend/scripts/backtest_full_pipeline.py",
+    "backend/scripts/grid_search_score_params.py",
+    "backend/scripts/collect_stacking_training_data.py",
+    "backend/scripts/_accuracy_wrapper.py",
+    "backend/scripts/auto_postmatch.py",
+    "backend/scripts/postmatch_review.py",
+    "backend/scripts/batch_process_eval.py",
+    "backend/scripts/backfill_learning_logs.py",
+    "backend/scripts/backfill_postmatch_evals.py",
+    "backend/scripts/create_match_stats_tables.py",
+    "backend/scripts/grid_search_dc_halflife.py",
+    "backend/scripts/repair_v410_closed_loop.py",
+    "backend/scripts/run_candidate_experiments.py"
+  ],
+  "missing_current": [],
+  "still_present_removed": [],
+  "stale_references": []
+}

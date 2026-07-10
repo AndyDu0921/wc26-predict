@@ -20,9 +20,9 @@ from typing import Dict, Optional
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "local_stage2.db"
 
 # Allow running from repo root without installing the package
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 
 def get_match_info(db_path: Path, match_id: int) -> Optional[Dict]:
@@ -105,8 +105,8 @@ def insert_manual_stats(
 
     manual_data format: {"home": {"xg": 1.80, "possession_pct": 58}, "away": {"xg": 0.30}}
     """
-    from backend.app.services.match_stats.provider_base import TeamMatchStats
-    from backend.app.services.match_stats.quality import compute_data_quality_score
+    from app.services.match_stats.provider_base import TeamMatchStats
+    from app.services.match_stats.quality import compute_data_quality_score
 
     results = []
     for side, team in [("home", home_team), ("away", away_team)]:
@@ -179,8 +179,8 @@ def main():
     # --- Provider: FBref ---
     if args.provider in ("fbref", "all"):
         try:
-            from backend.app.services.match_stats.fbref_provider import FBrefProvider
-            from backend.app.services.match_stats.quality import compute_data_quality_score
+            from app.services.match_stats.fbref_provider import FBrefProvider
+            from app.services.match_stats.quality import compute_data_quality_score
 
             print("Fetching from FBref...")
             provider = FBrefProvider()

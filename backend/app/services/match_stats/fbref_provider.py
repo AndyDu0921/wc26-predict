@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from backend.app.services.match_stats.provider_base import (
+from app.services.match_stats.provider_base import (
     MatchStatsProvider,
     RawMatchStats,
     TeamMatchStats,

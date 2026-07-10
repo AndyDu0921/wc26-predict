@@ -54,7 +54,7 @@ from app.schemas.common import APIMessage, PaginatedResponse, PaginationMeta
 from app.schemas.feedback import FeedbackItem
 from app.services.calibration import IsotonicCalibrator
 from app.services.news_ingest_service import NewsIngestService
-from app.services.prediction_orchestrator import PredictionOrchestrator
+from app.services.canonical_prediction_runner import run_canonical_prediction
 from app.services.football_data_service import FootballDataService
 from app.services.team_resolver import TeamResolver
 from app.utils.datetime import utc_now
@@ -663,8 +663,7 @@ async def admin_trigger_prediction(
     payload: TriggerPredictionRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TriggerPredictionResponse:
-    orchestrator = PredictionOrchestrator()
-    run_id = await orchestrator.run_prediction(match_id=match_id, run_type=payload.run_type, db=db)
+    run_id = await run_canonical_prediction(match_id=match_id, run_type=payload.run_type, db=db)
     return TriggerPredictionResponse(prediction_run_id=run_id, status="ok")
 
 

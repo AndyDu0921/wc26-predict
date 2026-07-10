@@ -1,0 +1,12 @@
+{
+  "schema_version": "db_integrity_audit.v1",
+  "db_path": "D:\\hermes agent\\2026世界杯分析\\backend\\data\\local_stage2.db",
+  "generated_at": "2026-07-10T07:39:31.092708+00:00",
+  "integrity_check": "ok",
+  "foreign_key_violation_count": 0,
+  "affected_row_count": 0,
+  "violation_counts_by_table": {},
+  "violation_counts_by_parent": {},
+  "planned_actions": [],
+  "notes": "Dry-run audit. Apply mode only normalizes nullable empty-string FKs or quarantines orphan child rows; it never fabricates parent rows."
+}

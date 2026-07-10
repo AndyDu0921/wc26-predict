@@ -193,14 +193,15 @@ cd backend
 python scripts/predict_match_full.py --home "Brazil" --away "Germany" \
   --competition "FIFA World Cup 2026" --stage "Group A - Matchday 1"
 
-# 单场运行赛后复盘 + 自进化
-python scripts/run_postmatch_complete.py
+# 单场运行赛后复盘 + 自进化；这是唯一生产复盘入口
+python scripts/run_postmatch_complete.py \
+  --match-id 201 \
+  --home-score 2 --away-score 0 \
+  --home-team "France" --away-team "Morocco" \
+  --verify-url "https://www.espn.com/soccer/match/_/gameId/760510/france-morocco"
 
-# 每日自动复盘
-python scripts/auto_postmatch.py
-
-# 单场复盘审查
-python scripts/postmatch_review.py
+# 复盘完成后必须检查闭环完整性
+python scripts/audit_match_closed_loop.py --match-id 201 --phase post --json
 ```
 
 **V4.11 官方赛后数据 / Match Data OS：**
@@ -528,14 +529,15 @@ cd backend
 python scripts/predict_match_full.py --home "Brazil" --away "Germany" \
   --competition "FIFA World Cup 2026" --stage "Group A - Matchday 1"
 
-# Single-match post-match review + self-evolution
-python scripts/run_postmatch_complete.py
+# Single-match post-match review + self-evolution; this is the only production path
+python scripts/run_postmatch_complete.py \
+  --match-id 201 \
+  --home-score 2 --away-score 0 \
+  --home-team "France" --away-team "Morocco" \
+  --verify-url "https://www.espn.com/soccer/match/_/gameId/760510/france-morocco"
 
-# Daily automated review
-python scripts/auto_postmatch.py
-
-# Single match review
-python scripts/postmatch_review.py
+# Verify the post-match closed loop after each review
+python scripts/audit_match_closed_loop.py --match-id 201 --phase post --json
 ```
 
 **V4.11 Official Post-match Data / Match Data OS:**

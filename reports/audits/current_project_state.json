@@ -1,21 +1,21 @@
 {
   "accuracy_os": {
-    "registry_hash": "9fbc2d99551207c019649a8a9bb2cd19e65e9739025d23501567fac0c836a0b6",
+    "registry_hash": "e8b3a3fcf316257d7932bd97d205a71e36afc82ae98f32e337462cafe1f11d3a",
     "status": "ok",
     "summary": {
-      "canonical_result_count": 91,
+      "canonical_result_count": 92,
       "diagnostic_count": 47,
-      "eligible_backtest_count": 36,
+      "eligible_backtest_count": 37,
       "match_results_count": 66,
       "rejected_count": 8,
-      "schedule_finished_count": 88,
-      "schedule_only_finished_count": 25,
+      "schedule_finished_count": 89,
+      "schedule_only_finished_count": 26,
       "source_result_conflicts": 0,
-      "strict_count": 36,
-      "total_samples": 91,
-      "with_pre_match_snapshot": 33,
-      "with_prediction_snapshot": 24,
-      "with_process_eval": 25
+      "strict_count": 37,
+      "total_samples": 92,
+      "with_pre_match_snapshot": 34,
+      "with_prediction_snapshot": 25,
+      "with_process_eval": 26
     }
   },
   "competition_state": {
@@ -60,14 +60,14 @@
       },
       {
         "empty_team_slots": 0,
-        "finished": 0,
-        "postmatch_review_present": 0,
+        "finished": 1,
+        "postmatch_review_present": 1,
         "pre_match_snapshot_present": 4,
-        "scheduled": 4,
+        "scheduled": 3,
         "stage": "Quarterfinal",
         "teams_known": 4,
         "total": 4,
-        "v410_postmatch_complete": 0,
+        "v410_postmatch_complete": 1,
         "v410_pre_match_complete": 4
       },
       {
@@ -2273,36 +2273,36 @@
         "checks": {
           "evidence_items": true,
           "feature_snapshots": true,
-          "match_results": false,
-          "match_team_statistics": false,
-          "postmatch_eval": false,
-          "postmatch_memory": false,
-          "postmatch_process_eval": false,
-          "postmatch_report": false,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
           "pre_match_snapshots": true,
-          "prediction_learning_log": false,
+          "prediction_learning_log": true,
           "prediction_report": true,
           "prediction_runs": true,
           "prediction_snapshots": true,
-          "signal_evaluations": false
+          "signal_evaluations": true
         },
         "city": "Foxborough, MA",
         "counts": {
           "evidence_items": 5,
           "feature_snapshots": 1,
           "information_state_signals": 7,
-          "match_data_raw": 0,
-          "match_events": 0,
-          "match_game_state_segments": 0,
-          "match_results": 0,
-          "match_team_statistics": 0,
-          "postmatch_eval": 0,
-          "postmatch_process_eval": 0,
+          "match_data_raw": 1,
+          "match_events": 2,
+          "match_game_state_segments": 8,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
           "pre_match_snapshots": 1,
-          "prediction_learning_log": 0,
+          "prediction_learning_log": 1,
           "prediction_runs": 1,
           "prediction_snapshots": 1,
-          "signal_evaluations": 0
+          "signal_evaluations": 7
         },
         "home_team": "France",
         "kickoff_time": "04:00",
@@ -2310,15 +2310,15 @@
         "match_id": "201",
         "match_number": 97,
         "postmatch_memory": {
-          "exists": false,
-          "path": null
+          "exists": true,
+          "path": "memory/wc-postmatch-France-Morocco-2026-07-10.md"
         },
         "postmatch_missing": [],
         "postmatch_report": {
-          "exists": false,
-          "path": null
+          "exists": true,
+          "path": "reports/postmatch/2026-07-10_France_Morocco_postmatch.md"
         },
-        "postmatch_review_present": false,
+        "postmatch_review_present": true,
         "pre_match_missing": [],
         "pre_match_snapshot_present": true,
         "prediction_report": {
@@ -2326,18 +2326,18 @@
           "path": "reports/predictions/2026-07-10_France_vs_Morocco_prediction.md"
         },
         "rich_postmatch": {
-          "available": false,
-          "events": 0,
-          "raw": 0,
-          "segments": 0,
-          "tier": "none"
+          "available": true,
+          "events": 2,
+          "raw": 1,
+          "segments": 8,
+          "tier": "event_timeline_present"
         },
         "score": {
-          "away_goals": null,
-          "home_goals": null,
-          "is_finished": false,
-          "result_label": null,
-          "status": "SCHEDULED"
+          "away_goals": 0,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
         },
         "slots": {
           "away_slot": "W90",
@@ -2345,7 +2345,7 @@
           "teams_known": true
         },
         "stage": "Quarterfinal",
-        "v410_postmatch_complete": false,
+        "v410_postmatch_complete": true,
         "v410_pre_match_complete": true,
         "venue": "Boston Stadium"
       },
@@ -2959,19 +2959,19 @@
       "evidence_items": 41,
       "feature_snapshots": 101,
       "information_state_signals": 37,
-      "match_data_raw": 1,
-      "match_events": 21,
-      "match_game_state_segments": 8,
-      "match_results": 16755,
-      "model_change_proposals": 33,
+      "match_data_raw": 2,
+      "match_events": 23,
+      "match_game_state_segments": 16,
+      "match_results": 16756,
+      "model_change_proposals": 45,
       "model_weight_proposals": 0,
-      "postmatch_eval": 20,
-      "postmatch_process_eval": 23,
+      "postmatch_eval": 21,
+      "postmatch_process_eval": 24,
       "pre_match_snapshots": 309,
-      "prediction_learning_log": 131,
+      "prediction_learning_log": 132,
       "prediction_runs": 31,
       "prediction_snapshots": 26,
-      "signal_evaluations": 12,
+      "signal_evaluations": 19,
       "wc26_schedule": 104
     }
   },
@@ -2991,7 +2991,7 @@
       "project audit scripts"
     ]
   },
-  "generated_at": "2026-07-09T06:06:08.588218+00:00",
+  "generated_at": "2026-07-10T08:28:55.980176+00:00",
   "handoff_checklist": [
     "Read docs/CURRENT_PROJECT_STATE.md and reports/audits/current_project_state.json.",
     "Run build_project_state_report.py before making tournament-state claims.",
@@ -3005,7 +3005,7 @@
       "code": "strict_sample_count_below_target",
       "evidence": {
         "diagnostic_count": 47,
-        "strict_count": 36,
+        "strict_count": 37,
         "target": 50
       },
       "severity": "P0"
@@ -3162,12 +3162,12 @@
   "operational_state": {
     "evidence_items": 41,
     "information_state_signals": 37,
-    "match_data_raw": 1,
-    "match_events": 21,
-    "match_game_state_segments": 8,
-    "model_change_proposals": 33,
+    "match_data_raw": 2,
+    "match_events": 23,
+    "match_game_state_segments": 16,
+    "model_change_proposals": 45,
     "model_weight_proposals": 0,
-    "signal_evaluations": 12
+    "signal_evaluations": 19
   },
   "recommended_next_actions": [
     {
@@ -3178,7 +3178,7 @@
       "action": "Repair diagnostic registry rows only from real pre-kickoff snapshots; do not fabricate probabilities or timestamps.",
       "evidence": {
         "diagnostic_count": 47,
-        "strict_count": 36,
+        "strict_count": 37,
         "target": 50
       },
       "priority": "P0"
@@ -3224,7 +3224,7 @@
   "schema_version": "project_state_report.v1",
   "version": {
     "build_name": "V4.11.0-alpha — Match Data OS + game-state postmatch engine",
-    "git_commit": "8651f5ca0799894079fe1a87bec488d8348baec5",
+    "git_commit": "f19fa6405ecddf287b1cb44bf233948c4318ead6",
     "git_status": {
       "available": true,
       "changed_file_count": 47,

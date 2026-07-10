@@ -19,7 +19,7 @@ from app.services.embedding_service import EmbeddingService
 from app.services.football_data_service import FootballDataService
 from app.services.llm_service import SignalExtractorService
 from app.services.news_ingest_service import NewsIngestService
-from app.services.prediction_orchestrator import PredictionOrchestrator
+from app.services.canonical_prediction_runner import run_canonical_prediction
 from app.config import get_settings
 from app.utils.datetime import utc_now
 from app.utils.task_runs import record_task_run
@@ -150,7 +150,6 @@ async def _news_ingest() -> dict[str, int]:
 async def _trigger_predictions() -> dict[str, int]:
     from app.version import VERSION as CURRENT_VERSION
     now = utc_now()
-    orchestrator = PredictionOrchestrator()
     created = 0
     checked_matches = 0
     async with AsyncSessionLocal() as db:
@@ -194,7 +193,7 @@ async def _trigger_predictions() -> dict[str, int]:
                     from sqlalchemy import delete as sa_delete
                     await db.execute(sa_delete(PredictionRun).where(PredictionRun.id == old.id))
                     await db.flush()
-                await orchestrator.run_prediction(match.id, run_type.value, db)
+                await run_canonical_prediction(match_id=match.id, run_type=run_type.value, db=db)
                 created += 1
     logger.info("prediction_trigger_task checked_matches=%s created=%s", checked_matches, created)
     return {"checked_matches": checked_matches, "created": created}

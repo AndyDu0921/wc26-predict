@@ -19,19 +19,19 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 
-from backend.app.services.match_stats.process_eval_store import (
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "local_stage2.db"
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from app.services.match_stats.process_eval_store import (  # noqa: E402
     get_snapshot_for_match,
     store_process_eval,
     determine_actual_result,
     determine_predicted_winner,
     build_classification_pipeline,
 )
-
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "local_stage2.db"
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 
 def get_snapshot(db_path: Path, match_id: str) -> Optional[Dict]:
@@ -95,7 +95,7 @@ def get_team_stats(db_path: Path, match_id: int) -> Dict:
 
 def update_team_stats(db_path: Path, match_id: int, data: Dict) -> None:
     """Update match_team_statistics with full match data, re-computing quality."""
-    from backend.app.services.match_stats.quality import compute_data_quality_score
+    from app.services.match_stats.quality import compute_data_quality_score
 
     conn = sqlite3.connect(str(db_path))
 
@@ -236,7 +236,7 @@ def main():
     print()
 
     # Step 4: Run process evaluator
-    from backend.app.services.match_stats.process_evaluator import (
+    from app.services.match_stats.process_evaluator import (
         evaluate_process,
         compute_dominance_index,
         ProcessEvalResult,
@@ -272,12 +272,12 @@ def main():
     )
 
     # Step 5: Run failure classifier
-    from backend.app.services.match_stats.failure_classifier import (
+    from app.services.match_stats.failure_classifier import (
         classify_failure,
         compute_learning_weight,
         get_learning_tier,
     )
-    from backend.app.services.match_stats.quality import compute_data_quality_score
+    from app.services.match_stats.quality import compute_data_quality_score
 
     data_quality = max(
         home_stats.get("data_quality_score", 0.5) or 0.5,
