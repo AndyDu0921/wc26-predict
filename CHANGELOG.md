@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Match Data OS**: new official post-match raw ledger and normalized rich-data tables for event timelines, shot events, lineups, player minutes, player statistics, and game-state segments.
 - **Project State OS for AI handoff**: `build_project_state_report.py` now generates `reports/audits/current_project_state.json` as the machine-readable source of project facts, with `docs/CURRENT_PROJECT_STATE.md` and `docs/AI_HANDOFF_PROTOCOL.md` as the required human/AI entry points.
+- **Canonical trigger smoke**: `smoke_canonical_trigger.py` copies the production SQLite DB to `backend/tmp/`, triggers `run_canonical_prediction`, and verifies closed-loop persistence without changing the real DB.
+- **SQLite path guard**: canonical app triggers now reject Postgres or mismatched async/sync SQLite paths instead of silently splitting writes across databases.
 - **FIFA official provider adapter**: `collect_official_match_data.py` captures FIFA Match Centre / report raw evidence with source URL, provider match ID, payload hash, status, and API-attempt metadata.
 - **Rich post-match CLIs**: `normalize_match_events.py`, `build_game_state_segments.py`, and `audit_rich_postmatch_data.py` create and audit event, lineup, shot, and game-state data.
 - **Game-State Engine**: derives goal timelines, score-state segments, event quality, and comeback profiles such as late two-goal comebacks.
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `run_postmatch_complete.py` now loads rich post-match context when available and includes game-state/timeline diagnostics in reports and memory without changing production weights.
 - Operational entrypoint audit now includes the V4.11 official-data collection, normalization, game-state, and rich-postmatch audit scripts.
 - Operational entrypoint audit now includes the project-state report generator so future AI handoffs can be audited.
+- API/admin/worker prediction triggers are documented and tested to use `canonical_prediction_runner`; manual CLI remains `predict_match_full.py`.
+- Snapshot/report/feature materialization now resolves sync SQLite paths from the configured async SQLite URL during canonical app-trigger smoke.
 
 ### Guardrails
 - Official post-match event/player data is explicitly post-match-only and must not be joined into same-match pre-match strict feature snapshots.
@@ -34,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Accuracy experiment preflight is ready at the engineering gate with `36` strict samples, `47` diagnostic samples, and `8` rejected samples; production model promotion still requires stronger paired evidence and the `50+` strict target.
 - FIFA Match Centre dry-run captured provider match ID `400021528` and detected a structured payload candidate without writing sample data.
 - Rich postmatch audit returns explicit `basic_only` + missing-data diagnostics when no event timeline has been collected.
+- Canonical trigger smoke passed on a temporary DB copy with `prediction_runs`, `pre_match_snapshots`, `prediction_snapshots`, `feature_snapshots`, and `evidence_items` present, `run_type=manual`, and unchanged real DB counts.
 
 ## [4.10.0-alpha] — 2026-07-07
 

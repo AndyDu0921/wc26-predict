@@ -27,7 +27,14 @@ logger = logging.getLogger(__name__)
 
 # ── DB path resolution ──
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
+from app.services.sqlite_paths import current_sync_sqlite_path
+
+
+def _db_path() -> Path:
+    return current_sync_sqlite_path()
+
+
+DB_PATH = _db_path()
 
 
 def save_pre_match_snapshot(
@@ -149,13 +156,14 @@ def save_pre_match_snapshot(
     }, sort_keys=True, default=str, ensure_ascii=False)
     input_hash = hashlib.sha256(input_payload.encode("utf-8")).hexdigest()
 
-    if not DB_PATH.exists():
+    db_path = _db_path()
+    if not db_path.exists():
         logger.warning(
-            "Database not found at %s — snapshot not saved", DB_PATH
+            "Database not found at %s — snapshot not saved", db_path
         )
         return None
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(db_path))
     try:
         conn.execute("PRAGMA journal_mode=WAL")
 
@@ -310,7 +318,7 @@ def _resolve_match_id_best_effort(
             away_team=away_team,
             competition=competition,
             kickoff_at=kickoff_at,
-            db_path=DB_PATH,
+            db_path=_db_path(),
         )
         return resolved.match_id if resolved else None
     except Exception:
@@ -324,7 +332,8 @@ def run_migration() -> bool:
     Safe to call repeatedly — each ALTER TABLE is wrapped in a try/except
     so it succeeds once and no-ops on subsequent calls.
     """
-    if not DB_PATH.exists():
+    db_path = _db_path()
+    if not db_path.exists():
         return False
 
     new_columns = [
@@ -338,7 +347,7 @@ def run_migration() -> bool:
         ("source_score_matrices", "TEXT"),
     ]
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(db_path))
     try:
         existing = {r[1] for r in conn.execute("PRAGMA table_info(pre_match_snapshots)")}
 

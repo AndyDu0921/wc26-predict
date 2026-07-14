@@ -41,6 +41,21 @@ def _json_dump(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
+def _match_id_keys(match_id: str) -> list[str]:
+    raw = str(match_id)
+    keys = [raw]
+    try:
+        parsed = uuid.UUID(raw)
+    except ValueError:
+        return keys
+    keys.extend([parsed.hex, str(parsed)])
+    return list(dict.fromkeys(keys))
+
+
+def _in_clause(values: list[str]) -> tuple[str, list[str]]:
+    return ", ".join("?" for _ in values), values
+
+
 def _prob_payload(home: float, draw: float, away: float) -> dict[str, float]:
     return {
         "home": float(home),
@@ -65,60 +80,68 @@ def _has_table(conn: sqlite3.Connection, table_name: str) -> bool:
 
 
 def _latest_pre_match_snapshot(conn: sqlite3.Connection, match_id: str) -> sqlite3.Row | None:
+    keys = _match_id_keys(match_id)
+    placeholders, params = _in_clause(keys)
     return conn.execute(
-        """
+        f"""
         SELECT *
         FROM pre_match_snapshots
-        WHERE match_id = ?
+        WHERE CAST(match_id AS TEXT) IN ({placeholders})
         ORDER BY snapshot_at DESC, id DESC
         LIMIT 1
         """,
-        (match_id,),
+        params,
     ).fetchone()
 
 
 def _count(conn: sqlite3.Connection, table_name: str, match_id: str) -> int:
+    keys = _match_id_keys(match_id)
+    placeholders, params = _in_clause(keys)
     if table_name == "postmatch_eval":
         row = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS c
             FROM postmatch_eval pe
             JOIN prediction_runs pr ON pe.prediction_run_id = pr.id
-            WHERE pr.match_id = ?
+            WHERE CAST(pr.match_id AS TEXT) IN ({placeholders})
             """,
-            (match_id,),
+            params,
         ).fetchone()
     else:
         row = conn.execute(
-            f"SELECT COUNT(*) AS c FROM {table_name} WHERE match_id = ?",
-            (match_id,),
+            f"SELECT COUNT(*) AS c FROM {table_name} WHERE CAST(match_id AS TEXT) IN ({placeholders})",
+            params,
         ).fetchone()
     return int(row["c"] if row else 0)
 
 
 def _prediction_run(conn: sqlite3.Connection, match_id: str) -> sqlite3.Row | None:
+    keys = _match_id_keys(match_id)
+    placeholders, params = _in_clause(keys)
     return conn.execute(
-        """
+        f"""
         SELECT *
         FROM prediction_runs
-        WHERE match_id = ?
+        WHERE CAST(match_id AS TEXT) IN ({placeholders})
         ORDER BY as_of_time DESC, created_at DESC
         LIMIT 1
         """,
-        (match_id,),
+        params,
     ).fetchone()
 
 
 def _prediction_snapshot(conn: sqlite3.Connection, match_id: str) -> sqlite3.Row | None:
+    keys = _match_id_keys(match_id)
+    placeholders, params = _in_clause(keys)
     return conn.execute(
-        """
+        f"""
         SELECT *
         FROM prediction_snapshots
-        WHERE match_id = ?
+        WHERE CAST(match_id AS TEXT) IN ({placeholders})
         ORDER BY generated_at DESC, id DESC
         LIMIT 1
         """,
-        (match_id,),
+        params,
     ).fetchone()
 
 
@@ -381,13 +404,15 @@ def _prediction_run_values(
 
 
 def _schedule_result(conn: sqlite3.Connection, match_id: str) -> sqlite3.Row | None:
+    keys = _match_id_keys(match_id)
+    placeholders, params = _in_clause(keys)
     return conn.execute(
-        """
+        f"""
         SELECT id, home_team, away_team, home_goals, away_goals, match_status
         FROM wc26_schedule
-        WHERE id = ?
+        WHERE CAST(id AS TEXT) IN ({placeholders})
         """,
-        (match_id,),
+        params,
     ).fetchone()
 
 
@@ -407,7 +432,12 @@ def _ensure_matches_parent(
     if not (_has_table(conn, "matches") and _has_table(conn, "teams") and _has_table(conn, "wc26_schedule")):
         return None
     match_id = str(snapshot["match_id"])
-    exists = conn.execute("SELECT 1 FROM matches WHERE id = ? LIMIT 1", (match_id,)).fetchone()
+    keys = _match_id_keys(match_id)
+    placeholders, params = _in_clause(keys)
+    exists = conn.execute(
+        f"SELECT 1 FROM matches WHERE CAST(id AS TEXT) IN ({placeholders}) LIMIT 1",
+        params,
+    ).fetchone()
     if exists is not None:
         return None
 
@@ -416,9 +446,9 @@ def _ensure_matches_parent(
         SELECT id, match_number, home_team, away_team, stage, match_date,
                kickoff_time, venue, city, match_status
         FROM wc26_schedule
-        WHERE id = ?
+        WHERE CAST(id AS TEXT) IN ({placeholders})
         """,
-        (match_id,),
+        params,
     ).fetchone()
     if schedule is None:
         return None
@@ -622,14 +652,16 @@ def repair_match(
 
     prediction_run_id = str(run_values["id"])
 
+    keys = _match_id_keys(match_id)
+    placeholders, params = _in_clause(keys)
     null_logs = conn.execute(
-        """
+        f"""
         SELECT id
         FROM prediction_learning_log
-        WHERE match_id = ?
+        WHERE CAST(match_id AS TEXT) IN ({placeholders})
           AND (prediction_run_id IS NULL OR prediction_run_id = '')
         """,
-        (match_id,),
+        params,
     ).fetchall()
     if null_logs:
         actions.append(
@@ -642,13 +674,13 @@ def repair_match(
         )
         if persist:
             conn.execute(
-                """
+                f"""
                 UPDATE prediction_learning_log
                 SET prediction_run_id = ?
-                WHERE match_id = ?
+                WHERE CAST(match_id AS TEXT) IN ({placeholders})
                   AND (prediction_run_id IS NULL OR prediction_run_id = '')
                 """,
-                (prediction_run_id, match_id),
+                [prediction_run_id, *params],
             )
 
     schedule = _schedule_result(conn, match_id)

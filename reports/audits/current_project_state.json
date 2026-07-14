@@ -2991,7 +2991,7 @@
       "project audit scripts"
     ]
   },
-  "generated_at": "2026-07-10T08:28:55.980176+00:00",
+  "generated_at": "2026-07-10T15:48:51.762409+00:00",
   "handoff_checklist": [
     "Read docs/CURRENT_PROJECT_STATE.md and reports/audits/current_project_state.json.",
     "Run build_project_state_report.py before making tournament-state claims.",
@@ -3224,10 +3224,10 @@
   "schema_version": "project_state_report.v1",
   "version": {
     "build_name": "V4.11.0-alpha — Match Data OS + game-state postmatch engine",
-    "git_commit": "f19fa6405ecddf287b1cb44bf233948c4318ead6",
+    "git_commit": "5702eee4988f638c6c655e6fd0ec528547ab6449",
     "git_status": {
       "available": true,
-      "changed_file_count": 47,
+      "changed_file_count": 12,
       "dirty": true
     },
     "version": "4.11.0-alpha"

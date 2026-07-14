@@ -54,6 +54,20 @@ For future or unresolved matches:
 - Persist evidence with source URL, fetched time, available time, and hash where possible.
 - Do not use a one-off web summary as the only fact source for DB updates.
 
+## Prediction Entry Points
+
+- Manual pre-match CLI: `backend/scripts/predict_match_full.py`.
+- Manual post-match CLI: `backend/scripts/run_postmatch_complete.py`.
+- API, admin, and worker prediction triggers must call `app.services.canonical_prediction_runner.run_canonical_prediction`.
+- Do not restore or call removed orchestrator/wrapper scripts.
+- Before handing off production-trigger work, run:
+
+  ```powershell
+  backend/.venv/Scripts/python.exe backend/scripts/smoke_canonical_trigger.py
+  ```
+
+The smoke copies `backend/data/local_stage2.db` to `backend/tmp/` and must leave the real DB counts unchanged.
+
 ## FIFA Official Data
 
 FIFA Match Centre web pages may be front-end shells. If a page cannot be parsed:
@@ -80,4 +94,3 @@ After material work:
 2. Run targeted tests for changed code.
 3. Run `git diff --check`.
 4. Report what changed, what was verified, and what remains unresolved.
-

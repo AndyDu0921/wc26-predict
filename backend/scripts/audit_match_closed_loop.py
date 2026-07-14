@@ -13,6 +13,7 @@ import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -144,15 +145,32 @@ def _has_table(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
+def _match_id_keys(match_id: str) -> list[str]:
+    raw = str(match_id)
+    keys = [raw]
+    try:
+        parsed = UUID(raw)
+    except ValueError:
+        return keys
+    keys.extend([parsed.hex, str(parsed)])
+    return list(dict.fromkeys(keys))
+
+
+def _in_clause(match_id: str) -> tuple[str, list[str]]:
+    keys = _match_id_keys(match_id)
+    return ", ".join("?" for _ in keys), keys
+
+
 def _count_direct(conn: sqlite3.Connection, table_name: str, match_id: str) -> int:
     if not _has_table(conn, table_name):
         return 0
     columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})")}
     if "match_id" not in columns:
         return 0
+    placeholders, params = _in_clause(match_id)
     row = conn.execute(
-        f"SELECT COUNT(*) AS c FROM {table_name} WHERE CAST(match_id AS TEXT) = ?",
-        (match_id,),
+        f"SELECT COUNT(*) AS c FROM {table_name} WHERE CAST(match_id AS TEXT) IN ({placeholders})",
+        params,
     ).fetchone()
     return int(row["c"] if row else 0)
 
@@ -160,14 +178,15 @@ def _count_direct(conn: sqlite3.Connection, table_name: str, match_id: str) -> i
 def _count_postmatch_eval(conn: sqlite3.Connection, match_id: str) -> int:
     if not (_has_table(conn, "postmatch_eval") and _has_table(conn, "prediction_runs")):
         return 0
+    placeholders, params = _in_clause(match_id)
     row = conn.execute(
-        """
+        f"""
         SELECT COUNT(*) AS c
         FROM postmatch_eval pe
         JOIN prediction_runs pr ON pe.prediction_run_id = pr.id
-        WHERE CAST(pr.match_id AS TEXT) = ?
+        WHERE CAST(pr.match_id AS TEXT) IN ({placeholders})
         """,
-        (match_id,),
+        params,
     ).fetchone()
     return int(row["c"] if row else 0)
 
@@ -175,17 +194,18 @@ def _count_postmatch_eval(conn: sqlite3.Connection, match_id: str) -> int:
 def _latest_prediction_report_path(conn: sqlite3.Connection, match_id: str) -> str | None:
     if not _has_table(conn, "prediction_snapshots"):
         return None
+    placeholders, params = _in_clause(match_id)
     row = conn.execute(
-        """
+        f"""
         SELECT report_path
         FROM prediction_snapshots
-        WHERE CAST(match_id AS TEXT) = ?
+        WHERE CAST(match_id AS TEXT) IN ({placeholders})
           AND report_path IS NOT NULL
           AND report_path <> ''
         ORDER BY generated_at DESC, id DESC
         LIMIT 1
         """,
-        (match_id,),
+        params,
     ).fetchone()
     return str(row["report_path"]) if row and row["report_path"] else None
 
@@ -203,27 +223,28 @@ def _match_context(conn: sqlite3.Connection, match_id: str) -> dict[str, str | N
     for table in ("pre_match_snapshots", "wc26_schedule"):
         if not _has_table(conn, table):
             continue
+        placeholders, params = _in_clause(match_id)
         if table == "pre_match_snapshots":
             row = conn.execute(
-                """
+                f"""
                 SELECT home_team, away_team, kickoff_at
                 FROM pre_match_snapshots
-                WHERE CAST(match_id AS TEXT) = ?
+                WHERE CAST(match_id AS TEXT) IN ({placeholders})
                 ORDER BY snapshot_at DESC, id DESC
                 LIMIT 1
                 """,
-                (match_id,),
+                params,
             ).fetchone()
         else:
             row = conn.execute(
-                """
+                f"""
                 SELECT home_team, away_team,
                        match_date || 'T' || kickoff_time || ':00' AS kickoff_at
                 FROM wc26_schedule
-                WHERE CAST(id AS TEXT) = ?
+                WHERE CAST(id AS TEXT) IN ({placeholders})
                 LIMIT 1
                 """,
-                (match_id,),
+                params,
             ).fetchone()
         if row is not None:
             return {
