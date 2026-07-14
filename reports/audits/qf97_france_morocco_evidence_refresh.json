@@ -1,0 +1,65 @@
+{
+  "schema_version": "evidence_collection.v1",
+  "match_id": "201",
+  "home_team": "France",
+  "away_team": "Morocco",
+  "candidate_count": 2,
+  "inserted": 2,
+  "skipped": 0,
+  "details": [
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "1b061684-486a-4934-97e3-5369c9927be2",
+        "created_at": "2026-07-09 04:01:39",
+        "updated_at": "2026-07-09 04:01:39",
+        "evidence_key": "0a673b0f4343448d464797c730144fabd28c10caf98da479c7bb45957b5eb9a4",
+        "match_id": "201",
+        "home_team": "Colombia",
+        "away_team": "Switzerland",
+        "evidence_type": "market_odds",
+        "source_url": "internal://pre_match_snapshots/b009cfce-ef6b-43f2-874a-e70938341fdc/odds_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "market_odds snapshot for Colombia vs Switzerland",
+        "content_excerpt": "{\"home_prob\": 0.6086142322097379, \"draw_prob\": 0.24344569288389514, \"away_prob\": 0.1479400749063671, \"vig\": 0.03992210321324219, \"sample_bookmakers\": 25, \"bookmaker\": \"25-bookmaker-consensus\", \"bookmaker_list\": [\"Winamax (FR)\", \"Unibet (NL)\", \"Unibet (SE)\", \"GTbets\", \"LeoVegas (SE)\", \"PMU (FR)\", \"Tipico\", \"Unibet (FR)\", \"Winamax (DE)\", \"Nordic Bet\", \"Marathon Bet\", \"Betsson\", \"MyBookie.ag\", \"1xBet\", \"Matchbook\", \"Pinnacle\", \"Betfair\", \"BetOnline.ag\", \"Coolbet\", \"BetAnything\", \"888sport\", \"William Hill\", \"Everygame\", \"Codere (IT)\", \"Betclic (FR)\"], \"home_odds\": 1.58, \"draw_odds\": 3.95, \"away_odds\": 6.5, \"consensus_method\": \"median_odds_proportional_devig\", \"sport_key\": \"soccer_fifa_world_cup\", \"fetched_at\": \"2026-07-09T03:58:15.755554+00:00\", \"source\": \"the-odds-api\"}",
+        "raw_text_hash": "b3ea666faddf10ac1dd82ffcc7e759c3a8c62f625863ec7edb60734c68632db7",
+        "language": null,
+        "published_at": "2026-07-09T03:58:15.799999+00:00",
+        "fetched_at": "2026-07-09T03:58:15.799999+00:00",
+        "available_at": "2026-07-09T03:58:15.799999+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "b009cfce-ef6b-43f2-874a-e70938341fdc",
+          "source_column": "odds_snapshot"
+        }
+      }
+    },
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "4ba97c7a-f94b-46a8-ac3b-9e96926eb85a",
+        "created_at": "2026-07-09 04:01:39",
+        "updated_at": "2026-07-09 04:01:39",
+        "evidence_key": "91d88aa22d71f03bd8115e9357bede5c510ce55118ec52319e8bc8df146588ca",
+        "match_id": "201",
+        "home_team": "Colombia",
+        "away_team": "Switzerland",
+        "evidence_type": "weather",
+        "source_url": "internal://pre_match_snapshots/b009cfce-ef6b-43f2-874a-e70938341fdc/weather_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "weather snapshot for Colombia vs Switzerland",
+        "content_excerpt": "{\"temperature_c\": 23.2, \"precipitation_mm\": 0.0, \"wind_speed_kmh\": 12.5, \"humidity_percent\": 89.0, \"weather_code\": 3, \"weather_description\": \"多云\", \"fetched_at\": \"2026-07-09T03:58:12.681853+00:00\", \"forecast_available\": true}",
+        "raw_text_hash": "45540fd98e6b28341c184f4c832f65337a15faa955ad8f76020182f21d64c134",
+        "language": null,
+        "published_at": "2026-07-09T03:58:15.799999+00:00",
+        "fetched_at": "2026-07-09T03:58:15.799999+00:00",
+        "available_at": "2026-07-09T03:58:15.799999+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "b009cfce-ef6b-43f2-874a-e70938341fdc",
+          "source_column": "weather_snapshot"
+        }
+      }
+    }
+  ]
+}

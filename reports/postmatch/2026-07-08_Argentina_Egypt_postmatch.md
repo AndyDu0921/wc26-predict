@@ -41,7 +41,7 @@
 | Home xG | 0.935 | 2.840 |
 | Away xG | 0.603 | 0.980 |
 
-**Stats Completeness**: Full
+**Stats Completeness**: Partial — missing: possession_home, possession_away, shots_home, shots_away, sot_home, sot_away
 **Learning Data Quality**: 1.0
 
 ## 📈 Learning Engine
@@ -65,6 +65,46 @@
 | Elo Marginal | 0.0002 |
 
 
+## 🧭 Rich Match Data / Game State
+
+| Metric | Value |
+|:---|:---|
+| Rich Data Tier | goal_timeline_complete |
+| Event Quality Score | 0.9000 |
+| Data Coverage | events=yes, goals=yes, lineups=yes, minutes=yes, shot map=no, shot xG=no, player stats=no |
+| Data Warnings | no_full_shot_map, no_shot_xg, no_technical_player_statistics, player_stats_event_derived_only, shot_events_from_event_timeline_only |
+| Raw / Events / Shots / Lineups / Player Stats | 1 / 21 / 5 / 50 / 5 |
+| Missing Rich Data | full_shot_map, shot_xg, technical_player_statistics |
+| Comeback Profile | late_comeback |
+| Max Deficit For Winner | 2 |
+| Late Comeback | True |
+
+### Goal Timeline
+
+| Minute | Team | Player | Score |
+|:---:|:---|:---|:---:|
+| 15 | Egypt | YASSER IBRAHIM | 0-1 |
+| 67 | Egypt | MOSTAFA ZICO | 0-2 |
+| 79 | Argentina | Cristian ROMERO | 1-2 |
+| 83 | Argentina | Lionel MESSI | 2-2 |
+| 90+2 | Argentina | Enzo FERNANDEZ | 3-2 |
+
+### Game-State Segments
+
+| Window | Score | Leader | Shots | xG |
+|:---:|:---:|:---:|:---:|:---:|
+| 0-15 | 0-0 → 0-1 | draw → away | 0-1 | N/A-N/A |
+| 16-30 | 0-1 → 0-1 | away → away | 0-0 | N/A-N/A |
+| 31-45 | 0-1 → 0-1 | away → away | 0-0 | N/A-N/A |
+| 46-60 | 0-1 → 0-1 | away → away | 0-0 | N/A-N/A |
+| 61-75 | 0-1 → 0-2 | away → away | 0-1 | N/A-N/A |
+| 76-90 | 0-2 → 3-2 | away → home | 3-0 | N/A-N/A |
+| 91-105 | 3-2 → 3-2 | home → home | 0-0 | N/A-N/A |
+| 106-120 | 3-2 → 3-2 | home → home | 0-0 | N/A-N/A |
+
+**Leakage Policy**: post-match-only; never joined into same-match pre-match strict features.
+
+
 ## 🧠 Information-State Signal Attribution
 
 | Team | Signal | Direction | Verdict | Contribution |
@@ -78,4 +118,4 @@
 
 ---
 
-*Generated: 2026-07-08T03:01:12.150100+00:00 | Pipeline: run_postmatch_complete.py*
+*Generated: 2026-07-09T01:28:43.888391+00:00 | Pipeline: run_postmatch_complete.py*

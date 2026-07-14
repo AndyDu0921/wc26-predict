@@ -1,0 +1,78 @@
+{
+  "schema_version": "information_state_signal_scoring.v1",
+  "match_id": "203",
+  "home_team": "Norway",
+  "away_team": "England",
+  "signals_scored": 4,
+  "signals": [
+    {
+      "id": "4fd72f7e-56ac-428a-a694-14a9133caa78",
+      "signal_key": "42dbd9082ef898d45f0ee119ad64b783eba1702e28130f602d5f1df3c8a2e718",
+      "team": "Norway",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.78,
+      "magnitude": 0.078,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.078,
+        "applies_to": "Norway",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "174f74f1-a2c8-4f3c-ab70-4d698a306842",
+      "signal_key": "19740d873e473e071981cd1af1a03f8040c91d434ee4c3cdbf779fbeaba63afd",
+      "team": "Norway",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.66,
+      "magnitude": 0.0792,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0792,
+        "applies_to": "Norway",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "2a42bb15-88bf-4200-a41b-ce34903c0d55",
+      "signal_key": "16c10b0c4980550e303c9283d7c3073240a8898bec61abd3a8b3bacaefe77184",
+      "team": "England",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.66,
+      "magnitude": 0.0792,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0792,
+        "applies_to": "England",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "89808000-05ac-4393-97fb-b3e387bed6a8",
+      "signal_key": "300a3fd346bf5c7d88ffde3c4698fe2d73e89cf4686895395bb595d0bb8376e2",
+      "team": "Norway",
+      "signal_type": "weather",
+      "direction": "negative",
+      "confidence": 0.74,
+      "magnitude": 0.0222,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0222,
+        "applies_to": "Norway",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    }
+  ],
+  "notes": "All adjustments are shadow-only and do not alter production probabilities."
+}

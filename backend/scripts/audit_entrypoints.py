@@ -16,6 +16,7 @@ CURRENT_ENTRYPOINTS = [
     "backend/scripts/run_postmatch_complete.py",
     "backend/scripts/run_accuracy_experiments.py",
     "backend/scripts/preflight_accuracy_experiments.py",
+    "backend/scripts/build_project_state_report.py",
     "backend/scripts/audit_db_integrity.py",
     "backend/scripts/audit_public_outputs.py",
     "backend/scripts/collect_match_evidence.py",
@@ -34,6 +35,15 @@ REMOVED_ENTRYPOINTS = [
     "backend/scripts/grid_search_score_params.py",
     "backend/scripts/collect_stacking_training_data.py",
     "backend/scripts/_accuracy_wrapper.py",
+    "backend/scripts/auto_postmatch.py",
+    "backend/scripts/postmatch_review.py",
+    "backend/scripts/batch_process_eval.py",
+    "backend/scripts/backfill_learning_logs.py",
+    "backend/scripts/backfill_postmatch_evals.py",
+    "backend/scripts/create_match_stats_tables.py",
+    "backend/scripts/grid_search_dc_halflife.py",
+    "backend/scripts/repair_v410_closed_loop.py",
+    "backend/scripts/run_candidate_experiments.py",
 ]
 SCAN_PATHS = [
     "README.md",

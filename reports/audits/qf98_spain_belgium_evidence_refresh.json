@@ -1,0 +1,169 @@
+{
+  "schema_version": "evidence_collection.v1",
+  "match_id": "202",
+  "home_team": "Spain",
+  "away_team": "Belgium",
+  "candidate_count": 6,
+  "inserted": 2,
+  "skipped": 4,
+  "details": [
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "a9ab6457-48cd-40f2-8430-b07c6c8bf5ad",
+        "created_at": "2026-07-09 04:01:52",
+        "updated_at": "2026-07-09 04:01:52",
+        "evidence_key": "0cccc237fd127ec7c54b2b5dcb946fefd1a49e987ae931e7b3dd67b0a7c0b33d",
+        "match_id": "202",
+        "home_team": "Spain",
+        "away_team": "Belgium",
+        "evidence_type": "market_odds",
+        "source_url": "internal://pre_match_snapshots/659ed40f-62c4-48dd-9998-c1f1a1173ee0/odds_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "market_odds snapshot for Spain vs Belgium",
+        "content_excerpt": "{\"home_prob\": 0.5879882402351954, \"draw_prob\": 0.2403401931961361, \"away_prob\": 0.17167156656866864, \"vig\": 0.0401922236784622, \"sample_bookmakers\": 24, \"bookmaker\": \"24-bookmaker-consensus\", \"bookmaker_list\": [\"Pinnacle\", \"GTbets\", \"1xBet\", \"Tipico\", \"Marathon Bet\", \"Unibet (FR)\", \"MyBookie.ag\", \"Unibet (SE)\", \"PMU (FR)\", \"Unibet (NL)\", \"BetOnline.ag\", \"LeoVegas (SE)\", \"Winamax (FR)\", \"Winamax (DE)\", \"Nordic Bet\", \"Betsson\", \"Matchbook\", \"Betfair\", \"888sport\", \"BetAnything\", \"Coolbet\", \"Codere (IT)\", \"Everygame\", \"Betclic (FR)\"], \"home_odds\": 1.6349999999999998, \"draw_odds\": 4.0, \"away_odds\": 5.6, \"consensus_method\": \"median_odds_proportional_devig\", \"sport_key\": \"soccer_fifa_world_cup\", \"fetched_at\": \"2026-07-09T03:59:45.339528+00:00\", \"source\": \"the-odds-api\"}",
+        "raw_text_hash": "cb33d0d7b8cc3181ecccd593c134aff575b9730230a7bbf40abd64618d330e1e",
+        "language": null,
+        "published_at": "2026-07-09T03:59:45.374207+00:00",
+        "fetched_at": "2026-07-09T03:59:45.374207+00:00",
+        "available_at": "2026-07-09T03:59:45.374207+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "659ed40f-62c4-48dd-9998-c1f1a1173ee0",
+          "source_column": "odds_snapshot"
+        }
+      }
+    },
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "faa68cd0-ebf4-4a11-ab8b-11c875a7b3a5",
+        "created_at": "2026-07-09 04:01:52",
+        "updated_at": "2026-07-09 04:01:52",
+        "evidence_key": "70f30118828a238dffb89824242e573692d4b3e665c261c6bc71f34beae91298",
+        "match_id": "202",
+        "home_team": "Spain",
+        "away_team": "Belgium",
+        "evidence_type": "weather",
+        "source_url": "internal://pre_match_snapshots/659ed40f-62c4-48dd-9998-c1f1a1173ee0/weather_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "weather snapshot for Spain vs Belgium",
+        "content_excerpt": "{\"temperature_c\": 18.6, \"precipitation_mm\": 0.0, \"wind_speed_kmh\": 4.9, \"humidity_percent\": 85.0, \"weather_code\": 0, \"weather_description\": \"晴\", \"fetched_at\": \"2026-07-09T03:59:42.456506+00:00\", \"forecast_available\": true}",
+        "raw_text_hash": "bc5658e58043615d112682eb9e38f29b4d760348ed0d27080361fc0db33588d5",
+        "language": null,
+        "published_at": "2026-07-09T03:59:45.374207+00:00",
+        "fetched_at": "2026-07-09T03:59:45.374207+00:00",
+        "available_at": "2026-07-09T03:59:45.374207+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "659ed40f-62c4-48dd-9998-c1f1a1173ee0",
+          "source_column": "weather_snapshot"
+        }
+      }
+    },
+    {
+      "inserted": false,
+      "evidence": {
+        "id": "394862ca-e840-456e-87b3-05f135e3b67c",
+        "created_at": "2026-07-09 03:59:38",
+        "updated_at": "2026-07-09 03:59:38",
+        "evidence_key": "d7b8d6a938c0b9a802aa309a4f2fb993f328cd0bef8efb2c5f41fdae3e6d06e8",
+        "match_id": "202",
+        "home_team": "Spain",
+        "away_team": "Belgium",
+        "evidence_type": "news",
+        "source_url": "https://www.foxsports.com/stories/soccer/2026-world-cup-odds-how-far-will-team-usa-go",
+        "source_name": "FOX Sports",
+        "title": "2026 World Cup Odds: Balogun Back; USA Favored Over Belgium In Round Of 16",
+        "content_excerpt": "2026 World Cup Odds: Balogun Back; USA Favored Over Belgium In Round Of 16\n\nFOX reports FIFA lifted/suspended Folarin Balogun red-card suspension and he is eligible against Belgium.",
+        "raw_text_hash": "807ca731f0b7aa8bffc3e4a26d5c653d66139acc737b88d52c84b8881429ace0",
+        "language": "en",
+        "published_at": "2026-07-05T14:33:00+00:00",
+        "fetched_at": "2026-07-06T06:43:26+00:00",
+        "available_at": "2026-07-05T14:33:00+00:00",
+        "reliability_score": 0.65,
+        "metadata": {
+          "news_article_id": "0cf8e68dbe585d1e8e68f0aa25253784"
+        }
+      }
+    },
+    {
+      "inserted": false,
+      "evidence": {
+        "id": "13b3cdff-a5bb-4399-829c-4fa7dbf2e9e4",
+        "created_at": "2026-07-09 03:59:38",
+        "updated_at": "2026-07-09 03:59:38",
+        "evidence_key": "b4cc720146bd5418f657f8e516077abe99381068d0e659d836216d9d5fee42c3",
+        "match_id": "202",
+        "home_team": "Spain",
+        "away_team": "Belgium",
+        "evidence_type": "news",
+        "source_url": "https://sportgrill.co.uk/2026/07/05/2026-fifa-world-cup-round-of-16-portugal-vs-spain/",
+        "source_name": "Sport Grill",
+        "title": "2026 FIFA World Cup: Round of 16 - Portugal vs Spain",
+        "content_excerpt": "2026 FIFA World Cup: Round of 16 - Portugal vs Spain\n\nPreview reports Portugal have no fresh injury concerns; Spain could be without Nico Williams and Yeremy Pino after both missed the Austria match.",
+        "raw_text_hash": "f47ae23168f8a2b1f6aae2a8ef105ceadc8f02c1f1fa46cf8ebffd2c736d2291",
+        "language": "en",
+        "published_at": "2026-07-05T00:00:00+00:00",
+        "fetched_at": "2026-07-06T06:43:26+00:00",
+        "available_at": "2026-07-05T00:00:00+00:00",
+        "reliability_score": 0.65,
+        "metadata": {
+          "news_article_id": "7ff76041a9755900ada6e3311869adf4"
+        }
+      }
+    },
+    {
+      "inserted": false,
+      "evidence": {
+        "id": "cac7ee4c-96ac-4a12-8448-295a95ae9d99",
+        "created_at": "2026-07-09 03:59:38",
+        "updated_at": "2026-07-09 03:59:38",
+        "evidence_key": "2451d422508bfe0818cdca36d851da770b6031cbfd0507944221693613ab4f10",
+        "match_id": "202",
+        "home_team": "Spain",
+        "away_team": "Belgium",
+        "evidence_type": "news",
+        "source_url": "https://sportgrill.co.uk/2026/07/05/2026-fifa-world-cup-round-of-16-usa-vs-belgium/",
+        "source_name": "Sport Grill",
+        "title": "2026 FIFA World Cup: Round of 16 - USA vs Belgium",
+        "content_excerpt": "2026 FIFA World Cup: Round of 16 - USA vs Belgium\n\nPreview reports Mark McKenzie and Cristian Roldan are doubts; Belgium no fresh injury concerns after Senegal.",
+        "raw_text_hash": "1b38750588635d6864e151d0d64df2c995cd4151d41db616160b5f4b930eb001",
+        "language": "en",
+        "published_at": "2026-07-05T00:00:00+00:00",
+        "fetched_at": "2026-07-06T06:43:26+00:00",
+        "available_at": "2026-07-05T00:00:00+00:00",
+        "reliability_score": 0.65,
+        "metadata": {
+          "news_article_id": "ddfef2698e0c548d819aaf52a8d270ba"
+        }
+      }
+    },
+    {
+      "inserted": false,
+      "evidence": {
+        "id": "d61373a1-e2bc-4402-913d-041c6eb35cbe",
+        "created_at": "2026-07-09 03:59:38",
+        "updated_at": "2026-07-09 03:59:38",
+        "evidence_key": "4e3ff8b71d5f3f0037f464752b304b02a6ea0fb912a575cded9ed186167696be",
+        "match_id": "202",
+        "home_team": "Spain",
+        "away_team": "Belgium",
+        "evidence_type": "news",
+        "source_url": "https://www.bbc.com/sport/football/articles/c937e402z5xo?at_medium=RSS&at_campaign=rss",
+        "source_name": "BBC Sport",
+        "title": "Spain defender Batlle close to agreeing Arsenal move",
+        "content_excerpt": "Spain defender Batlle close to agreeing Arsenal move\n\nSpain defender Ona Batlle is close to agreeing a move to Arsenal as a free agent in the summer.",
+        "raw_text_hash": "aad1c0cc41593374fedc336da4159bed00cf2f65c526f9dcd0b8028b0d364de2",
+        "language": "en-gb",
+        "published_at": "2026-04-22T09:24:13+00:00",
+        "fetched_at": "2026-04-23T04:00:30.059879+00:00",
+        "available_at": "2026-04-22T09:24:13+00:00",
+        "reliability_score": 0.65,
+        "metadata": {
+          "news_article_id": "8e18510a89d3453fb91b99d782cc3feb"
+        }
+      }
+    }
+  ]
+}

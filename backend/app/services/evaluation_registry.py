@@ -18,7 +18,9 @@ from typing import Any
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
+from app.services.sqlite_paths import current_sync_sqlite_path
+
+DEFAULT_DB_PATH = current_sync_sqlite_path()
 WC26_COMPETITION = "FIFA World Cup 2026"
 
 

@@ -1,0 +1,3235 @@
+{
+  "accuracy_os": {
+    "registry_hash": "e8b3a3fcf316257d7932bd97d205a71e36afc82ae98f32e337462cafe1f11d3a",
+    "status": "ok",
+    "summary": {
+      "canonical_result_count": 92,
+      "diagnostic_count": 47,
+      "eligible_backtest_count": 37,
+      "match_results_count": 66,
+      "rejected_count": 8,
+      "schedule_finished_count": 89,
+      "schedule_only_finished_count": 26,
+      "source_result_conflicts": 0,
+      "strict_count": 37,
+      "total_samples": 92,
+      "with_pre_match_snapshot": 34,
+      "with_prediction_snapshot": 25,
+      "with_process_eval": 26
+    }
+  },
+  "competition_state": {
+    "competition": "FIFA World Cup 2026",
+    "schedule_rows": 104,
+    "stage_summary": [
+      {
+        "empty_team_slots": 0,
+        "finished": 65,
+        "postmatch_review_present": 36,
+        "pre_match_snapshot_present": 0,
+        "scheduled": 7,
+        "stage": "Group Stage",
+        "teams_known": 72,
+        "total": 72,
+        "v410_postmatch_complete": 0,
+        "v410_pre_match_complete": 0
+      },
+      {
+        "empty_team_slots": 1,
+        "finished": 15,
+        "postmatch_review_present": 15,
+        "pre_match_snapshot_present": 10,
+        "scheduled": 1,
+        "stage": "Round of 32",
+        "teams_known": 15,
+        "total": 16,
+        "v410_postmatch_complete": 0,
+        "v410_pre_match_complete": 0
+      },
+      {
+        "empty_team_slots": 0,
+        "finished": 8,
+        "postmatch_review_present": 8,
+        "pre_match_snapshot_present": 8,
+        "scheduled": 0,
+        "stage": "Round of 16",
+        "teams_known": 8,
+        "total": 8,
+        "v410_postmatch_complete": 3,
+        "v410_pre_match_complete": 3
+      },
+      {
+        "empty_team_slots": 0,
+        "finished": 1,
+        "postmatch_review_present": 1,
+        "pre_match_snapshot_present": 4,
+        "scheduled": 3,
+        "stage": "Quarterfinal",
+        "teams_known": 4,
+        "total": 4,
+        "v410_postmatch_complete": 1,
+        "v410_pre_match_complete": 4
+      },
+      {
+        "empty_team_slots": 2,
+        "finished": 0,
+        "postmatch_review_present": 0,
+        "pre_match_snapshot_present": 0,
+        "scheduled": 2,
+        "stage": "Semifinal",
+        "teams_known": 0,
+        "total": 2,
+        "v410_postmatch_complete": 0,
+        "v410_pre_match_complete": 0
+      },
+      {
+        "empty_team_slots": 1,
+        "finished": 0,
+        "postmatch_review_present": 0,
+        "pre_match_snapshot_present": 0,
+        "scheduled": 1,
+        "stage": "Third Place Playoff",
+        "teams_known": 0,
+        "total": 1,
+        "v410_postmatch_complete": 0,
+        "v410_pre_match_complete": 0
+      },
+      {
+        "empty_team_slots": 1,
+        "finished": 0,
+        "postmatch_review_present": 0,
+        "pre_match_snapshot_present": 0,
+        "scheduled": 1,
+        "stage": "Final",
+        "teams_known": 0,
+        "total": 1,
+        "v410_postmatch_complete": 0,
+        "v410_pre_match_complete": 0
+      }
+    ],
+    "tracked_match_count": 32,
+    "tracked_matches": [
+      {
+        "away_team": "Canada",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Inglewood / Los Angeles, CA",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "South Africa",
+        "kickoff_time": "15:00",
+        "match_date": "2026-06-28",
+        "match_id": "177",
+        "match_number": 73,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-06-29_South_Africa_Canada_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 0,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "3rd_1",
+          "home_slot": "W_A",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "SoFi Stadium"
+      },
+      {
+        "away_team": "Paraguay",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Foxborough / Boston, MA",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Germany",
+        "kickoff_time": "16:30",
+        "match_date": "2026-06-29",
+        "match_id": "178",
+        "match_number": 74,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-06-29_Germany_Paraguay_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "draw_or_tiebreak_required",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "3rd_D",
+          "home_slot": "E1",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Gillette Stadium"
+      },
+      {
+        "away_team": "Morocco",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Monterrey, Mexico",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Netherlands",
+        "kickoff_time": "21:00",
+        "match_date": "2026-06-29",
+        "match_id": "179",
+        "match_number": 75,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-06-29_Netherlands_Morocco_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "draw_or_tiebreak_required",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "3rd_3",
+          "home_slot": "W_C",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Estadio BBVA"
+      },
+      {
+        "away_team": "Japan",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Houston, TX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Brazil",
+        "kickoff_time": "05:00",
+        "match_date": "2026-06-29",
+        "match_id": "180",
+        "match_number": 76,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-06-29_Brazil_Japan_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "3rd_4",
+          "home_slot": "W_D",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "NRG Stadium"
+      },
+      {
+        "away_team": null,
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": false,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Houston, TX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 0,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": null,
+        "kickoff_time": "09:00",
+        "match_date": "2026-06-29",
+        "match_id": "181",
+        "match_number": 77,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "3rd_5",
+          "home_slot": "W_E",
+          "teams_known": false
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "NRG Stadium"
+      },
+      {
+        "away_team": "Norway",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Arlington, TX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Cote d'Ivoire",
+        "kickoff_time": "01:00",
+        "match_date": "2026-06-30",
+        "match_id": "182",
+        "match_number": 78,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 2,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "3rd_6",
+          "home_slot": "W_F",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "AT&T Stadium"
+      },
+      {
+        "away_team": "Ecuador",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Mexico City, MX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 4,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Mexico",
+        "kickoff_time": "20:00",
+        "match_date": "2026-06-30",
+        "match_id": "183",
+        "match_number": 79,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-01_Mexico_Ecuador_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 0,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "3rd_7",
+          "home_slot": "W_G",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Estadio Azteca"
+      },
+      {
+        "away_team": "Sweden",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "East Rutherford, NJ",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 4,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "France",
+        "kickoff_time": "09:00",
+        "match_date": "2026-06-30",
+        "match_id": "184",
+        "match_number": 80,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-01_France_Sweden_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 0,
+          "home_goals": 3,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "3rd_8",
+          "home_slot": "W_H",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "MetLife Stadium, East Rutherford, New Jersey"
+      },
+      {
+        "away_team": "Bosnia and Herzegovina",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Santa Clara, CA",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "United States",
+        "kickoff_time": "00:00",
+        "match_date": "2026-07-01",
+        "match_id": "185",
+        "match_number": 81,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 0,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_J",
+          "home_slot": "W_I",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Levi's Stadium"
+      },
+      {
+        "away_team": "Cape Verde",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Foxborough, MA",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 2,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Argentina",
+        "kickoff_time": "04:00",
+        "match_date": "2026-07-03",
+        "match_id": "186",
+        "match_number": 82,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "match_team_statistics",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 2,
+          "home_goals": 3,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_I",
+          "home_slot": "W_J",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Gillette Stadium"
+      },
+      {
+        "away_team": "Senegal",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Seattle, WA",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 4,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Belgium",
+        "kickoff_time": "20:00",
+        "match_date": "2026-07-01",
+        "match_id": "187",
+        "match_number": 83,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 2,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "draw_or_tiebreak_required",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_L",
+          "home_slot": "W_K",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Lumen Field"
+      },
+      {
+        "away_team": "DR Congo",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Miami Gardens, FL",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 4,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "England",
+        "kickoff_time": "03:00",
+        "match_date": "2026-07-02",
+        "match_id": "188",
+        "match_number": 84,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_K",
+          "home_slot": "W_L",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Hard Rock Stadium"
+      },
+      {
+        "away_team": "Algeria",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Vancouver, BC",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 4,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Switzerland",
+        "kickoff_time": "07:00",
+        "match_date": "2026-07-02",
+        "match_id": "189",
+        "match_number": 85,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 0,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_C",
+          "home_slot": "RU_A",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "BC Place, Vancouver"
+      },
+      {
+        "away_team": "Austria",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Inglewood, CA",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 4,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Spain",
+        "kickoff_time": "11:00",
+        "match_date": "2026-07-02",
+        "match_id": "190",
+        "match_number": 86,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 0,
+          "home_goals": 3,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_D",
+          "home_slot": "RU_B",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "SoFi Stadium"
+      },
+      {
+        "away_team": "Croatia",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": true,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Arlington, TX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 4,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 2,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Portugal",
+        "kickoff_time": "02:00",
+        "match_date": "2026-07-03",
+        "match_id": "191",
+        "match_number": 87,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_G",
+          "home_slot": "RU_E",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "AT&T Stadium, Arlington, TX"
+      },
+      {
+        "away_team": "Egypt",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Arlington, TX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 3,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 14,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Australia",
+        "kickoff_time": "06:00",
+        "match_date": "2026-07-03",
+        "match_id": "192",
+        "match_number": 88,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "match_team_statistics",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "draw_or_tiebreak_required",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "RU_H",
+          "home_slot": "RU_F",
+          "teams_known": true
+        },
+        "stage": "Round of 32",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "AT&T Stadium"
+      },
+      {
+        "away_team": "Ghana",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": true,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Kansas City, MO",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 2,
+          "prediction_learning_log": 1,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": "Colombia",
+        "kickoff_time": "01:00",
+        "match_date": "2026-07-03",
+        "match_id": "193",
+        "match_number": 89,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [
+          "match_results",
+          "match_team_statistics",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 0,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W74",
+          "home_slot": "W73",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Arrowhead Stadium"
+      },
+      {
+        "away_team": "Egypt",
+        "checks": {
+          "evidence_items": true,
+          "feature_snapshots": true,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": true
+        },
+        "city": "Atlanta, GA",
+        "counts": {
+          "evidence_items": 3,
+          "feature_snapshots": 1,
+          "information_state_signals": 3,
+          "match_data_raw": 1,
+          "match_events": 21,
+          "match_game_state_segments": 8,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 3
+        },
+        "home_team": "Argentina",
+        "kickoff_time": "00:00",
+        "match_date": "2026-07-08",
+        "match_id": "194",
+        "match_number": 90,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-Argentina-Egypt-2026-07-08.md"
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-08_Argentina_Egypt_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-08_Argentina_vs_Egypt_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": true,
+          "events": 21,
+          "raw": 1,
+          "segments": 8,
+          "tier": "event_timeline_present"
+        },
+        "score": {
+          "away_goals": 2,
+          "home_goals": 3,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W76",
+          "home_slot": "W75",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": true,
+        "v410_pre_match_complete": true,
+        "venue": "Mercedes-Benz Stadium"
+      },
+      {
+        "away_team": "Morocco",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": false
+        },
+        "city": "Houston, TX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 1,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 3,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 0
+        },
+        "home_team": "Canada",
+        "kickoff_time": "04:00",
+        "match_date": "2026-07-05",
+        "match_id": "195",
+        "match_number": 91,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-Canada-Morocco-2026-07-05.md"
+        },
+        "postmatch_missing": [
+          "signal_evaluations"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-05_Canada_Morocco_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 3,
+          "home_goals": 0,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W78",
+          "home_slot": "W77",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "NRG Stadium"
+      },
+      {
+        "away_team": "France",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": true,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": false,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": false
+        },
+        "city": "Philadelphia",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 1,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 0
+        },
+        "home_team": "Paraguay",
+        "kickoff_time": "05:00",
+        "match_date": "2026-07-05",
+        "match_id": "196",
+        "match_number": 92,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-Paraguay-France-2026-07-05.md"
+        },
+        "postmatch_missing": [
+          "signal_evaluations"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-05_Paraguay_France_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 0,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W80",
+          "home_slot": "W79",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Philadelphia Stadium"
+      },
+      {
+        "away_team": "Norway",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": false
+        },
+        "city": "New Jersey",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 0
+        },
+        "home_team": "Brazil",
+        "kickoff_time": "04:00",
+        "match_date": "2026-07-06",
+        "match_id": "197",
+        "match_number": 93,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-Brazil-Norway-2026-07-05.md"
+        },
+        "postmatch_missing": [
+          "signal_evaluations"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-05_Brazil_Norway_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "feature_snapshots",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-06_Brazil_vs_Norway_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 2,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W85",
+          "home_slot": "W81",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "New York/New Jersey Stadium"
+      },
+      {
+        "away_team": "England",
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": false
+        },
+        "city": "Mexico City",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 0
+        },
+        "home_team": "Mexico",
+        "kickoff_time": "08:00",
+        "match_date": "2026-07-06",
+        "match_id": "198",
+        "match_number": 94,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-Mexico-England-2026-07-06.md"
+        },
+        "postmatch_missing": [
+          "signal_evaluations"
+        ],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-06_Mexico_England_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [
+          "feature_snapshots",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-06_Mexico_vs_England_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 3,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W86",
+          "home_slot": "W82",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Mexico City Stadium"
+      },
+      {
+        "away_team": "Spain",
+        "checks": {
+          "evidence_items": true,
+          "feature_snapshots": true,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": true
+        },
+        "city": "Arlington, TX",
+        "counts": {
+          "evidence_items": 5,
+          "feature_snapshots": 1,
+          "information_state_signals": 4,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 4
+        },
+        "home_team": "Portugal",
+        "kickoff_time": "03:00",
+        "match_date": "2026-07-07",
+        "match_id": "199",
+        "match_number": 95,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-Portugal-Spain-2026-07-07.md"
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-07_Portugal_Spain_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-07_Portugal_vs_Spain_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 1,
+          "home_goals": 0,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W87",
+          "home_slot": "W83",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": true,
+        "v410_pre_match_complete": true,
+        "venue": "AT&T Stadium"
+      },
+      {
+        "away_team": "Belgium",
+        "checks": {
+          "evidence_items": true,
+          "feature_snapshots": true,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": true
+        },
+        "city": "Seattle, WA",
+        "counts": {
+          "evidence_items": 5,
+          "feature_snapshots": 1,
+          "information_state_signals": 3,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 3
+        },
+        "home_team": "United States",
+        "kickoff_time": "08:00",
+        "match_date": "2026-07-07",
+        "match_id": "200",
+        "match_number": 96,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-UnitedStates-Belgium-2026-07-07.md"
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-07_United_States_Belgium_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-07_United_States_vs_Belgium_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": 4,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W88",
+          "home_slot": "W84",
+          "teams_known": true
+        },
+        "stage": "Round of 16",
+        "v410_postmatch_complete": true,
+        "v410_pre_match_complete": true,
+        "venue": "Lumen Field"
+      },
+      {
+        "away_team": "Morocco",
+        "checks": {
+          "evidence_items": true,
+          "feature_snapshots": true,
+          "match_results": true,
+          "match_team_statistics": true,
+          "postmatch_eval": true,
+          "postmatch_memory": true,
+          "postmatch_process_eval": true,
+          "postmatch_report": true,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": true,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": true
+        },
+        "city": "Foxborough, MA",
+        "counts": {
+          "evidence_items": 5,
+          "feature_snapshots": 1,
+          "information_state_signals": 7,
+          "match_data_raw": 1,
+          "match_events": 2,
+          "match_game_state_segments": 8,
+          "match_results": 1,
+          "match_team_statistics": 2,
+          "postmatch_eval": 1,
+          "postmatch_process_eval": 1,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 1,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 7
+        },
+        "home_team": "France",
+        "kickoff_time": "04:00",
+        "match_date": "2026-07-10",
+        "match_id": "201",
+        "match_number": 97,
+        "postmatch_memory": {
+          "exists": true,
+          "path": "memory/wc-postmatch-France-Morocco-2026-07-10.md"
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": true,
+          "path": "reports/postmatch/2026-07-10_France_Morocco_postmatch.md"
+        },
+        "postmatch_review_present": true,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-10_France_vs_Morocco_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": true,
+          "events": 2,
+          "raw": 1,
+          "segments": 8,
+          "tier": "event_timeline_present"
+        },
+        "score": {
+          "away_goals": 0,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
+        },
+        "slots": {
+          "away_slot": "W90",
+          "home_slot": "W89",
+          "teams_known": true
+        },
+        "stage": "Quarterfinal",
+        "v410_postmatch_complete": true,
+        "v410_pre_match_complete": true,
+        "venue": "Boston Stadium"
+      },
+      {
+        "away_team": "Belgium",
+        "checks": {
+          "evidence_items": true,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": false,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": false
+        },
+        "city": "Inglewood, CA",
+        "counts": {
+          "evidence_items": 9,
+          "feature_snapshots": 1,
+          "information_state_signals": 8,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 0,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 0
+        },
+        "home_team": "Spain",
+        "kickoff_time": "03:00",
+        "match_date": "2026-07-11",
+        "match_id": "202",
+        "match_number": 98,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-11_Spain_vs_Belgium_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "W92",
+          "home_slot": "W91",
+          "teams_known": true
+        },
+        "stage": "Quarterfinal",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": true,
+        "venue": "Los Angeles Stadium"
+      },
+      {
+        "away_team": "England",
+        "checks": {
+          "evidence_items": true,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": false,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": false
+        },
+        "city": "Miami Gardens, FL",
+        "counts": {
+          "evidence_items": 7,
+          "feature_snapshots": 1,
+          "information_state_signals": 6,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 0,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 0
+        },
+        "home_team": "Norway",
+        "kickoff_time": "05:00",
+        "match_date": "2026-07-12",
+        "match_id": "203",
+        "match_number": 99,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-12_Norway_vs_England_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "W94",
+          "home_slot": "W93",
+          "teams_known": true
+        },
+        "stage": "Quarterfinal",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": true,
+        "venue": "Hard Rock Stadium"
+      },
+      {
+        "away_team": "Switzerland",
+        "checks": {
+          "evidence_items": true,
+          "feature_snapshots": true,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": true,
+          "prediction_learning_log": false,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
+          "signal_evaluations": false
+        },
+        "city": "Kansas City, MO",
+        "counts": {
+          "evidence_items": 5,
+          "feature_snapshots": 1,
+          "information_state_signals": 4,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 1,
+          "prediction_learning_log": 0,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
+          "signal_evaluations": 0
+        },
+        "home_team": "Argentina",
+        "kickoff_time": "09:00",
+        "match_date": "2026-07-12",
+        "match_id": "204",
+        "match_number": 100,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
+        "prediction_report": {
+          "exists": true,
+          "path": "reports/predictions/2026-07-12_Argentina_vs_Switzerland_prediction.md"
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "W96",
+          "home_slot": "W95",
+          "teams_known": true
+        },
+        "stage": "Quarterfinal",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": true,
+        "venue": "Arrowhead Stadium"
+      },
+      {
+        "away_team": null,
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": false,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Arlington, TX",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 0,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": null,
+        "kickoff_time": "03:00",
+        "match_date": "2026-07-15",
+        "match_id": "205",
+        "match_number": 101,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "W98",
+          "home_slot": "W97",
+          "teams_known": false
+        },
+        "stage": "Semifinal",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "AT&T Stadium"
+      },
+      {
+        "away_team": null,
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": false,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Atlanta, GA",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 0,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": null,
+        "kickoff_time": "03:00",
+        "match_date": "2026-07-16",
+        "match_id": "206",
+        "match_number": 102,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "W100",
+          "home_slot": "W99",
+          "teams_known": false
+        },
+        "stage": "Semifinal",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Mercedes-Benz Stadium"
+      },
+      {
+        "away_team": null,
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": false,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "Miami Gardens, FL",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 0,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": null,
+        "kickoff_time": "05:00",
+        "match_date": "2026-07-19",
+        "match_id": "207",
+        "match_number": 103,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "L102",
+          "home_slot": "L101",
+          "teams_known": false
+        },
+        "stage": "Third Place Playoff",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "Hard Rock Stadium"
+      },
+      {
+        "away_team": null,
+        "checks": {
+          "evidence_items": false,
+          "feature_snapshots": false,
+          "match_results": false,
+          "match_team_statistics": false,
+          "postmatch_eval": false,
+          "postmatch_memory": false,
+          "postmatch_process_eval": false,
+          "postmatch_report": false,
+          "pre_match_snapshots": false,
+          "prediction_learning_log": false,
+          "prediction_report": false,
+          "prediction_runs": false,
+          "prediction_snapshots": false,
+          "signal_evaluations": false
+        },
+        "city": "East Rutherford, NJ",
+        "counts": {
+          "evidence_items": 0,
+          "feature_snapshots": 0,
+          "information_state_signals": 0,
+          "match_data_raw": 0,
+          "match_events": 0,
+          "match_game_state_segments": 0,
+          "match_results": 0,
+          "match_team_statistics": 0,
+          "postmatch_eval": 0,
+          "postmatch_process_eval": 0,
+          "pre_match_snapshots": 0,
+          "prediction_learning_log": 0,
+          "prediction_runs": 0,
+          "prediction_snapshots": 0,
+          "signal_evaluations": 0
+        },
+        "home_team": null,
+        "kickoff_time": "03:00",
+        "match_date": "2026-07-19",
+        "match_id": "208",
+        "match_number": 104,
+        "postmatch_memory": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_missing": [],
+        "postmatch_report": {
+          "exists": false,
+          "path": null
+        },
+        "postmatch_review_present": false,
+        "pre_match_missing": [
+          "pre_match_snapshots",
+          "prediction_snapshots",
+          "prediction_runs",
+          "feature_snapshots",
+          "prediction_report",
+          "evidence_items"
+        ],
+        "pre_match_snapshot_present": false,
+        "prediction_report": {
+          "exists": false,
+          "path": null
+        },
+        "rich_postmatch": {
+          "available": false,
+          "events": 0,
+          "raw": 0,
+          "segments": 0,
+          "tier": "none"
+        },
+        "score": {
+          "away_goals": null,
+          "home_goals": null,
+          "is_finished": false,
+          "result_label": null,
+          "status": "SCHEDULED"
+        },
+        "slots": {
+          "away_slot": "W102",
+          "home_slot": "W101",
+          "teams_known": false
+        },
+        "stage": "Final",
+        "v410_postmatch_complete": false,
+        "v410_pre_match_complete": false,
+        "venue": "MetLife Stadium"
+      }
+    ],
+    "tracked_matches_scope": "non_group_stage"
+  },
+  "database": {
+    "exists": true,
+    "integrity": {
+      "affected_row_count": 0,
+      "foreign_key_violation_count": 0,
+      "integrity_check": "ok",
+      "status": "ok"
+    },
+    "table_counts": {
+      "evidence_items": 41,
+      "feature_snapshots": 101,
+      "information_state_signals": 37,
+      "match_data_raw": 2,
+      "match_events": 23,
+      "match_game_state_segments": 16,
+      "match_results": 16756,
+      "model_change_proposals": 45,
+      "model_weight_proposals": 0,
+      "postmatch_eval": 21,
+      "postmatch_process_eval": 24,
+      "pre_match_snapshots": 309,
+      "prediction_learning_log": 132,
+      "prediction_runs": 31,
+      "prediction_snapshots": 26,
+      "signal_evaluations": 19,
+      "wc26_schedule": 104
+    }
+  },
+  "db_path": "D:\\hermes agent\\2026世界杯分析\\backend\\data\\local_stage2.db",
+  "fact_source_policy": {
+    "do_not_use_as_authority": [
+      "compressed chat summaries",
+      "uncited AI memory",
+      "single web-search snippets",
+      "unpersisted browser summaries"
+    ],
+    "postmatch_boundary": "Post-match official data can support reviews and learning logs, but must not be joined into same-match pre-match strict features.",
+    "primary_sources": [
+      "SQLite DB tables",
+      "stored report and memory files",
+      "evidence_items / match_data_raw raw ledgers",
+      "project audit scripts"
+    ]
+  },
+  "generated_at": "2026-07-10T15:48:51.762409+00:00",
+  "handoff_checklist": [
+    "Read docs/CURRENT_PROJECT_STATE.md and reports/audits/current_project_state.json.",
+    "Run build_project_state_report.py before making tournament-state claims.",
+    "Treat DB/evidence/report artifacts as facts; treat chat summaries as hints only.",
+    "Use official provider adapters for FIFA data when possible; do not rely on uncited web snippets.",
+    "Do not alter historical predictions, production weights, or artifacts without an explicit request.",
+    "For completed matches, verify closed-loop tables before rerunning postmatch work."
+  ],
+  "known_risks": [
+    {
+      "code": "strict_sample_count_below_target",
+      "evidence": {
+        "diagnostic_count": 47,
+        "strict_count": 37,
+        "target": 50
+      },
+      "severity": "P0"
+    },
+    {
+      "code": "scheduled_stage_has_empty_team_slots",
+      "evidence": {
+        "empty_team_slots": 1,
+        "scheduled": 1,
+        "stage": "Round of 32"
+      },
+      "severity": "P1"
+    },
+    {
+      "code": "scheduled_stage_has_empty_team_slots",
+      "evidence": {
+        "empty_team_slots": 2,
+        "scheduled": 2,
+        "stage": "Semifinal"
+      },
+      "severity": "P2"
+    },
+    {
+      "code": "scheduled_stage_has_empty_team_slots",
+      "evidence": {
+        "empty_team_slots": 1,
+        "scheduled": 1,
+        "stage": "Third Place Playoff"
+      },
+      "severity": "P1"
+    },
+    {
+      "code": "scheduled_stage_has_empty_team_slots",
+      "evidence": {
+        "empty_team_slots": 1,
+        "scheduled": 1,
+        "stage": "Final"
+      },
+      "severity": "P2"
+    },
+    {
+      "code": "finished_tracked_matches_missing_v410_postmatch_fields",
+      "evidence": {
+        "by_stage": {
+          "Round of 16": 5,
+          "Round of 32": 15
+        },
+        "count": 20,
+        "examples": [
+          {
+            "away_team": "Canada",
+            "home_team": "South Africa",
+            "match_id": "177",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          },
+          {
+            "away_team": "Paraguay",
+            "home_team": "Germany",
+            "match_id": "178",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          },
+          {
+            "away_team": "Morocco",
+            "home_team": "Netherlands",
+            "match_id": "179",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          },
+          {
+            "away_team": "Japan",
+            "home_team": "Brazil",
+            "match_id": "180",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          },
+          {
+            "away_team": "Norway",
+            "home_team": "Cote d'Ivoire",
+            "match_id": "182",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_report",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          },
+          {
+            "away_team": "Ecuador",
+            "home_team": "Mexico",
+            "match_id": "183",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          },
+          {
+            "away_team": "Sweden",
+            "home_team": "France",
+            "match_id": "184",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          },
+          {
+            "away_team": "Bosnia and Herzegovina",
+            "home_team": "United States",
+            "match_id": "185",
+            "missing": [
+              "match_results",
+              "postmatch_eval",
+              "signal_evaluations",
+              "postmatch_report",
+              "postmatch_memory"
+            ],
+            "stage": "Round of 32"
+          }
+        ]
+      },
+      "note": "This does not mean the match was never reviewed; it means one or more V4.10+ closed-loop fields are absent.",
+      "severity": "P1"
+    }
+  ],
+  "operational_state": {
+    "evidence_items": 41,
+    "information_state_signals": 37,
+    "match_data_raw": 2,
+    "match_events": 23,
+    "match_game_state_segments": 16,
+    "model_change_proposals": 45,
+    "model_weight_proposals": 0,
+    "signal_evaluations": 19
+  },
+  "recommended_next_actions": [
+    {
+      "action": "Before any AI work, read this JSON and docs/AI_HANDOFF_PROTOCOL.md.",
+      "priority": "P0"
+    },
+    {
+      "action": "Repair diagnostic registry rows only from real pre-kickoff snapshots; do not fabricate probabilities or timestamps.",
+      "evidence": {
+        "diagnostic_count": 47,
+        "strict_count": 37,
+        "target": 50
+      },
+      "priority": "P0"
+    },
+    {
+      "action": "Resolve empty team slots from verified project DB/bracket evidence before running predictions for that stage.",
+      "evidence": {
+        "empty_team_slots": 1,
+        "scheduled": 1,
+        "stage": "Round of 32"
+      },
+      "priority": "P1"
+    },
+    {
+      "action": "Resolve empty team slots from verified project DB/bracket evidence before running predictions for that stage.",
+      "evidence": {
+        "empty_team_slots": 2,
+        "scheduled": 2,
+        "stage": "Semifinal"
+      },
+      "priority": "P2"
+    },
+    {
+      "action": "Resolve empty team slots from verified project DB/bracket evidence before running predictions for that stage.",
+      "evidence": {
+        "empty_team_slots": 1,
+        "scheduled": 1,
+        "stage": "Third Place Playoff"
+      },
+      "priority": "P1"
+    },
+    {
+      "action": "Resolve empty team slots from verified project DB/bracket evidence before running predictions for that stage.",
+      "evidence": {
+        "empty_team_slots": 1,
+        "scheduled": 1,
+        "stage": "Final"
+      },
+      "priority": "P2"
+    }
+  ],
+  "repo_root": "D:\\hermes agent\\2026世界杯分析",
+  "schema_version": "project_state_report.v1",
+  "version": {
+    "build_name": "V4.11.0-alpha — Match Data OS + game-state postmatch engine",
+    "git_commit": "5702eee4988f638c6c655e6fd0ec528547ab6449",
+    "git_status": {
+      "available": true,
+      "changed_file_count": 12,
+      "dirty": true
+    },
+    "version": "4.11.0-alpha"
+  }
+}

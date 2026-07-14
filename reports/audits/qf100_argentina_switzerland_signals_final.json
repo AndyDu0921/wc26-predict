@@ -1,0 +1,140 @@
+{
+  "schema_version": "information_state_signal_extraction.v1",
+  "match_id": "204",
+  "home_team": "Argentina",
+  "away_team": "Switzerland",
+  "evidence_count": 5,
+  "signals_extracted": 4,
+  "persisted": true,
+  "signals": [
+    {
+      "id": "b6c5581c-0535-4195-8341-22d6ba663fb0",
+      "created_at": "2026-07-09 04:03:11",
+      "updated_at": "2026-07-09 04:03:11",
+      "signal_key": "3dfe748916b1aae1fded9f571fffba1b614fce16d4f3ea7208deb960b9c5b6b5",
+      "match_id": "204",
+      "team": "Argentina",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.078,
+      "confidence": 0.78,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "cb36c211-c141-4689-a6fd-a8e904e26982"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Argentina",
+        "direction": "neutral",
+        "probability_shift": 0.078,
+        "shadow_only": true
+      },
+      "summary": "Argentina: market_move/neutral - 2026 World Cup quarterfinal odds: Argentina vs Switzerland Market odds evidence as-of collection: Argentina listed as favorite around -165 moneyline, Switzerlan",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "market_odds",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "0447304a-bc2a-4255-945d-9c52ec76386c",
+      "created_at": "2026-07-09 04:03:11",
+      "updated_at": "2026-07-09 04:03:11",
+      "signal_key": "e0887a196d0aacebbee6d3c1056015c1635d21013449eb4f962d716604821ffa",
+      "match_id": "204",
+      "team": "Switzerland",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.0912,
+      "confidence": 0.76,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "4b23aa22-43a1-41f0-96a0-8ee7b0f0d7a5"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Switzerland",
+        "direction": "negative",
+        "probability_shift": 0.0912,
+        "shadow_only": true
+      },
+      "summary": "Switzerland: injury/negative - Switzerland continued its knockout run by beating Colombia",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "news",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "8d5e53a4-85f5-4dd8-a97a-899df7bf8a3a",
+      "created_at": "2026-07-09 04:03:11",
+      "updated_at": "2026-07-09 04:03:11",
+      "signal_key": "5c9d255fe8fcec136b530108043a77893ca0c231142ae834e5fe6a3ed3a18ed3",
+      "match_id": "204",
+      "team": "Argentina",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.085,
+      "confidence": 0.85,
+      "available_at": "2026-07-09T04:00:26.863966+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "4fffbdfb-fda5-46b4-a296-1d312fcf77f6"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Argentina",
+        "direction": "neutral",
+        "probability_shift": 0.085,
+        "shadow_only": true
+      },
+      "summary": "Argentina: market_move/neutral - market_odds snapshot for Argentina vs Switzerland {\"home_prob\": 0.559108152927012, \"draw_prob\": 0.2670600395265896, \"away_prob\": 0.1738318075463983, \"vig\": 0.04",
+      "metadata": {
+        "evidence_type": "market_odds",
+        "snapshot_id": "29855761-752b-46bd-abb1-6baff11a7cf2",
+        "source_column": "odds_snapshot"
+      }
+    },
+    {
+      "id": "69bea762-83e2-4fab-86ef-070efdae3860",
+      "created_at": "2026-07-09 04:03:11",
+      "updated_at": "2026-07-09 04:03:11",
+      "signal_key": "5e58e7f51f41deda4466648af3bf8ed24bdf329de7ddca2103acb727c5a95580",
+      "match_id": "204",
+      "team": "Argentina",
+      "player": null,
+      "signal_type": "weather",
+      "direction": "negative",
+      "magnitude": 0.0255,
+      "confidence": 0.85,
+      "available_at": "2026-07-09T04:00:26.863966+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "fdaeab42-af4c-423a-ba83-fff04509668b"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Argentina",
+        "direction": "negative",
+        "probability_shift": 0.0255,
+        "shadow_only": true
+      },
+      "summary": "Argentina: weather/negative - weather snapshot for Argentina vs Switzerland {\"temperature_c\": 25.5, \"precipitation_mm\": 0.0, \"wind_speed_kmh\": 7.2, \"humidity_percent\": 79.0, \"weather_code\": ",
+      "metadata": {
+        "evidence_type": "weather",
+        "snapshot_id": "29855761-752b-46bd-abb1-6baff11a7cf2",
+        "source_column": "weather_snapshot"
+      }
+    }
+  ],
+  "notes": "Deterministic extractor; LLM extraction can feed the same tables but does not set probabilities."
+}

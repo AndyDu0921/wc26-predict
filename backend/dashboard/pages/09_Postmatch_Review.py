@@ -85,8 +85,8 @@ if st.button("开始复盘", type="primary", disabled=not can_review):
         # Step 3: AI review
         if review_ai:
             st.write("🤖 生成 AI 复盘...")
-            from scripts.postmatch_review import _generate_ai_review
-            review.ai_review = _generate_ai_review(review)
+            from app.services.postmatch_ai import generate_ai_review
+            review.ai_review = generate_ai_review(review)
 
         status.update(label="复盘完成", state="complete")
 

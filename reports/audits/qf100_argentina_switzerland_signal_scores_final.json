@@ -1,0 +1,78 @@
+{
+  "schema_version": "information_state_signal_scoring.v1",
+  "match_id": "204",
+  "home_team": "Argentina",
+  "away_team": "Switzerland",
+  "signals_scored": 4,
+  "signals": [
+    {
+      "id": "b6c5581c-0535-4195-8341-22d6ba663fb0",
+      "signal_key": "3dfe748916b1aae1fded9f571fffba1b614fce16d4f3ea7208deb960b9c5b6b5",
+      "team": "Argentina",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.78,
+      "magnitude": 0.078,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.078,
+        "applies_to": "Argentina",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "0447304a-bc2a-4255-945d-9c52ec76386c",
+      "signal_key": "e0887a196d0aacebbee6d3c1056015c1635d21013449eb4f962d716604821ffa",
+      "team": "Switzerland",
+      "signal_type": "injury",
+      "direction": "negative",
+      "confidence": 0.76,
+      "magnitude": 0.0912,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0912,
+        "applies_to": "Switzerland",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "8d5e53a4-85f5-4dd8-a97a-899df7bf8a3a",
+      "signal_key": "5c9d255fe8fcec136b530108043a77893ca0c231142ae834e5fe6a3ed3a18ed3",
+      "team": "Argentina",
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "confidence": 0.85,
+      "magnitude": 0.085,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.085,
+        "applies_to": "Argentina",
+        "direction": "neutral",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    },
+    {
+      "id": "69bea762-83e2-4fab-86ef-070efdae3860",
+      "signal_key": "5e58e7f51f41deda4466648af3bf8ed24bdf329de7ddca2103acb727c5a95580",
+      "team": "Argentina",
+      "signal_type": "weather",
+      "direction": "negative",
+      "confidence": 0.85,
+      "magnitude": 0.0255,
+      "status": "shadow",
+      "shadow_adjustment": {
+        "probability_shift": 0.0255,
+        "applies_to": "Argentina",
+        "direction": "negative",
+        "shadow_only": true,
+        "reason": "initial_v4_10_rule"
+      }
+    }
+  ],
+  "notes": "All adjustments are shadow-only and do not alter production probabilities."
+}

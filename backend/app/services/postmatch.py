@@ -104,7 +104,7 @@ def evaluate_prediction(
     """Evaluate a single prediction against actual match result.
 
     Args:
-        pred_result: Result dict from prediction_core or prediction_enhanced.
+        pred_result: Result dict from the canonical prediction pipeline.
         actual_home_goals: Actual home team goals.
         actual_away_goals: Actual away team goals.
 

@@ -12,7 +12,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.evaluation_registry import DEFAULT_DB_PATH
-from app.services.match_data.rich_context import load_rich_postmatch_context
+from app.services.match_data.rich_context import PASSING_TIERS, load_rich_postmatch_context
 
 
 def main() -> None:
@@ -34,7 +34,7 @@ def main() -> None:
         home_score=args.home_score,
         away_score=args.away_score,
     )
-    result["passed"] = result["tier"] in {"rich_partial", "rich_complete"}
+    result["passed"] = result["tier"] in PASSING_TIERS
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return
@@ -43,6 +43,8 @@ def main() -> None:
     print(f"Available: {result['available']}")
     print(f"Event quality: {result['event_quality_score']:.4f}")
     print(f"Counts: {result['counts']}")
+    print(f"Coverage: {result.get('coverage', {})}")
+    print(f"Warnings: {', '.join(result.get('warnings') or []) if result.get('warnings') else 'none'}")
     print(f"Missing: {', '.join(result['missing']) if result['missing'] else 'none'}")
     print(f"Comeback: {result['comeback_profile']}")
     raise SystemExit(0 if result["passed"] else 2)

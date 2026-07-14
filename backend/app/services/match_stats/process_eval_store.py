@@ -1,6 +1,6 @@
 """process_eval_store.py — Shared DB helpers for process evaluation scripts.
 
-Both ``run_process_eval.py`` and ``batch_process_eval.py`` need to read
+``run_process_eval.py`` needs to read
 match metadata, snapshots, and write process-eval results.  This module
 provides the canonical implementations.
 """
@@ -130,7 +130,7 @@ def build_classification_pipeline(
 
     Returns (classification_dict, learning_weight, tier_name).
     """
-    from backend.app.services.match_stats.failure_classifier import (
+    from app.services.match_stats.failure_classifier import (
         classify_failure,
         compute_learning_weight,
         get_learning_tier,

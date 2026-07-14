@@ -11,6 +11,9 @@ from app.services.match_data.game_state import build_game_state_profile
 from app.services.match_data.schema import MatchEvent, ShotEvent
 from app.services.match_data.storage import count_rich_match_data, ensure_match_data_os_tables
 
+GOAL_EVENT_TYPES = {"goal", "penalty_goal", "own_goal"}
+PASSING_TIERS = {"goal_timeline_complete", "rich_partial", "rich_complete"}
+
 
 def load_rich_postmatch_context(
     db_path: str | Path,
@@ -30,13 +33,16 @@ def load_rich_postmatch_context(
     counts = count_rich_match_data(db_path, str(match_id))
     events = _load_events(db_path, str(match_id))
     shots = _load_shots(db_path, str(match_id))
-    missing = _missing_from_counts(counts)
+    coverage = _coverage_from_data(db_path, str(match_id), counts, events, shots)
+    missing = _missing_from_counts(counts, coverage)
     if not events:
         return {
             "available": False,
             "tier": "basic_only",
             "counts": counts,
             "missing": missing,
+            "coverage": coverage,
+            "warnings": coverage["warnings"],
             "event_quality_score": 0.0,
             "game_state_profile": {"data_scope": "postmatch_only", "events": 0, "shots": len(shots)},
             "comeback_profile": {"comeback": False, "profile_label": "unavailable"},
@@ -50,18 +56,21 @@ def load_rich_postmatch_context(
         final_home_goals=home_score,
         final_away_goals=away_score,
     )
-    tier = _tier_from_counts(counts, profile["event_quality_score"])
+    tier = _tier_from_counts(counts, profile["event_quality_score"], coverage)
     return {
         "available": True,
         "tier": tier,
         "counts": counts,
         "missing": missing,
+        "coverage": coverage,
+        "warnings": coverage["warnings"],
         "event_quality_score": profile["event_quality_score"],
         "game_state_profile": {
             **profile["game_state_profile"],
             "home_team": home_team,
             "away_team": away_team,
             "rich_data_tier": tier,
+            "coverage": coverage,
         },
         "comeback_profile": profile["comeback_profile"],
         "goal_timeline": profile["goal_timeline"],
@@ -130,7 +139,7 @@ def _load_shots(db_path: str | Path, match_id: str) -> list[ShotEvent]:
     ]
 
 
-def _missing_from_counts(counts: dict[str, int]) -> list[str]:
+def _missing_from_counts(counts: dict[str, int], coverage: dict[str, Any]) -> list[str]:
     missing = []
     if counts.get("raw", 0) == 0:
         missing.append("official_raw_payload")
@@ -142,19 +151,112 @@ def _missing_from_counts(counts: dict[str, int]) -> list[str]:
         missing.append("player_minutes")
     if counts.get("shots", 0) == 0:
         missing.append("shot_events")
-    if counts.get("player_stats", 0) == 0:
-        missing.append("player_statistics")
+    if not coverage.get("true_shot_map"):
+        missing.append("full_shot_map")
+    if not coverage.get("shot_xg"):
+        missing.append("shot_xg")
+    if not coverage.get("technical_player_statistics"):
+        missing.append("technical_player_statistics")
     return missing
 
 
-def _tier_from_counts(counts: dict[str, int], quality: float) -> str:
+def _tier_from_counts(counts: dict[str, int], quality: float, coverage: dict[str, Any]) -> str:
     if counts.get("events", 0) == 0:
         return "basic_only"
-    if quality >= 0.80 and counts.get("lineups", 0) > 0 and counts.get("player_stats", 0) > 0:
+    if (
+        quality >= 0.80
+        and counts.get("lineups", 0) > 0
+        and counts.get("player_minutes", 0) > 0
+        and coverage.get("true_shot_map")
+        and coverage.get("shot_xg")
+        and coverage.get("technical_player_statistics")
+    ):
         return "rich_complete"
-    if quality >= 0.50:
+    if (
+        quality >= 0.50
+        and counts.get("lineups", 0) > 0
+        and (coverage.get("true_shot_map") or coverage.get("technical_player_statistics"))
+    ):
         return "rich_partial"
+    if coverage.get("goal_timeline") and counts.get("lineups", 0) > 0 and counts.get("player_minutes", 0) > 0:
+        return "goal_timeline_complete"
     return "event_timeline_only"
+
+
+def _coverage_from_data(
+    db_path: str | Path,
+    match_id: str,
+    counts: dict[str, int],
+    events: list[MatchEvent],
+    shots: list[ShotEvent],
+) -> dict[str, Any]:
+    goals = [event for event in events if event.event_type in GOAL_EVENT_TYPES]
+    derived_shots_only = _shots_are_event_derived(shots, goals)
+    shot_xg = any(shot.xg is not None for shot in shots)
+    technical_player_stats = _has_technical_player_statistics(db_path, match_id)
+    true_shot_map = bool(shots and not derived_shots_only)
+    warnings = []
+    if shots and derived_shots_only:
+        warnings.append("shot_events_from_event_timeline_only")
+    if shots and not shot_xg:
+        warnings.append("no_shot_xg")
+    if not true_shot_map:
+        warnings.append("no_full_shot_map")
+    if counts.get("player_stats", 0) > 0 and not technical_player_stats:
+        warnings.append("player_stats_event_derived_only")
+    if counts.get("player_stats", 0) == 0:
+        warnings.append("no_player_statistics_found")
+    elif not technical_player_stats:
+        warnings.append("no_technical_player_statistics")
+    return {
+        "event_timeline": bool(events),
+        "goal_timeline": bool(goals),
+        "lineups": counts.get("lineups", 0) > 0,
+        "player_minutes": counts.get("player_minutes", 0) > 0,
+        "shot_events": bool(shots),
+        "true_shot_map": true_shot_map,
+        "shot_xg": shot_xg,
+        "technical_player_statistics": technical_player_stats,
+        "event_derived_shots_only": derived_shots_only,
+        "warnings": sorted(set(warnings)),
+    }
+
+
+def _shots_are_event_derived(shots: list[ShotEvent], goals: list[MatchEvent]) -> bool:
+    if not shots:
+        return False
+    if all((shot.payload or {}).get("_match_data_os", {}).get("derived_from_event") for shot in shots):
+        return True
+    if not goals:
+        return False
+    # Compatibility for rows normalized before the marker existed: FIFA live
+    # goal-derived shots carry no xG/body-part/shot-type detail and have no
+    # non-goal shot volume beyond the goal timeline.
+    return (
+        len(shots) <= len(goals)
+        and all(shot.xg is None and shot.body_part is None and shot.shot_type is None for shot in shots)
+        and all(str(shot.outcome or "").lower() in GOAL_EVENT_TYPES for shot in shots)
+    )
+
+
+def _has_technical_player_statistics(db_path: str | Path, match_id: str) -> bool:
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT stats_json FROM match_player_statistics WHERE match_id=?",
+            (str(match_id),),
+        ).fetchall()
+    if not rows:
+        return False
+    for row in rows:
+        stats = _json_load(row["stats_json"])
+        if stats.get("source") == "fifa_live_events":
+            continue
+        available_fields = stats.get("available_fields")
+        if isinstance(available_fields, list) and set(available_fields).issubset({"goals", "assists"}):
+            continue
+        return True
+    return False
 
 
 def _segment_to_summary(segment) -> dict[str, Any]:

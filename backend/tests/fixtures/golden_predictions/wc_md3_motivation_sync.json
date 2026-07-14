@@ -5,12 +5,12 @@
     "away_team": "Brazil",
     "competition": "FIFA World Cup 2026",
     "is_neutral": true,
-    "match_date": "2026-07-07T08:00:00+00:00",
+    "match_date": "2026-07-09T20:00:00+00:00",
     "stage": "",
-    "model_version": "4.10.0-alpha",
+    "model_version": "4.11.0-alpha",
     "mode": "internal_research",
-    "as_of": "2026-07-07T04:24:52Z",
-    "generated_at": "2026-07-07T04:24:52Z",
+    "as_of": "2026-07-10T07:43:46Z",
+    "generated_at": "2026-07-10T07:43:46Z",
     "components_used": [
       "dixon_coles",
       "tabular_enhancer",
@@ -316,10 +316,10 @@
     "enhancer_rows": 11016,
     "elo_matches": 0,
     "config_label": "WORLD_CUP_V4.7.0_ALPHA (DC90%+Enh10%+Elo12%+Pi17%)",
-    "training_rows": 16749,
+    "training_rows": 16752,
     "dc_params_hash": "345ceb9e55d89277a63da8ddf00af58a",
-    "training_df_fingerprint": "1690a8d2cc470c4e7c18e18d734728bf",
-    "training_df_max_date": "2026-07-07 08:00:00+00:00",
+    "training_df_fingerprint": "31aa0126216457ba05152b1ccee9888d",
+    "training_df_max_date": "2026-07-09 20:00:00+00:00",
     "require_full_context": false,
     "pre_market_probs": {
       "home_win_prob": 0.17066753392027068,
@@ -477,9 +477,9 @@
   "evaluation_sample": {
     "schema_version": "v1",
     "match_id": "",
-    "as_of_time": "2026-07-07T04:24:52Z",
-    "generated_at": "2026-07-07T04:24:52Z",
-    "model_version": "4.10.0-alpha",
+    "as_of_time": "2026-07-10T07:43:46Z",
+    "generated_at": "2026-07-10T07:43:46Z",
+    "model_version": "4.11.0-alpha",
     "weight_label": "WORLD_CUP_V4.7.0_ALPHA",
     "candidate_probs": {
       "current_fusion": {

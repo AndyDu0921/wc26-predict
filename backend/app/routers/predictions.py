@@ -20,7 +20,7 @@ from app.models.prediction_run import PredictionRun
 from app.rate_limit import limiter
 from app.schemas.admin import TriggerPredictionRequest
 from app.schemas.prediction import ApprovedSignalItem, PredictionHistoryItem, PredictionSnapshot, ScoreProbability
-from app.services.prediction_orchestrator import PredictionOrchestrator
+from app.services.canonical_prediction_runner import run_canonical_prediction
 from app.utils.datetime import utc_now
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
@@ -200,8 +200,7 @@ async def _run_prediction_bg(job_id: str, match_id: UUID, run_type: str):
     try:
         from app.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
-            orchestrator = PredictionOrchestrator()
-            await orchestrator.run_prediction(match_id=match_id, run_type=run_type, db=db)
+            await run_canonical_prediction(match_id=match_id, run_type=run_type, db=db)
         async with _prediction_jobs_lock:
             if job_id in _prediction_jobs:
                 _prediction_jobs[job_id]["status"] = "completed"
@@ -221,8 +220,7 @@ async def trigger_prediction(
     _: str = Depends(require_admin_token),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    orchestrator = PredictionOrchestrator()
-    run_id = await orchestrator.run_prediction(match_id=match_id, run_type=payload.run_type, db=db)
+    run_id = await run_canonical_prediction(match_id=match_id, run_type=payload.run_type, db=db)
     return {"status": "queued", "prediction_run_id": str(run_id)}
 
 

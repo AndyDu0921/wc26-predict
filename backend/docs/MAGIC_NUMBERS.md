@@ -276,11 +276,11 @@
 
 ---
 
-## 十二、复盘自动化 (`scripts/auto_postmatch.py`)
+## 十二、赛后复盘核验 (`scripts/run_postmatch_complete.py`)
 
 | 常量 | 值 | 设定依据 | 引入版本 |
 |:---|:---|:---|:---|
-| `VERIFICATION_MIN_SOURCES` | 2 | 最少独立源才能达成共识 | R4-C10-fix |
+| `VERIFICATION_MIN_SOURCES` | 2 | 最少独立源才能达成共识；由 `result_verification.build_consensus()` 执行 | R4-C10-fix |
 
 ---
 

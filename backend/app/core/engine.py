@@ -681,8 +681,8 @@ def apply_market_boost(
 ) -> MarketBoostResult:
     """Apply dynamic market boost when model-market divergence exceeds threshold.
 
-    Unified implementation — replaces three inline copies that existed in
-    predict_match, predict_sync, and prediction_orchestrator.
+    Unified implementation used by the canonical prediction pipeline and
+    compatibility callers.
 
     When the model's fused probabilities diverge from market-implied
     probabilities by more than ``MARKET_BOOST_DIVERGENCE_THRESHOLD`` (15pp),

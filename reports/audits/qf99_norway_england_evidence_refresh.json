@@ -1,0 +1,91 @@
+{
+  "schema_version": "evidence_collection.v1",
+  "match_id": "203",
+  "home_team": "Norway",
+  "away_team": "England",
+  "candidate_count": 3,
+  "inserted": 2,
+  "skipped": 1,
+  "details": [
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "34c48d91-bd17-45a2-96ae-c2c22b21821e",
+        "created_at": "2026-07-09 04:01:59",
+        "updated_at": "2026-07-09 04:01:59",
+        "evidence_key": "7c283089872948be3381bcfa80a9dbeb19da0796dfa1f476dd0a925590544e96",
+        "match_id": "203",
+        "home_team": "Norway",
+        "away_team": "England",
+        "evidence_type": "market_odds",
+        "source_url": "internal://pre_match_snapshots/fca9d6d0-f277-4fd6-a822-6199fad98016/odds_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "market_odds snapshot for Norway vs England",
+        "content_excerpt": "{\"home_prob\": 0.2280182452215191, \"draw_prob\": 0.2584822213037463, \"away_prob\": 0.5134995334747346, \"vig\": 0.044193800649282355, \"sample_bookmakers\": 24, \"bookmaker\": \"24-bookmaker-consensus\", \"bookmaker_list\": [\"Winamax (FR)\", \"Unibet (SE)\", \"Winamax (DE)\", \"Unibet (FR)\", \"MyBookie.ag\", \"Tipico\", \"Unibet (NL)\", \"LeoVegas (SE)\", \"PMU (FR)\", \"GTbets\", \"Marathon Bet\", \"Pinnacle\", \"BetOnline.ag\", \"Betfair\", \"Matchbook\", \"Coolbet\", \"1xBet\", \"Nordic Bet\", \"Betsson\", \"888sport\", \"Everygame\", \"Codere (IT)\", \"BetAnything\", \"Betclic (FR)\"], \"home_odds\": 4.2, \"draw_odds\": 3.705, \"away_odds\": 1.8650000000000002, \"consensus_method\": \"median_odds_proportional_devig\", \"sport_key\": \"soccer_fifa_world_cup\", \"fetched_at\": \"2026-07-09T04:00:05.667177+00:00\", \"source\": \"the-odds-api\"}",
+        "raw_text_hash": "ccea3eb91145fe6651fc66aff9bad3ceaec46831cebe67afa4b4940b5e5200b5",
+        "language": null,
+        "published_at": "2026-07-09T04:00:05.708195+00:00",
+        "fetched_at": "2026-07-09T04:00:05.708195+00:00",
+        "available_at": "2026-07-09T04:00:05.708195+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "fca9d6d0-f277-4fd6-a822-6199fad98016",
+          "source_column": "odds_snapshot"
+        }
+      }
+    },
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "55b218c5-f99d-4890-9bf4-62797533c792",
+        "created_at": "2026-07-09 04:01:59",
+        "updated_at": "2026-07-09 04:01:59",
+        "evidence_key": "90ede1638b99ca2e7ca330f51e7d9cfa433df077536d8e927aaa2a5f2ed66566",
+        "match_id": "203",
+        "home_team": "Norway",
+        "away_team": "England",
+        "evidence_type": "weather",
+        "source_url": "internal://pre_match_snapshots/fca9d6d0-f277-4fd6-a822-6199fad98016/weather_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "weather snapshot for Norway vs England",
+        "content_excerpt": "{\"temperature_c\": null, \"precipitation_mm\": 0.0, \"wind_speed_kmh\": null, \"humidity_percent\": null, \"weather_code\": null, \"weather_description\": \"未知\", \"fetched_at\": \"2026-07-09T04:00:01.260056+00:00\", \"forecast_available\": false}",
+        "raw_text_hash": "cf331ed0bc1149e7ae34d914258b3768a7d3adf09bc97edf0b6fabb3903ad092",
+        "language": null,
+        "published_at": "2026-07-09T04:00:05.708195+00:00",
+        "fetched_at": "2026-07-09T04:00:05.708195+00:00",
+        "available_at": "2026-07-09T04:00:05.708195+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "fca9d6d0-f277-4fd6-a822-6199fad98016",
+          "source_column": "weather_snapshot"
+        }
+      }
+    },
+    {
+      "inserted": false,
+      "evidence": {
+        "id": "5f3d42ce-1be4-474c-a5cd-09bd4edbdd89",
+        "created_at": "2026-07-09 03:59:58",
+        "updated_at": "2026-07-09 03:59:58",
+        "evidence_key": "3b2dba2edaaf84dc2c0b0324e9dbd61c2e3582949f24505660ff3d26a2f2a637",
+        "match_id": "203",
+        "home_team": "Norway",
+        "away_team": "England",
+        "evidence_type": "news",
+        "source_url": "https://www.espn.com/soccer/report/_/gameId/761560",
+        "source_name": "www.espn.com - SOCCER",
+        "title": "Turner has 8 saves as Revs add to Atlanta's woe",
+        "content_excerpt": "Turner has 8 saves as Revs add to Atlanta's woe\n\nPeyton Miller scored a goal and Will Sands added his first goal in MLS as the New England Revolution beat Atlanta United FC 2-1 on Wednesday night.",
+        "raw_text_hash": "25b7893e559989b49c6ce479e63f6cacdc70f35a02029f6c8c45a643bc172229",
+        "language": "en",
+        "published_at": "2026-04-22T22:49:05+00:00",
+        "fetched_at": "2026-04-23T04:00:27.628124+00:00",
+        "available_at": "2026-04-22T22:49:05+00:00",
+        "reliability_score": 0.65,
+        "metadata": {
+          "news_article_id": "ea89e037f1af4c33bc87e1265d029420"
+        }
+      }
+    }
+  ]
+}

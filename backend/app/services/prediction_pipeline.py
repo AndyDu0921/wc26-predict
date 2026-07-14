@@ -1,7 +1,7 @@
 """PredictionPipeline — single, unified prediction entry point for WC26.
 
-Replaces scattered prediction logic across snapshot.py, fast_predict.py,
-and prediction_orchestrator.py.
+Replaces scattered prediction logic across legacy snapshot/fast prediction
+paths and is now the model core behind CLI, API, and worker triggers.
 
 Design: Wraps the proven pipeline from snapshot.py into a reusable class.
 Does NOT rewrite business logic — just orchestrates existing services.

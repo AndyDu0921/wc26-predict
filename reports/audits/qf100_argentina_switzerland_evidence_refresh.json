@@ -1,0 +1,65 @@
+{
+  "schema_version": "evidence_collection.v1",
+  "match_id": "204",
+  "home_team": "Argentina",
+  "away_team": "Switzerland",
+  "candidate_count": 2,
+  "inserted": 2,
+  "skipped": 0,
+  "details": [
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "4fffbdfb-fda5-46b4-a296-1d312fcf77f6",
+        "created_at": "2026-07-09 04:02:08",
+        "updated_at": "2026-07-09 04:02:08",
+        "evidence_key": "4e3f1421be6b27fd781f78caf3849e681f9d0a3ba78377149a6153094c58fcf1",
+        "match_id": "204",
+        "home_team": "Argentina",
+        "away_team": "Switzerland",
+        "evidence_type": "market_odds",
+        "source_url": "internal://pre_match_snapshots/29855761-752b-46bd-abb1-6baff11a7cf2/odds_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "market_odds snapshot for Argentina vs Switzerland",
+        "content_excerpt": "{\"home_prob\": 0.559108152927012, \"draw_prob\": 0.2670600395265896, \"away_prob\": 0.1738318075463983, \"vig\": 0.04594311239415627, \"sample_bookmakers\": 25, \"bookmaker\": \"25-bookmaker-consensus\", \"bookmaker_list\": [\"Unibet (NL)\", \"PMU (FR)\", \"Unibet (SE)\", \"LeoVegas (SE)\", \"Marathon Bet\", \"Unibet (FR)\", \"Betclic (FR)\", \"Tipico\", \"888sport\", \"GTbets\", \"William Hill\", \"Nordic Bet\", \"Betsson\", \"MyBookie.ag\", \"Matchbook\", \"Pinnacle\", \"Winamax (FR)\", \"BetOnline.ag\", \"Winamax (DE)\", \"Betfair\", \"1xBet\", \"Coolbet\", \"BetAnything\", \"Everygame\", \"Codere (IT)\"], \"home_odds\": 1.71, \"draw_odds\": 3.58, \"away_odds\": 5.5, \"consensus_method\": \"median_odds_proportional_devig\", \"sport_key\": \"soccer_fifa_world_cup\", \"fetched_at\": \"2026-07-09T04:00:26.812465+00:00\", \"source\": \"the-odds-api\"}",
+        "raw_text_hash": "38fbb1d4fc39a363449007d8b54533c3cddbe26f55fc3044e2c9e4a12d931e1f",
+        "language": null,
+        "published_at": "2026-07-09T04:00:26.863966+00:00",
+        "fetched_at": "2026-07-09T04:00:26.863966+00:00",
+        "available_at": "2026-07-09T04:00:26.863966+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "29855761-752b-46bd-abb1-6baff11a7cf2",
+          "source_column": "odds_snapshot"
+        }
+      }
+    },
+    {
+      "inserted": true,
+      "evidence": {
+        "id": "fdaeab42-af4c-423a-ba83-fff04509668b",
+        "created_at": "2026-07-09 04:02:08",
+        "updated_at": "2026-07-09 04:02:08",
+        "evidence_key": "04072556979fdd725c1b89c35116e5c3f586a61df996c1cf26ba00d12463e247",
+        "match_id": "204",
+        "home_team": "Argentina",
+        "away_team": "Switzerland",
+        "evidence_type": "weather",
+        "source_url": "internal://pre_match_snapshots/29855761-752b-46bd-abb1-6baff11a7cf2/weather_snapshot",
+        "source_name": "pre_match_snapshots",
+        "title": "weather snapshot for Argentina vs Switzerland",
+        "content_excerpt": "{\"temperature_c\": 25.5, \"precipitation_mm\": 0.0, \"wind_speed_kmh\": 7.2, \"humidity_percent\": 79.0, \"weather_code\": 0, \"weather_description\": \"晴\", \"fetched_at\": \"2026-07-09T04:00:24.094241+00:00\", \"forecast_available\": true}",
+        "raw_text_hash": "4fe2472523a39102ac81442c157af94cf00605723b04ee2dcf64e85b86740f13",
+        "language": null,
+        "published_at": "2026-07-09T04:00:26.863966+00:00",
+        "fetched_at": "2026-07-09T04:00:26.863966+00:00",
+        "available_at": "2026-07-09T04:00:26.863966+00:00",
+        "reliability_score": 0.85,
+        "metadata": {
+          "snapshot_id": "29855761-752b-46bd-abb1-6baff11a7cf2",
+          "source_column": "weather_snapshot"
+        }
+      }
+    }
+  ]
+}

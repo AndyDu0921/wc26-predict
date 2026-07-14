@@ -1,0 +1,236 @@
+{
+  "schema_version": "information_state_signal_extraction.v1",
+  "match_id": "201",
+  "home_team": "France",
+  "away_team": "Morocco",
+  "evidence_count": 5,
+  "signals_extracted": 7,
+  "persisted": true,
+  "signals": [
+    {
+      "id": "5dab6ae0-a548-4092-9444-1e40f387bf45",
+      "created_at": "2026-07-09 04:02:27",
+      "updated_at": "2026-07-09 04:02:27",
+      "signal_key": "8b4e4fae0a20e8599f54f4909de4884d709875d6f7a0217bb8844d1a572a67c5",
+      "match_id": "201",
+      "team": "France",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.0984,
+      "confidence": 0.82,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "bc3e9f33-974d-4537-9e2c-a97e118605e3"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "France",
+        "direction": "negative",
+        "probability_shift": 0.0984,
+        "shadow_only": true
+      },
+      "summary": "France: injury/negative - FIFA World Cup 2026 quarterfinal fixtures and previews Quarterfinal preview source listing France vs Morocco as the first quarterfinal at Boston Stadium/Foxboro",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "schedule_context",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "b6339274-d488-4fb5-9920-14830e1dde2b",
+      "created_at": "2026-07-09 04:02:27",
+      "updated_at": "2026-07-09 04:02:27",
+      "signal_key": "00d710bce726fb88bd15712e7b65243ddf6ad4a1d658176ad4f3d1632aa8f6dd",
+      "match_id": "201",
+      "team": "France",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.078,
+      "confidence": 0.78,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "cc357685-6409-4703-ab9f-14797d293faf"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "France",
+        "direction": "neutral",
+        "probability_shift": 0.078,
+        "shadow_only": true
+      },
+      "summary": "France: market_move/neutral - 2026 World Cup quarterfinal odds: France vs Morocco Market odds evidence as-of collection: France listed as favorite around -160 moneyline, Morocco around +500,",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "market_odds",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "7bb8b203-6bd9-4a63-87a1-aee24aa6d4f3",
+      "created_at": "2026-07-09 04:02:27",
+      "updated_at": "2026-07-09 04:02:27",
+      "signal_key": "afa8c2532c857f6048c89eef09d2409009ddfc1c509fab258de9f3c67060a74f",
+      "match_id": "201",
+      "team": "France",
+      "player": null,
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "magnitude": 0.042,
+      "confidence": 0.7,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "14c75c9c-24a6-4605-aee2-d08b6cd38833"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "France",
+        "direction": "neutral",
+        "probability_shift": 0.042,
+        "shadow_only": true
+      },
+      "summary": "France: lineup/neutral - France vs Morocco preview: team news and predicted lineups",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "injury",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "572dc704-752d-4f09-b024-e77e68875ecc",
+      "created_at": "2026-07-09 04:02:27",
+      "updated_at": "2026-07-09 04:02:27",
+      "signal_key": "a09be258178b4e7ec0b4fd135dc1cb9b828b5afd2a95f6f4c437189a38726287",
+      "match_id": "201",
+      "team": "Morocco",
+      "player": null,
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "magnitude": 0.042,
+      "confidence": 0.7,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "14c75c9c-24a6-4605-aee2-d08b6cd38833"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Morocco",
+        "direction": "neutral",
+        "probability_shift": 0.042,
+        "shadow_only": true
+      },
+      "summary": "Morocco: lineup/neutral - France vs Morocco preview: team news and predicted lineups",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "injury",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "03bb8373-5d30-4c7e-9186-96d33309a3ec",
+      "created_at": "2026-07-09 04:02:27",
+      "updated_at": "2026-07-09 04:02:27",
+      "signal_key": "f8c2f0c51482c7f0563e6c042b9fff94fb9a489aa3ae1bdf43692a3cf9fac055",
+      "match_id": "201",
+      "team": "Morocco",
+      "player": null,
+      "signal_type": "return",
+      "direction": "positive",
+      "magnitude": 0.056,
+      "confidence": 0.7,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "14c75c9c-24a6-4605-aee2-d08b6cd38833"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Morocco",
+        "direction": "positive",
+        "probability_shift": 0.056,
+        "shadow_only": true
+      },
+      "summary": "Morocco: return/positive - Morocco have fitness questions including Amine Harit",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "injury",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "a213ac9f-33b6-4614-903b-40ebeeffe42a",
+      "created_at": "2026-07-09 04:02:27",
+      "updated_at": "2026-07-09 04:02:27",
+      "signal_key": "69d17dcae3b4f7e84314a185052956f28301073afe32187a255f75a3b9199076",
+      "match_id": "201",
+      "team": "Colombia",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.085,
+      "confidence": 0.85,
+      "available_at": "2026-07-09T03:58:15.799999+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "1b061684-486a-4934-97e3-5369c9927be2"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Colombia",
+        "direction": "neutral",
+        "probability_shift": 0.085,
+        "shadow_only": true
+      },
+      "summary": "Colombia: market_move/neutral - market_odds snapshot for Colombia vs Switzerland {\"home_prob\": 0.6086142322097379, \"draw_prob\": 0.24344569288389514, \"away_prob\": 0.1479400749063671, \"vig\": 0.0",
+      "metadata": {
+        "evidence_type": "market_odds",
+        "snapshot_id": "b009cfce-ef6b-43f2-874a-e70938341fdc",
+        "source_column": "odds_snapshot"
+      }
+    },
+    {
+      "id": "ae3ac71a-effd-47b5-9bcb-612d74cdd072",
+      "created_at": "2026-07-09 04:02:27",
+      "updated_at": "2026-07-09 04:02:27",
+      "signal_key": "35cf1f8d87c4ed74284a5e5f1e7be8687dba47c4b55e69f64f6831a96a80e42f",
+      "match_id": "201",
+      "team": "Colombia",
+      "player": null,
+      "signal_type": "weather",
+      "direction": "negative",
+      "magnitude": 0.0255,
+      "confidence": 0.85,
+      "available_at": "2026-07-09T03:58:15.799999+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "4ba97c7a-f94b-46a8-ac3b-9e96926eb85a"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Colombia",
+        "direction": "negative",
+        "probability_shift": 0.0255,
+        "shadow_only": true
+      },
+      "summary": "Colombia: weather/negative - weather snapshot for Colombia vs Switzerland {\"temperature_c\": 23.2, \"precipitation_mm\": 0.0, \"wind_speed_kmh\": 12.5, \"humidity_percent\": 89.0, \"weather_code\": ",
+      "metadata": {
+        "evidence_type": "weather",
+        "snapshot_id": "b009cfce-ef6b-43f2-874a-e70938341fdc",
+        "source_column": "weather_snapshot"
+      }
+    }
+  ],
+  "notes": "Deterministic extractor; LLM extraction can feed the same tables but does not set probabilities."
+}

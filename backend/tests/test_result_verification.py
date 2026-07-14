@@ -213,6 +213,29 @@ class TestResultVerificationIntegration:
                 await fix.teardown()
         _run_async(_test())
 
+    def test_add_source_is_idempotent_for_same_claim(self):
+        async def _test():
+            fix = _IntegrationFixture()
+            await fix.setup()
+            try:
+                async with fix.session() as db:
+                    first = await fix.service.add_source_result(
+                        db, fix.match_id, 1, 0, "FIFA", SourceTier.OFFICIAL_COMPETITION, "Finished"
+                    )
+                    second = await fix.service.add_source_result(
+                        db, fix.match_id, 1, 0, "FIFA", SourceTier.OFFICIAL_COMPETITION, "Finished"
+                    )
+                    await db.commit()
+                    count = (
+                        await db.execute(text("SELECT COUNT(*) FROM match_result_verification"))
+                    ).scalar_one()
+
+                    assert str(first.id) == str(second.id)
+                    assert count == 1
+            finally:
+                await fix.teardown()
+        _run_async(_test())
+
     def test_add_source_rejects_ht(self):
         async def _test():
             fix = _IntegrationFixture()
@@ -425,11 +448,10 @@ class TestResultVerificationIntegration:
 
                     c1 = await fix.service.build_consensus(db, fix.match_id)
                     assert c1.is_verified is True
-                    # Second call: all source rows already linked → returns None
-                    # (existing consensus is still valid via is_verified())
                     c2 = await fix.service.build_consensus(db, fix.match_id)
-                    assert c2 is None
-                    # But is_verified still returns the existing consensus
+                    assert c2 is not None
+                    assert c2.is_verified is True
+                    assert str(c2.verification_id) == str(c1.verification_id)
                     verified, vid2 = await fix.service.is_verified(db, fix.match_id)
                     assert verified is True
                     assert str(vid2) == str(c1.verification_id)

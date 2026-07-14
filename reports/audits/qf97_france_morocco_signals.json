@@ -1,0 +1,172 @@
+{
+  "schema_version": "information_state_signal_extraction.v1",
+  "match_id": "201",
+  "home_team": "France",
+  "away_team": "Morocco",
+  "evidence_count": 3,
+  "signals_extracted": 5,
+  "persisted": true,
+  "signals": [
+    {
+      "id": "a2f7e9ab-0b33-4609-ba3d-eca1b544aab1",
+      "created_at": "2026-07-09 03:59:15",
+      "updated_at": "2026-07-09 03:59:15",
+      "signal_key": "8b4e4fae0a20e8599f54f4909de4884d709875d6f7a0217bb8844d1a572a67c5",
+      "match_id": "201",
+      "team": "France",
+      "player": null,
+      "signal_type": "injury",
+      "direction": "negative",
+      "magnitude": 0.0984,
+      "confidence": 0.82,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "bc3e9f33-974d-4537-9e2c-a97e118605e3"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "France",
+        "direction": "negative",
+        "probability_shift": 0.0984,
+        "shadow_only": true
+      },
+      "summary": "France: injury/negative - FIFA World Cup 2026 quarterfinal fixtures and previews Quarterfinal preview source listing France vs Morocco as the first quarterfinal at Boston Stadium/Foxboro",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "schedule_context",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "7defec4a-ce04-4718-a7d7-6acdd92c6625",
+      "created_at": "2026-07-09 03:59:15",
+      "updated_at": "2026-07-09 03:59:15",
+      "signal_key": "00d710bce726fb88bd15712e7b65243ddf6ad4a1d658176ad4f3d1632aa8f6dd",
+      "match_id": "201",
+      "team": "France",
+      "player": null,
+      "signal_type": "market_move",
+      "direction": "neutral",
+      "magnitude": 0.078,
+      "confidence": 0.78,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "cc357685-6409-4703-ab9f-14797d293faf"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "France",
+        "direction": "neutral",
+        "probability_shift": 0.078,
+        "shadow_only": true
+      },
+      "summary": "France: market_move/neutral - 2026 World Cup quarterfinal odds: France vs Morocco Market odds evidence as-of collection: France listed as favorite around -160 moneyline, Morocco around +500,",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "market_odds",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "4f93725d-64cc-436e-a5e7-f690bd72570d",
+      "created_at": "2026-07-09 03:59:15",
+      "updated_at": "2026-07-09 03:59:15",
+      "signal_key": "afa8c2532c857f6048c89eef09d2409009ddfc1c509fab258de9f3c67060a74f",
+      "match_id": "201",
+      "team": "France",
+      "player": null,
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "magnitude": 0.042,
+      "confidence": 0.7,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "14c75c9c-24a6-4605-aee2-d08b6cd38833"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "France",
+        "direction": "neutral",
+        "probability_shift": 0.042,
+        "shadow_only": true
+      },
+      "summary": "France: lineup/neutral - France vs Morocco preview: team news and predicted lineups",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "injury",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "fc06e845-be05-494c-a048-99e7a903a42e",
+      "created_at": "2026-07-09 03:59:15",
+      "updated_at": "2026-07-09 03:59:15",
+      "signal_key": "a09be258178b4e7ec0b4fd135dc1cb9b828b5afd2a95f6f4c437189a38726287",
+      "match_id": "201",
+      "team": "Morocco",
+      "player": null,
+      "signal_type": "lineup",
+      "direction": "neutral",
+      "magnitude": 0.042,
+      "confidence": 0.7,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "14c75c9c-24a6-4605-aee2-d08b6cd38833"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Morocco",
+        "direction": "neutral",
+        "probability_shift": 0.042,
+        "shadow_only": true
+      },
+      "summary": "Morocco: lineup/neutral - France vs Morocco preview: team news and predicted lineups",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "injury",
+        "input_mode": "codex_verified_web_source"
+      }
+    },
+    {
+      "id": "81532028-e202-4264-b36a-dc7ee3c1581f",
+      "created_at": "2026-07-09 03:59:15",
+      "updated_at": "2026-07-09 03:59:15",
+      "signal_key": "f8c2f0c51482c7f0563e6c042b9fff94fb9a489aa3ae1bdf43692a3cf9fac055",
+      "match_id": "201",
+      "team": "Morocco",
+      "player": null,
+      "signal_type": "return",
+      "direction": "positive",
+      "magnitude": 0.056,
+      "confidence": 0.7,
+      "available_at": "2026-07-09T03:56:12.840336+00:00",
+      "expires_at": null,
+      "evidence_ids": [
+        "14c75c9c-24a6-4605-aee2-d08b6cd38833"
+      ],
+      "status": "shadow",
+      "source_status": "used_pre_match",
+      "shadow_adjustment": {
+        "applies_to": "Morocco",
+        "direction": "positive",
+        "probability_shift": 0.056,
+        "shadow_only": true
+      },
+      "summary": "Morocco: return/positive - Morocco have fitness questions including Amine Harit",
+      "metadata": {
+        "collection_note": "QF pre-match evidence, shadow/proposal only",
+        "evidence_type": "injury",
+        "input_mode": "codex_verified_web_source"
+      }
+    }
+  ],
+  "notes": "Deterministic extractor; LLM extraction can feed the same tables but does not set probabilities."
+}

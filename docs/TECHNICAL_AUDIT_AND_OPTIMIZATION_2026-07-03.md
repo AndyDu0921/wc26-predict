@@ -49,13 +49,14 @@
 - V4.11 新增官方赛后数据 CLI：`collect_official_match_data.py`、`normalize_match_events.py`、`build_game_state_segments.py`、`audit_rich_postmatch_data.py`；FIFA 是首个 provider，schema 保持 provider-neutral。
 - V4.11 升级 `run_postmatch_complete.py`：有 rich postmatch data 时报告 goal timeline、game-state segments、event quality 和 comeback profile；没有 rich data 时基础复盘仍可执行并明确缺失项。
 - V4.11 扩展 `prediction_learning_log`：新增 `game_state_profile`、`comeback_profile`、`event_quality_score`，全部为 post-match-only 元数据，不进入同场赛前 strict feature snapshot。
+- V4.11 新增 Project State OS：`build_project_state_report.py` 生成 `reports/audits/current_project_state.json`，`docs/CURRENT_PROJECT_STATE.md` 和 `docs/AI_HANDOFF_PROTOCOL.md` 固化 AI 接手前的事实源与禁止事项，避免压缩摘要或单次 web 摘要污染项目判断。
 - V4.9 隔离旧根目录报告到 `reports/archive/legacy-root/`，并生成 manifest；默认公开输出审计不扫描 archive。
 - V4.9 新增数据库完整性审计/修复：`audit_db_integrity.py` 默认只读；apply 模式会先备份 DB，精确修复 team aliases，空 nullable FK 归一为 NULL，其余孤儿行隔离到 `data_integrity_quarantine`，不伪造父记录。
 - V4.9 删除确定过时的长文档：`docs/PRD_ARCHITECTURE_COMPLETE.md`、`docs/EXTERNAL_REVIEW_SUMMARY.md`、`backend/docs/POSTMATCH_SOP.md`，避免 V3/V4.5/V4.8 历史事实污染当前判断。
 
 ## 验证结果
 
-- 后端全量测试: `561 passed, 4 skipped`。
+- 后端全量测试: `569 passed, 4 skipped`。
 - Evaluation registry v2 dry-run: `91` total samples, `91` canonical result rows, `66` match-result rows, `89` schedule-finished rows, `36` strict eligible samples, `47` diagnostic samples, `8` rejected samples, `26` registry process-eval matches, `0` source-result conflicts.
 - Evaluation registry repair smoke: 非 strict 样本只有在真实赛前证据补齐后才可提升 strict；禁止 placeholder probability、赛后补预测、无时间戳信号进入 strict。
 - Feature snapshot materialization: `feature_snapshots` 表当前 `93` 条历史审计记录；payload 抽查无 actual-goal labels。
