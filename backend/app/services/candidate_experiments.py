@@ -30,6 +30,7 @@ class CandidateExperimentConfig:
     competition: str = "FIFA World Cup 2026"
     champion_name: str = "current_fusion"
     include_predictions: bool = False
+    required_model_cohort: str | None = None
 
 
 def run_candidate_experiment(
@@ -41,6 +42,11 @@ def run_candidate_experiment(
     cfg = config or CandidateExperimentConfig()
     registry = build_evaluation_registry(db_path, competition=cfg.competition)
     eligible = [row for row in registry["samples"] if row["eligible_for_backtest"]]
+    if cfg.required_model_cohort:
+        eligible = [
+            row for row in eligible
+            if row.get("model_cohort") == cfg.required_model_cohort
+        ]
 
     if len(eligible) < cfg.min_sample_count:
         return {
@@ -50,6 +56,7 @@ def run_candidate_experiment(
             "candidate_name": cfg.candidate_name,
             "candidate_family": candidate_family(cfg.candidate_name),
             "champion_name": cfg.champion_name,
+            "required_model_cohort": cfg.required_model_cohort,
             "sample_registry_hash": registry["registry_hash"],
             "sample_registry_summary": registry["summary"],
             "sample_quality_summary": _sample_quality_summary(registry["samples"]),
@@ -88,6 +95,8 @@ def run_candidate_experiment(
             {
                 "sample_id": row["sample_id"],
                 "stage": row["stage"],
+                "model_cohort": row.get("model_cohort", "unknown"),
+                "probability_quality_issues": row.get("probability_quality_issues", []),
                 "actual_idx": actual_idx,
                 "current_probs": current,
                 "candidate_probs": candidate,
@@ -106,6 +115,7 @@ def run_candidate_experiment(
             "candidate_name": cfg.candidate_name,
             "candidate_family": candidate_family(cfg.candidate_name),
             "champion_name": cfg.champion_name,
+            "required_model_cohort": cfg.required_model_cohort,
             "sample_registry_hash": registry["registry_hash"],
             "sample_registry_summary": registry["summary"],
             "sample_quality_summary": _sample_quality_summary(registry["samples"]),
@@ -126,6 +136,7 @@ def run_candidate_experiment(
         [row["current_probs"] for row in paired_rows],
         [row["actual_idx"] for row in paired_rows],
         paired_rows,
+        score_matrix_key="score_matrix",
     )
     candidate_metrics = _aggregate_metrics(
         [row["candidate_probs"] for row in paired_rows],
@@ -144,6 +155,7 @@ def run_candidate_experiment(
         "candidate_name": cfg.candidate_name,
         "candidate_family": candidate_family(cfg.candidate_name),
         "champion_name": cfg.champion_name,
+        "required_model_cohort": cfg.required_model_cohort,
         "sample_registry_hash": registry["registry_hash"],
         "sample_registry_summary": registry["summary"],
         "sample_quality_summary": _sample_quality_summary(registry["samples"]),
@@ -153,6 +165,7 @@ def run_candidate_experiment(
         "unavailable_reasons": unavailable_reasons,
         "metrics_current": current_metrics,
         "metrics_candidate": candidate_metrics,
+        "robustness_metrics": _robustness_metrics(paired_rows),
         "paired_deltas": paired_deltas,
         "group_metrics": group_metrics,
         "leakage_checks": _leakage_summary(registry["samples"]),
@@ -198,6 +211,65 @@ def _sample_quality_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
             float(row.get("data_completeness_score") or 0.0)
             for row in rows
         ]),
+        "exact_zero_probability_samples": sum(
+            1 for row in rows
+            if "exact_zero_probability" in row.get("probability_quality_issues", [])
+        ),
+        "strict_model_cohort_counts": _count_values(
+            row.get("model_cohort", "unknown")
+            for row in eligible
+        ),
+    }
+
+
+def _count_values(values: Any) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value)
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _robustness_metrics(paired_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    clean_boundary = [
+        row for row in paired_rows
+        if not row.get("probability_quality_issues")
+    ]
+    cohort_groups: dict[str, list[dict[str, Any]]] = {}
+    for row in paired_rows:
+        cohort_groups.setdefault(str(row.get("model_cohort") or "unknown"), []).append(row)
+    return {
+        "excluding_boundary_probabilities": {
+            "n": len(clean_boundary),
+            "current": _aggregate_metrics(
+                [row["current_probs"] for row in clean_boundary],
+                [row["actual_idx"] for row in clean_boundary],
+                clean_boundary,
+                score_matrix_key="score_matrix",
+            ) if clean_boundary else None,
+            "candidate": _aggregate_metrics(
+                [row["candidate_probs"] for row in clean_boundary],
+                [row["actual_idx"] for row in clean_boundary],
+                clean_boundary,
+            ) if clean_boundary else None,
+        },
+        "by_model_cohort": {
+            cohort: {
+                "n": len(rows),
+                "current": _aggregate_metrics(
+                    [row["current_probs"] for row in rows],
+                    [row["actual_idx"] for row in rows],
+                    rows,
+                    score_matrix_key="score_matrix",
+                ),
+                "candidate": _aggregate_metrics(
+                    [row["candidate_probs"] for row in rows],
+                    [row["actual_idx"] for row in rows],
+                    rows,
+                ),
+            }
+            for cohort, rows in sorted(cohort_groups.items())
+        },
     }
 
 
@@ -215,6 +287,8 @@ def _aggregate_metrics(
     probs_list: list[dict[str, float]],
     actuals: list[int],
     paired_rows: list[dict[str, Any]],
+    *,
+    score_matrix_key: str | None = None,
 ) -> dict[str, float | int | None]:
     briers = [_brier(probs, actual) for probs, actual in zip(probs_list, actuals)]
     loglosses = [_logloss(probs, actual) for probs, actual in zip(probs_list, actuals)]
@@ -223,6 +297,7 @@ def _aggregate_metrics(
         1 if int(np.argmax(_vec(probs))) == actual else 0
         for probs, actual in zip(probs_list, actuals)
     ]
+    score_summary = _score_logloss_summary(paired_rows, matrix_key=score_matrix_key)
     return {
         "n": len(probs_list),
         "brier": _mean(briers),
@@ -230,7 +305,9 @@ def _aggregate_metrics(
         "rps": _mean(rps_values),
         "direction_accuracy": _mean(directions),
         "ece": _ece(probs_list, actuals),
-        "score_logloss": _score_logloss_mean(paired_rows),
+        "score_logloss": score_summary["mean"],
+        "score_logloss_n": score_summary["n"],
+        "score_out_of_support_count": score_summary["out_of_support_count"],
     }
 
 
@@ -396,17 +473,34 @@ def _ece(probs_list: list[dict[str, float]], actuals: list[int], n_bins: int = 1
     return round(ece, 6)
 
 
-def _score_logloss_mean(paired_rows: list[dict[str, Any]]) -> float | None:
-    values = []
+def _score_logloss_summary(
+    paired_rows: list[dict[str, Any]],
+    *,
+    matrix_key: str | None,
+) -> dict[str, float | int | None]:
+    if matrix_key is None:
+        return {"mean": None, "n": 0, "out_of_support_count": 0}
+    values: list[float] = []
+    out_of_support_count = 0
     for row in paired_rows:
-        matrix = row.get("score_matrix")
+        matrix = row.get(matrix_key)
         hg = row.get("actual_home_goals")
         ag = row.get("actual_away_goals")
         if not isinstance(matrix, list) or hg is None or ag is None:
             continue
         if hg < len(matrix) and isinstance(matrix[hg], list) and ag < len(matrix[hg]):
-            values.append(-math.log(max(float(matrix[hg][ag]), 1e-12)))
-    return _mean(values) if values else None
+            probability = max(float(matrix[hg][ag]), 1e-12)
+        else:
+            # A truncated matrix with no explicit tail assigned zero mass to
+            # this outcome. Penalize it instead of excluding high-score games.
+            probability = 1e-12
+            out_of_support_count += 1
+        values.append(-math.log(probability))
+    return {
+        "mean": _mean(values) if values else None,
+        "n": len(values),
+        "out_of_support_count": out_of_support_count,
+    }
 
 
 def _vec(probs: dict[str, float]) -> np.ndarray:

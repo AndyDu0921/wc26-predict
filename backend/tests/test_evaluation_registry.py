@@ -6,6 +6,7 @@ import pytest
 
 from app.services.candidate_experiments import (
     CandidateExperimentConfig,
+    _score_logloss_summary,
     _ece,
     _shadow_gate_decision,
     run_candidate_experiment,
@@ -137,7 +138,7 @@ def test_registry_marks_schedule_only_finished_rows(tmp_path):
 
     registry = build_evaluation_registry(db_path)
 
-    assert registry["schema_version"] == "evaluation_registry.v2"
+    assert registry["schema_version"] == "evaluation_registry.v3"
     assert registry["summary"]["match_results_count"] == 1
     assert registry["summary"]["schedule_finished_count"] == 2
     assert registry["summary"]["schedule_only_finished_count"] == 1
@@ -177,9 +178,71 @@ def test_registry_accepts_schedule_only_with_kickoff_time_and_pre_snapshot(tmp_p
     assert row["sample_status"] == "strict"
     assert row["eligible_for_backtest"] is True
     assert row["canonical_result_source"] == "wc26_schedule"
-    assert row["kickoff_at"] == "2026-07-01T20:00:00"
+    assert row["kickoff_at"] == "2026-07-01T20:00:00+08:00"
     assert row["kickoff_source"] == "wc26_schedule.match_date+kickoff_time"
-    assert row["horizon_bucket"] == "T-24h"
+    assert row["horizon_bucket"] == "T-6h"
+
+
+def test_registry_reconciles_utc_match_with_next_day_beijing_schedule(tmp_path):
+    db_path = tmp_path / "registry.db"
+    conn = _create_registry_db(db_path)
+    conn.execute("INSERT INTO teams(id, name) VALUES ('h1', 'Paraguay')")
+    conn.execute("INSERT INTO teams(id, name) VALUES ('a1', 'France')")
+    conn.execute(
+        "INSERT INTO matches(id, home_team_id, away_team_id, match_date, competition, stage) "
+        "VALUES ('196', 'h1', 'a1', '2026-07-04T21:00:00Z', "
+        "'FIFA World Cup 2026', 'Round of 16')"
+    )
+    conn.execute("INSERT INTO match_results(match_id, home_goals, away_goals) VALUES ('196', 0, 1)")
+    conn.execute(
+        "INSERT INTO wc26_schedule(id, match_number, home_team, away_team, match_date, kickoff_time, "
+        "stage, match_status, home_goals, away_goals) VALUES "
+        "('196', 92, 'Paraguay', 'France', '2026-07-05', '05:00', "
+        "'Round of 16', 'FINISHED', 0, 1)"
+    )
+    conn.execute(
+        "INSERT INTO pre_match_snapshots(id, match_id, home_team, away_team, snapshot_at, kickoff_at, "
+        "model_version, weight_config_label, final_home_prob, final_draw_prob, final_away_prob, "
+        "component_probs, fused_score_matrix) VALUES "
+        "('p1', '196', 'Paraguay', 'France', '2026-07-04T12:00:00Z', "
+        "'2026-07-04T21:00:00Z', '4.10.0-alpha', 'wc26-ko', 0.3, 0.25, 0.45, ?, ?)"
+        , (json.dumps({"dc": {"away": 0.45}}), json.dumps([[0.2, 0.1], [0.3, 0.4]]))
+    )
+    conn.commit()
+    conn.close()
+
+    registry = build_evaluation_registry(db_path)
+
+    assert registry["summary"]["total_samples"] == 1
+    assert registry["summary"]["match_results_count"] == 1
+    assert registry["summary"]["schedule_finished_count"] == 1
+    assert registry["summary"]["schedule_only_finished_count"] == 0
+    row = registry["samples"][0]
+    assert row["match_result_id"] == "196"
+    assert row["schedule_id"] == "196"
+    assert row["kickoff_at"] == "2026-07-04T21:00:00Z"
+    assert row["model_cohort"] == "4.10.0-alpha"
+
+
+def test_registry_reports_boundary_probabilities_by_model_cohort(tmp_path):
+    db_path = tmp_path / "registry.db"
+    conn = _create_registry_db(db_path)
+    _insert_match(conn, 1, "Alpha", "Beta", 0, 1)
+    conn.execute(
+        "UPDATE pre_match_snapshots SET model_version=NULL, final_home_prob=0, "
+        "final_draw_prob=0.2, final_away_prob=0.8 WHERE id='p1'"
+    )
+    conn.commit()
+    conn.close()
+
+    registry = build_evaluation_registry(db_path)
+    row = registry["samples"][0]
+
+    assert row["model_cohort"] == "unknown"
+    assert row["probability_quality_status"] == "boundary"
+    assert row["probability_quality_issues"] == ["exact_zero_probability"]
+    assert registry["summary"]["strict_exact_zero_probability_count"] == 1
+    assert registry["summary"]["strict_model_cohort_counts"] == {"unknown": 1}
 
 
 def test_registry_uses_pre_kickoff_prediction_snapshot_as_probability_fallback(tmp_path):
@@ -394,6 +457,21 @@ def test_candidate_experiment_outputs_paired_metrics(tmp_path):
 
 def test_ece_uses_top_label_confidence():
     assert _ece([{"home": 0.8, "draw": 0.1, "away": 0.1}], [2]) == pytest.approx(0.8)
+
+
+def test_score_logloss_penalizes_out_of_support_result_instead_of_skipping():
+    summary = _score_logloss_summary(
+        [{
+            "score_matrix": [[0.4, 0.1], [0.3, 0.2]],
+            "actual_home_goals": 6,
+            "actual_away_goals": 0,
+        }],
+        matrix_key="score_matrix",
+    )
+
+    assert summary["n"] == 1
+    assert summary["out_of_support_count"] == 1
+    assert summary["mean"] == pytest.approx(27.631021, abs=1e-6)
 
 
 def test_shadow_gate_requires_ci_support_not_only_mean_improvement():

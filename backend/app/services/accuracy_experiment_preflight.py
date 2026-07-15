@@ -17,6 +17,7 @@ def run_accuracy_experiment_preflight(
     competition: str = WC26_COMPETITION,
     min_sample_count: int = 30,
     candidates: list[str] | None = None,
+    required_model_cohort: str | None = None,
 ) -> dict[str, Any]:
     """Return gate evidence before running candidate tournaments.
 
@@ -32,6 +33,11 @@ def run_accuracy_experiment_preflight(
     summary = registry["summary"]
     strict_count = int(summary.get("strict_count", 0) or 0)
     eligible_count = int(summary.get("eligible_backtest_count", 0) or 0)
+    cohort_count = int(
+        (summary.get("strict_model_cohort_counts") or {}).get(required_model_cohort, 0)
+        if required_model_cohort
+        else strict_count
+    )
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
 
@@ -70,6 +76,22 @@ def run_accuracy_experiment_preflight(
                 "required_action": "Do not run paired candidate gates until enough no-leakage samples exist.",
             }
         )
+    if required_model_cohort and cohort_count < min_sample_count:
+        blockers.append(
+            {
+                "code": "insufficient_model_cohort_samples",
+                "evidence": {
+                    "required_model_cohort": required_model_cohort,
+                    "cohort_count": cohort_count,
+                    "min_sample_count": min_sample_count,
+                    "strict_model_cohort_counts": summary.get("strict_model_cohort_counts", {}),
+                },
+                "required_action": (
+                    "Keep candidates in shadow until the active model cohort has enough "
+                    "independent no-leakage outcomes. Do not pool legacy champions for promotion."
+                ),
+            }
+        )
 
     source_conflicts = int(summary.get("source_result_conflicts", 0) or 0)
     if source_conflicts:
@@ -101,6 +123,8 @@ def run_accuracy_experiment_preflight(
         "competition": competition,
         "candidate_names": candidates or [],
         "min_sample_count": min_sample_count,
+        "required_model_cohort": required_model_cohort,
+        "required_model_cohort_sample_count": cohort_count,
         "status": "ready" if passed else "blocked",
         "passed": passed,
         "blockers": blockers,

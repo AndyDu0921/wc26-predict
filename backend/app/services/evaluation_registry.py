@@ -10,18 +10,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
+from app.services.sqlite_paths import current_sync_sqlite_path
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-from app.services.sqlite_paths import current_sync_sqlite_path
 
 DEFAULT_DB_PATH = current_sync_sqlite_path()
 WC26_COMPETITION = "FIFA World Cup 2026"
+SCHEDULE_TIMEZONE = ZoneInfo("Asia/Shanghai")
+SCHEDULE_RECONCILIATION_WINDOW = timedelta(hours=36)
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,7 @@ class EvaluationRegistryRow:
     prediction_snapshot_id: str | None
     prediction_snapshot_at: str | None
     model_version: str | None
+    model_cohort: str
     weight_config_label: str | None
     current_prob_source: str | None
     component_count: int
@@ -69,6 +74,8 @@ class EvaluationRegistryRow:
     eligible_for_backtest: bool
     exclusion_reasons: list[str]
     current_probs: dict[str, float] | None
+    probability_quality_status: str
+    probability_quality_issues: list[str]
     score_matrix: list[list[float]] | None
 
     def to_dict(self) -> dict[str, Any]:
@@ -92,16 +99,15 @@ def build_evaluation_registry(
         schedule_rows = _load_schedule_results(conn)
         samples: list[EvaluationRegistryRow] = []
 
-        seen_schedule_keys: set[str] = set()
+        consumed_schedule_ids: set[str] = set()
         for match in match_rows:
-            key = _sample_key(match["home_team"], match["away_team"], match["match_date"])
-            schedule = schedule_rows.get(key)
+            schedule = _reconcile_schedule_row(match, schedule_rows, consumed_schedule_ids)
             if schedule:
-                seen_schedule_keys.add(key)
+                consumed_schedule_ids.add(str(schedule["schedule_id"]))
             samples.append(_build_row(conn, match=match, schedule=schedule))
 
-        for key, schedule in sorted(schedule_rows.items()):
-            if key in seen_schedule_keys:
+        for schedule in schedule_rows:
+            if str(schedule["schedule_id"]) in consumed_schedule_ids:
                 continue
             samples.append(_build_row(conn, match=None, schedule=schedule))
 
@@ -109,7 +115,7 @@ def build_evaluation_registry(
         summary = _summarize(payload_rows)
         registry_hash = _stable_hash({"samples": payload_rows, "summary": summary})
         return {
-            "schema_version": "evaluation_registry.v2",
+            "schema_version": "evaluation_registry.v3",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "db_path": str(path),
             "competition": competition,
@@ -149,9 +155,9 @@ def _load_match_results(conn: sqlite3.Connection, competition: str) -> list[sqli
     )
 
 
-def _load_schedule_results(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
+def _load_schedule_results(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     if not _has_table(conn, "wc26_schedule"):
-        return {}
+        return []
     kickoff_select = "kickoff_time" if _has_column(conn, "wc26_schedule", "kickoff_time") else "NULL AS kickoff_time"
     rows = conn.execute(
         f"""
@@ -173,11 +179,69 @@ def _load_schedule_results(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
         ORDER BY match_date ASC
         """
     ).fetchall()
-    return {
-        _sample_key(row["home_team"], row["away_team"], row["match_date"]): row
-        for row in rows
+    return [
+        row for row in rows
         if row["home_team"] and row["away_team"] and row["match_date"]
-    }
+    ]
+
+
+def _reconcile_schedule_row(
+    match: sqlite3.Row,
+    schedule_rows: list[sqlite3.Row],
+    consumed_schedule_ids: set[str],
+) -> sqlite3.Row | None:
+    """Resolve one result row to one schedule row across UTC/local dates.
+
+    Numeric/manual match IDs intentionally mirror ``wc26_schedule.id`` for
+    current tournament data, so that is the strongest identity.  The fallback
+    compares the team pair and actual kickoff instants instead of date strings.
+    """
+    match_id = str(match["match_id"])
+    direct = [
+        row for row in schedule_rows
+        if str(row["schedule_id"]) == match_id
+        and str(row["schedule_id"]) not in consumed_schedule_ids
+    ]
+    if len(direct) == 1:
+        return direct[0]
+
+    pair_candidates = [
+        row for row in schedule_rows
+        if str(row["schedule_id"]) not in consumed_schedule_ids
+        and _norm(row["home_team"]) == _norm(match["home_team"])
+        and _norm(row["away_team"]) == _norm(match["away_team"])
+    ]
+    if not pair_candidates:
+        return None
+    if len(pair_candidates) == 1:
+        candidate = pair_candidates[0]
+        if _kickoffs_reconcile(match["match_date"], _schedule_kickoff_at(candidate)):
+            return candidate
+        return None
+
+    match_dt = _parse_dt(_as_optional_str(match["match_date"]))
+    if match_dt is None:
+        return None
+    ranked: list[tuple[float, sqlite3.Row]] = []
+    for candidate in pair_candidates:
+        schedule_dt = _parse_dt(_schedule_kickoff_at(candidate))
+        if schedule_dt is None:
+            continue
+        delta = abs((match_dt - schedule_dt).total_seconds())
+        if delta <= SCHEDULE_RECONCILIATION_WINDOW.total_seconds():
+            ranked.append((delta, candidate))
+    ranked.sort(key=lambda item: item[0])
+    if not ranked or (len(ranked) > 1 and ranked[0][0] == ranked[1][0]):
+        return None
+    return ranked[0][1]
+
+
+def _kickoffs_reconcile(left: Any, right: Any) -> bool:
+    left_dt = _parse_dt(_as_optional_str(left))
+    right_dt = _parse_dt(_as_optional_str(right))
+    if left_dt is None or right_dt is None:
+        return False
+    return abs(left_dt - right_dt) <= SCHEDULE_RECONCILIATION_WINDOW
 
 
 def _build_row(
@@ -190,8 +254,6 @@ def _build_row(
     away_team = str((match or schedule)["away_team"])
     match_date = str((match or schedule)["match_date"])
     stage = str((match["stage"] if match else None) or (schedule["stage"] if schedule else "") or "")
-    sample_id = _sample_key(home_team, away_team, match_date)
-
     match_id = str(match["match_id"]) if match else None
     schedule_id = str(schedule["schedule_id"]) if schedule else None
     schedule_match_number = int(schedule["match_number"]) if schedule else None
@@ -203,6 +265,7 @@ def _build_row(
     canonical_away = actual_away if match else schedule_away
     canonical_result_source = "match_results" if match else ("wc26_schedule" if schedule else None)
     kickoff_at, kickoff_source = _resolve_kickoff_at(match, schedule)
+    sample_id = _sample_key(home_team, away_team, kickoff_at or match_date)
 
     pre_snapshot = _latest_pre_match_snapshot(
         conn,
@@ -275,6 +338,14 @@ def _build_row(
                 weight_config_label = "prediction_snapshot.adjusted_probs"
         if component_count == 0:
             component_count = _component_count(_json_loads(_row_get(prediction_snapshot, "component_probs")))
+
+    probability_quality_issues = _probability_quality_issues(current_probs)
+    probability_quality_status = (
+        "missing" if current_probs is None
+        else "boundary" if probability_quality_issues
+        else "valid"
+    )
+    model_cohort = _model_cohort(model_version)
 
     source_conflict = (
         match is not None
@@ -359,6 +430,7 @@ def _build_row(
         prediction_snapshot_id=prediction_snapshot_id,
         prediction_snapshot_at=prediction_snapshot_at,
         model_version=model_version,
+        model_cohort=model_cohort,
         weight_config_label=weight_config_label,
         current_prob_source=current_prob_source,
         component_count=component_count,
@@ -370,6 +442,8 @@ def _build_row(
         eligible_for_backtest=not exclusions,
         exclusion_reasons=exclusions,
         current_probs=current_probs,
+        probability_quality_status=probability_quality_status,
+        probability_quality_issues=probability_quality_issues,
         score_matrix=score_matrix if _valid_matrix(score_matrix) else None,
     )
 
@@ -581,6 +655,25 @@ def _current_probs_from_mapping(raw: Any) -> dict[str, float] | None:
     return {"home": home / total, "draw": draw / total, "away": away / total}
 
 
+def _probability_quality_issues(probs: dict[str, float] | None) -> list[str]:
+    if probs is None:
+        return ["missing_probabilities"]
+    values = [float(probs[key]) for key in ("home", "draw", "away")]
+    issues: list[str] = []
+    if any(not math.isfinite(value) for value in values):
+        issues.append("non_finite_probability")
+    if any(value == 0.0 for value in values):
+        issues.append("exact_zero_probability")
+    if any(value == 1.0 for value in values):
+        issues.append("exact_one_probability")
+    return issues
+
+
+def _model_cohort(model_version: str | None) -> str:
+    text = str(model_version or "").strip()
+    return text if text else "unknown"
+
+
 def _should_use_prediction_snapshot_primary(
     *,
     pre_snapshot_at: str | None,
@@ -604,8 +697,9 @@ def _should_use_prediction_snapshot_primary(
 
 
 def _sample_key(home_team: str, away_team: str, match_date: str) -> str:
-    date_part = str(match_date)[:10]
-    raw = f"{_norm(home_team)}::{_norm(away_team)}::{date_part}"
+    kickoff = _parse_dt(match_date)
+    identity_time = kickoff.isoformat() if kickoff is not None else str(match_date)
+    raw = f"{_norm(home_team)}::{_norm(away_team)}::{identity_time}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -663,7 +757,9 @@ def _schedule_kickoff_at(schedule: sqlite3.Row | None) -> str | None:
     if not match_date:
         return None
     if _canonical_kickoff_at(match_date):
-        return _canonical_kickoff_at(match_date)
+        canonical = _canonical_kickoff_at(match_date)
+        parsed = _parse_dt(canonical)
+        return parsed.isoformat() if parsed is not None else canonical
     if len(match_date.strip()) != 10 or not kickoff_time:
         return None
     time_part = kickoff_time.strip()
@@ -671,7 +767,11 @@ def _schedule_kickoff_at(schedule: sqlite3.Row | None) -> str | None:
         time_part = f"{time_part}:00"
     if len(time_part) != 8:
         return None
-    return f"{match_date.strip()}T{time_part}"
+    try:
+        local_dt = datetime.fromisoformat(f"{match_date.strip()}T{time_part}")
+    except ValueError:
+        return None
+    return local_dt.replace(tzinfo=SCHEDULE_TIMEZONE).isoformat()
 
 
 def _canonical_kickoff_at(match_date: str | None) -> str | None:
@@ -758,8 +858,16 @@ def _completeness_score(**flags: bool) -> float:
 
 
 def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    cohort_counts: dict[str, int] = {}
+    strict_cohort_counts: dict[str, int] = {}
+    for row in rows:
+        cohort = str(row.get("model_cohort") or "unknown")
+        cohort_counts[cohort] = cohort_counts.get(cohort, 0) + 1
+        if row.get("sample_status") == "strict":
+            strict_cohort_counts[cohort] = strict_cohort_counts.get(cohort, 0) + 1
     return {
         "total_samples": len(rows),
+        "independent_match_count": len(rows),
         "canonical_result_count": sum(1 for row in rows if row["has_canonical_result"]),
         "match_results_count": sum(1 for row in rows if row["has_match_result"]),
         "schedule_finished_count": sum(1 for row in rows if row["has_schedule_result"]),
@@ -771,6 +879,17 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "with_prediction_snapshot": sum(1 for row in rows if row["has_prediction_snapshot"]),
         "with_process_eval": sum(1 for row in rows if row["has_process_eval"]),
         "source_result_conflicts": sum(1 for row in rows if row["source_result_conflict"]),
+        "exact_zero_probability_count": sum(
+            1 for row in rows
+            if "exact_zero_probability" in row.get("probability_quality_issues", [])
+        ),
+        "strict_exact_zero_probability_count": sum(
+            1 for row in rows
+            if row.get("sample_status") == "strict"
+            and "exact_zero_probability" in row.get("probability_quality_issues", [])
+        ),
+        "model_cohort_counts": dict(sorted(cohort_counts.items())),
+        "strict_model_cohort_counts": dict(sorted(strict_cohort_counts.items())),
         "schedule_only_finished_count": sum(
             1 for row in rows if row["has_schedule_result"] and not row["has_match_result"]
         ),

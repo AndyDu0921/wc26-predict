@@ -136,3 +136,30 @@ def test_preflight_warns_about_repairable_diagnostics_without_blocking(tmp_path)
     assert "repairable_diagnostic_samples_present" in warning_codes
     assert payload["registry_summary"]["strict_count"] == 1
     assert payload["repair_summary"]["potentially_promotable_count"] == 1
+
+
+def test_preflight_does_not_pool_legacy_model_cohorts_for_promotion(tmp_path):
+    db_path = tmp_path / "preflight.db"
+    conn = _create_preflight_db(db_path)
+    _insert_strict_match(conn, 1)
+    _insert_strict_match(conn, 2)
+    conn.execute("UPDATE pre_match_snapshots SET model_version='legacy' WHERE id='p2'")
+    conn.commit()
+    conn.close()
+
+    payload = run_accuracy_experiment_preflight(
+        db_path,
+        min_sample_count=2,
+        required_model_cohort="4.9.0-alpha",
+    )
+
+    assert payload["passed"] is False
+    assert payload["required_model_cohort_sample_count"] == 1
+    blocker = next(
+        item for item in payload["blockers"]
+        if item["code"] == "insufficient_model_cohort_samples"
+    )
+    assert blocker["evidence"]["strict_model_cohort_counts"] == {
+        "4.9.0-alpha": 1,
+        "legacy": 1,
+    }

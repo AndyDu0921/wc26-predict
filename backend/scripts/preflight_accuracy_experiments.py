@@ -13,6 +13,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.accuracy_experiment_preflight import run_accuracy_experiment_preflight  # noqa: E402
 from app.services.evaluation_registry import DEFAULT_DB_PATH, WC26_COMPETITION  # noqa: E402
+from app.version import VERSION  # noqa: E402
 
 
 def main() -> int:
@@ -22,14 +23,21 @@ def main() -> int:
     parser.add_argument("--min-sample-count", type=int, default=30)
     parser.add_argument("--candidates", default="")
     parser.add_argument("--output", default="", help="Optional JSON output path")
+    parser.add_argument(
+        "--model-cohort",
+        default=VERSION,
+        help="Active champion cohort; use 'all' only for pooled diagnostic research",
+    )
     args = parser.parse_args()
 
     candidates = [item.strip() for item in args.candidates.split(",") if item.strip()]
+    required_model_cohort = None if args.model_cohort.strip().lower() == "all" else args.model_cohort.strip()
     payload = run_accuracy_experiment_preflight(
         args.db_path,
         competition=args.competition,
         min_sample_count=args.min_sample_count,
         candidates=candidates,
+        required_model_cohort=required_model_cohort,
     )
     text = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
     if args.output:

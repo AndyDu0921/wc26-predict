@@ -16,11 +16,15 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
-from app.services.accuracy_experiment_store import persist_experiment_result
-from app.services.accuracy_experiment_preflight import run_accuracy_experiment_preflight
-from app.services.candidate_experiments import CandidateExperimentConfig, run_candidate_experiment
-from app.services.evaluation_registry import DEFAULT_DB_PATH
-from app.services.shadow_candidate_models import SUPPORTED_SHADOW_CANDIDATES
+from app.services.accuracy_experiment_store import persist_experiment_result  # noqa: E402
+from app.services.accuracy_experiment_preflight import run_accuracy_experiment_preflight  # noqa: E402
+from app.services.candidate_experiments import (  # noqa: E402
+    CandidateExperimentConfig,
+    run_candidate_experiment,
+)
+from app.services.evaluation_registry import DEFAULT_DB_PATH  # noqa: E402
+from app.services.shadow_candidate_models import SUPPORTED_SHADOW_CANDIDATES  # noqa: E402
+from app.version import VERSION  # noqa: E402
 
 
 DEFAULT_CANDIDATES = (
@@ -45,6 +49,11 @@ def main() -> int:
     parser.add_argument("--output", default="", help="Optional JSON output path")
     parser.add_argument("--persist", action="store_true", help="Persist audit rows only")
     parser.add_argument("--force", action="store_true", help="Run even when read-only preflight is blocked")
+    parser.add_argument(
+        "--model-cohort",
+        default=VERSION,
+        help="Champion model cohort required for promotion evidence; use 'all' for pooled diagnostics only",
+    )
     args = parser.parse_args()
 
     candidates = [item.strip() for item in args.candidates.split(",") if item.strip()]
@@ -52,11 +61,13 @@ def main() -> int:
     if unknown:
         raise SystemExit(f"Unsupported candidate(s): {', '.join(unknown)}")
 
+    required_model_cohort = None if args.model_cohort.strip().lower() == "all" else args.model_cohort.strip()
     preflight = run_accuracy_experiment_preflight(
         args.db_path,
         competition=args.competition,
         min_sample_count=args.min_sample_count,
         candidates=candidates,
+        required_model_cohort=required_model_cohort,
     )
     if not preflight["passed"] and not args.force:
         payload = {
@@ -87,6 +98,7 @@ def main() -> int:
                 min_sample_count=args.min_sample_count,
                 competition=args.competition,
                 include_predictions=args.persist,
+                required_model_cohort=required_model_cohort,
             ),
         )
         results.append(result)

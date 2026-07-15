@@ -264,6 +264,7 @@ class PredictionResult:
             "stacking_result": self.stacking_result,
             "conformal_result": self.conformal_result,
             "missing_inputs": self.missing_inputs,
+            "active_events": self.active_events,
             "active_event_ids": [e.get("id", "") for e in self.active_events],
             "context_adjustments": self.context_adjustments,
             "sources": self.sources,
@@ -319,7 +320,7 @@ class PredictionResult:
             components_used=list(meta.get("components_used", [])),
             missing_inputs=list(data.get("missing_inputs", [])),
             pipeline_params=dict(data.get("pipeline_params", {})),
-            active_events=list(data.get("active_event_ids", [])),
+            active_events=_deserialize_active_events(data),
             context_adjustments=list(data.get("context_adjustments", [])),
             market_applied=bool(pred.get("market_applied", False)),
             market_weight_used=float(pred.get("market_weight_used", 0)),
@@ -346,3 +347,13 @@ class PredictionResult:
             stacking_result=data.get("stacking_result"),
             conformal_result=data.get("conformal_result"),
         )
+
+
+def _deserialize_active_events(data: dict[str, Any]) -> list[dict[str, object]]:
+    raw_events = data.get("active_events")
+    if isinstance(raw_events, list):
+        return [dict(item) for item in raw_events if isinstance(item, dict)]
+    raw_ids = data.get("active_event_ids", [])
+    if not isinstance(raw_ids, list):
+        return []
+    return [{"id": str(item)} for item in raw_ids if item not in (None, "")]
