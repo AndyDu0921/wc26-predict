@@ -1,21 +1,49 @@
 {
   "accuracy_os": {
-    "registry_hash": "e8b3a3fcf316257d7932bd97d205a71e36afc82ae98f32e337462cafe1f11d3a",
+    "registry_hash": "7793416a258b2ed05d5bff2686dc7164010e46a299563d5490320ff6eb2070cd",
     "status": "ok",
     "summary": {
-      "canonical_result_count": 92,
+      "canonical_result_count": 93,
       "diagnostic_count": 47,
-      "eligible_backtest_count": 37,
+      "eligible_backtest_count": 35,
+      "exact_zero_probability_count": 5,
+      "independent_match_count": 93,
       "match_results_count": 66,
-      "rejected_count": 8,
-      "schedule_finished_count": 89,
-      "schedule_only_finished_count": 26,
+      "model_cohort_counts": {
+        "4.0.0-beta": 5,
+        "4.0.4-beta": 2,
+        "4.1-beta-fix1": 5,
+        "4.1-beta-fix2": 1,
+        "4.10.0-alpha": 2,
+        "4.11.0-alpha": 4,
+        "4.3.0-beta": 1,
+        "4.3.2-beta": 1,
+        "4.8.0-alpha": 2,
+        "4.9.0-alpha": 4,
+        "unknown": 66
+      },
+      "rejected_count": 11,
+      "schedule_finished_count": 92,
+      "schedule_only_finished_count": 27,
       "source_result_conflicts": 0,
-      "strict_count": 37,
-      "total_samples": 92,
-      "with_pre_match_snapshot": 34,
-      "with_prediction_snapshot": 25,
-      "with_process_eval": 26
+      "strict_count": 35,
+      "strict_exact_zero_probability_count": 5,
+      "strict_model_cohort_counts": {
+        "4.0.0-beta": 4,
+        "4.1-beta-fix1": 5,
+        "4.1-beta-fix2": 1,
+        "4.10.0-alpha": 2,
+        "4.11.0-alpha": 4,
+        "4.3.0-beta": 1,
+        "4.3.2-beta": 1,
+        "4.8.0-alpha": 2,
+        "4.9.0-alpha": 4,
+        "unknown": 11
+      },
+      "total_samples": 93,
+      "with_pre_match_snapshot": 35,
+      "with_prediction_snapshot": 26,
+      "with_process_eval": 24
     }
   },
   "competition_state": {
@@ -60,10 +88,10 @@
       },
       {
         "empty_team_slots": 0,
-        "finished": 1,
+        "finished": 4,
         "postmatch_review_present": 1,
         "pre_match_snapshot_present": 4,
-        "scheduled": 3,
+        "scheduled": 0,
         "stage": "Quarterfinal",
         "teams_known": 4,
         "total": 4,
@@ -71,16 +99,16 @@
         "v410_pre_match_complete": 4
       },
       {
-        "empty_team_slots": 2,
+        "empty_team_slots": 0,
         "finished": 0,
         "postmatch_review_present": 0,
-        "pre_match_snapshot_present": 0,
+        "pre_match_snapshot_present": 1,
         "scheduled": 2,
         "stage": "Semifinal",
-        "teams_known": 0,
+        "teams_known": 2,
         "total": 2,
         "v410_postmatch_complete": 0,
-        "v410_pre_match_complete": 0
+        "v410_pre_match_complete": 1
       },
       {
         "empty_team_slots": 1,
@@ -2394,7 +2422,16 @@
           "exists": false,
           "path": null
         },
-        "postmatch_missing": [],
+        "postmatch_missing": [
+          "match_results",
+          "match_team_statistics",
+          "postmatch_process_eval",
+          "prediction_learning_log",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
         "postmatch_report": {
           "exists": false,
           "path": null
@@ -2414,11 +2451,11 @@
           "tier": "none"
         },
         "score": {
-          "away_goals": null,
-          "home_goals": null,
-          "is_finished": false,
-          "result_label": null,
-          "status": "SCHEDULED"
+          "away_goals": 1,
+          "home_goals": 2,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
         },
         "slots": {
           "away_slot": "W92",
@@ -2475,7 +2512,16 @@
           "exists": false,
           "path": null
         },
-        "postmatch_missing": [],
+        "postmatch_missing": [
+          "match_results",
+          "match_team_statistics",
+          "postmatch_process_eval",
+          "prediction_learning_log",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
         "postmatch_report": {
           "exists": false,
           "path": null
@@ -2495,11 +2541,11 @@
           "tier": "none"
         },
         "score": {
-          "away_goals": null,
-          "home_goals": null,
-          "is_finished": false,
-          "result_label": null,
-          "status": "SCHEDULED"
+          "away_goals": 2,
+          "home_goals": 1,
+          "is_finished": true,
+          "result_label": "away",
+          "status": "FINISHED"
         },
         "slots": {
           "away_slot": "W94",
@@ -2556,7 +2602,16 @@
           "exists": false,
           "path": null
         },
-        "postmatch_missing": [],
+        "postmatch_missing": [
+          "match_results",
+          "match_team_statistics",
+          "postmatch_process_eval",
+          "prediction_learning_log",
+          "postmatch_eval",
+          "signal_evaluations",
+          "postmatch_report",
+          "postmatch_memory"
+        ],
         "postmatch_report": {
           "exists": false,
           "path": null
@@ -2576,11 +2631,11 @@
           "tier": "none"
         },
         "score": {
-          "away_goals": null,
-          "home_goals": null,
-          "is_finished": false,
-          "result_label": null,
-          "status": "SCHEDULED"
+          "away_goals": 1,
+          "home_goals": 3,
+          "is_finished": true,
+          "result_label": "home",
+          "status": "FINISHED"
         },
         "slots": {
           "away_slot": "W96",
@@ -2593,7 +2648,7 @@
         "venue": "Arrowhead Stadium"
       },
       {
-        "away_team": null,
+        "away_team": "Spain",
         "checks": {
           "evidence_items": false,
           "feature_snapshots": false,
@@ -2628,7 +2683,7 @@
           "prediction_snapshots": 0,
           "signal_evaluations": 0
         },
-        "home_team": null,
+        "home_team": "France",
         "kickoff_time": "03:00",
         "match_date": "2026-07-15",
         "match_id": "205",
@@ -2673,7 +2728,7 @@
         "slots": {
           "away_slot": "W98",
           "home_slot": "W97",
-          "teams_known": false
+          "teams_known": true
         },
         "stage": "Semifinal",
         "v410_postmatch_complete": false,
@@ -2681,28 +2736,28 @@
         "venue": "AT&T Stadium"
       },
       {
-        "away_team": null,
+        "away_team": "England",
         "checks": {
-          "evidence_items": false,
-          "feature_snapshots": false,
+          "evidence_items": true,
+          "feature_snapshots": true,
           "match_results": false,
           "match_team_statistics": false,
           "postmatch_eval": false,
           "postmatch_memory": false,
           "postmatch_process_eval": false,
           "postmatch_report": false,
-          "pre_match_snapshots": false,
+          "pre_match_snapshots": true,
           "prediction_learning_log": false,
-          "prediction_report": false,
-          "prediction_runs": false,
-          "prediction_snapshots": false,
+          "prediction_report": true,
+          "prediction_runs": true,
+          "prediction_snapshots": true,
           "signal_evaluations": false
         },
         "city": "Atlanta, GA",
         "counts": {
-          "evidence_items": 0,
-          "feature_snapshots": 0,
-          "information_state_signals": 0,
+          "evidence_items": 2,
+          "feature_snapshots": 1,
+          "information_state_signals": 1,
           "match_data_raw": 0,
           "match_events": 0,
           "match_game_state_segments": 0,
@@ -2710,13 +2765,13 @@
           "match_team_statistics": 0,
           "postmatch_eval": 0,
           "postmatch_process_eval": 0,
-          "pre_match_snapshots": 0,
+          "pre_match_snapshots": 2,
           "prediction_learning_log": 0,
-          "prediction_runs": 0,
-          "prediction_snapshots": 0,
+          "prediction_runs": 1,
+          "prediction_snapshots": 1,
           "signal_evaluations": 0
         },
-        "home_team": null,
+        "home_team": "Argentina",
         "kickoff_time": "03:00",
         "match_date": "2026-07-16",
         "match_id": "206",
@@ -2731,18 +2786,11 @@
           "path": null
         },
         "postmatch_review_present": false,
-        "pre_match_missing": [
-          "pre_match_snapshots",
-          "prediction_snapshots",
-          "prediction_runs",
-          "feature_snapshots",
-          "prediction_report",
-          "evidence_items"
-        ],
-        "pre_match_snapshot_present": false,
+        "pre_match_missing": [],
+        "pre_match_snapshot_present": true,
         "prediction_report": {
-          "exists": false,
-          "path": null
+          "exists": true,
+          "path": "reports/predictions/2026-07-16_Argentina_vs_England_prediction.md"
         },
         "rich_postmatch": {
           "available": false,
@@ -2761,11 +2809,11 @@
         "slots": {
           "away_slot": "W100",
           "home_slot": "W99",
-          "teams_known": false
+          "teams_known": true
         },
         "stage": "Semifinal",
         "v410_postmatch_complete": false,
-        "v410_pre_match_complete": false,
+        "v410_pre_match_complete": true,
         "venue": "Mercedes-Benz Stadium"
       },
       {
@@ -2956,9 +3004,9 @@
       "status": "ok"
     },
     "table_counts": {
-      "evidence_items": 41,
-      "feature_snapshots": 101,
-      "information_state_signals": 37,
+      "evidence_items": 43,
+      "feature_snapshots": 102,
+      "information_state_signals": 38,
       "match_data_raw": 2,
       "match_events": 23,
       "match_game_state_segments": 16,
@@ -2967,10 +3015,10 @@
       "model_weight_proposals": 0,
       "postmatch_eval": 21,
       "postmatch_process_eval": 24,
-      "pre_match_snapshots": 309,
+      "pre_match_snapshots": 311,
       "prediction_learning_log": 132,
-      "prediction_runs": 31,
-      "prediction_snapshots": 26,
+      "prediction_runs": 32,
+      "prediction_snapshots": 27,
       "signal_evaluations": 19,
       "wc26_schedule": 104
     }
@@ -2991,23 +3039,47 @@
       "project audit scripts"
     ]
   },
-  "generated_at": "2026-07-10T15:48:51.762409+00:00",
+  "generated_at": "2026-07-22T06:43:58.282905+00:00",
   "handoff_checklist": [
     "Read docs/CURRENT_PROJECT_STATE.md and reports/audits/current_project_state.json.",
     "Run build_project_state_report.py before making tournament-state claims.",
     "Treat DB/evidence/report artifacts as facts; treat chat summaries as hints only.",
     "Use official provider adapters for FIFA data when possible; do not rely on uncited web snippets.",
     "Do not alter historical predictions, production weights, or artifacts without an explicit request.",
-    "For completed matches, verify closed-loop tables before rerunning postmatch work."
+    "For completed matches, verify closed-loop tables before rerunning postmatch work.",
+    "State the model cohort and sample size before quoting any accuracy metric.",
+    "Verify active artifact hashes and training provenance separately."
   ],
   "known_risks": [
     {
       "code": "strict_sample_count_below_target",
       "evidence": {
         "diagnostic_count": 47,
-        "strict_count": 37,
+        "strict_count": 35,
         "target": 50
       },
+      "severity": "P0"
+    },
+    {
+      "code": "current_version_cohort_below_minimum",
+      "evidence": {
+        "engineering_minimum": 30,
+        "model_cohort": "4.12.0-alpha",
+        "preferred_target": 50,
+        "strict_count": 0
+      },
+      "note": "No current-version predictive improvement may be claimed.",
+      "severity": "P0"
+    },
+    {
+      "code": "active_artifact_provenance_incomplete",
+      "evidence": {
+        "bundle_id": "legacy-wc26-7130f601",
+        "provenance_complete": false,
+        "status": "legacy_active_unvalidated",
+        "training_cutoff": "unknown"
+      },
+      "note": "Hash integrity is not equivalent to temporal training provenance.",
       "severity": "P0"
     },
     {
@@ -3018,15 +3090,6 @@
         "stage": "Round of 32"
       },
       "severity": "P1"
-    },
-    {
-      "code": "scheduled_stage_has_empty_team_slots",
-      "evidence": {
-        "empty_team_slots": 2,
-        "scheduled": 2,
-        "stage": "Semifinal"
-      },
-      "severity": "P2"
     },
     {
       "code": "scheduled_stage_has_empty_team_slots",
@@ -3050,10 +3113,11 @@
       "code": "finished_tracked_matches_missing_v410_postmatch_fields",
       "evidence": {
         "by_stage": {
+          "Quarterfinal": 3,
           "Round of 16": 5,
           "Round of 32": 15
         },
-        "count": 20,
+        "count": 23,
         "examples": [
           {
             "away_team": "Canada",
@@ -3159,9 +3223,21 @@
       "severity": "P1"
     }
   ],
+  "model_runtime": {
+    "bundle_id": "legacy-wc26-7130f601",
+    "component_count": 9,
+    "manifest_path": "backend/artifacts/active_bundle.json",
+    "promotion_evidence": false,
+    "status": "legacy_active_unvalidated",
+    "training_data": {
+      "cutoff": "unknown",
+      "fingerprint": "cache-key-7130f601463386890dcb73cd8246e1f9",
+      "provenance_complete": false
+    }
+  },
   "operational_state": {
-    "evidence_items": 41,
-    "information_state_signals": 37,
+    "evidence_items": 43,
+    "information_state_signals": 38,
     "match_data_raw": 2,
     "match_events": 23,
     "match_game_state_segments": 16,
@@ -3178,8 +3254,28 @@
       "action": "Repair diagnostic registry rows only from real pre-kickoff snapshots; do not fabricate probabilities or timestamps.",
       "evidence": {
         "diagnostic_count": 47,
-        "strict_count": 37,
+        "strict_count": 35,
         "target": 50
+      },
+      "priority": "P0"
+    },
+    {
+      "action": "Keep the current version frozen and collect same-cohort temporal outcomes; do not use pooled historical metrics as promotion evidence.",
+      "evidence": {
+        "engineering_minimum": 30,
+        "model_cohort": "4.12.0-alpha",
+        "preferred_target": 50,
+        "strict_count": 0
+      },
+      "priority": "P0"
+    },
+    {
+      "action": "Train the next shadow bundle with exact cutoff and row fingerprint, then promote only after same-cohort paired gates and manual approval.",
+      "evidence": {
+        "bundle_id": "legacy-wc26-7130f601",
+        "provenance_complete": false,
+        "status": "legacy_active_unvalidated",
+        "training_cutoff": "unknown"
       },
       "priority": "P0"
     },
@@ -3191,15 +3287,6 @@
         "stage": "Round of 32"
       },
       "priority": "P1"
-    },
-    {
-      "action": "Resolve empty team slots from verified project DB/bracket evidence before running predictions for that stage.",
-      "evidence": {
-        "empty_team_slots": 2,
-        "scheduled": 2,
-        "stage": "Semifinal"
-      },
-      "priority": "P2"
     },
     {
       "action": "Resolve empty team slots from verified project DB/bracket evidence before running predictions for that stage.",
@@ -3223,13 +3310,13 @@
   "repo_root": "D:\\hermes agent\\2026世界杯分析",
   "schema_version": "project_state_report.v1",
   "version": {
-    "build_name": "V4.11.0-alpha — Match Data OS + game-state postmatch engine",
-    "git_commit": "5702eee4988f638c6c655e6fd0ec528547ab6449",
+    "build_name": "V4.12.0-alpha - first-principles accuracy and closed-loop hardening",
+    "git_commit": "43a42ab2ce59d5d2d5600fa33f6783afb6b2ec94",
     "git_status": {
       "available": true,
-      "changed_file_count": 12,
-      "dirty": true
+      "changed_file_count": 0,
+      "dirty": false
     },
-    "version": "4.11.0-alpha"
+    "version": "4.12.0-alpha"
   }
 }
