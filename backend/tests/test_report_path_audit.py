@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
@@ -146,6 +145,29 @@ def test_entrypoint_audit_passes_clean_current_entrypoints(tmp_path: Path):
 
     assert result["passed"] is True
     assert result["stale_references"] == []
+    assert result["forbidden_runtime_references"] == []
+
+
+def test_entrypoint_audit_flags_deleted_runtime_module_reference(tmp_path: Path):
+    from scripts.audit_entrypoints import CURRENT_ENTRYPOINTS
+
+    for rel_path in CURRENT_ENTRYPOINTS:
+        path = tmp_path / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# current\n", encoding="utf-8")
+    dashboard = tmp_path / "backend" / "dashboard" / "page.py"
+    dashboard.parent.mkdir(parents=True, exist_ok=True)
+    dashboard.write_text(
+        "from app.services.artifact_registry import load_registry\n",
+        encoding="utf-8",
+    )
+
+    result = audit_entrypoints(repo_root=tmp_path)
+
+    assert result["passed"] is False
+    assert result["forbidden_runtime_references"][0]["path"] == (
+        "backend/dashboard/page.py"
+    )
 
 
 def test_match_closed_loop_audit_flags_missing_pre_requirements(tmp_path: Path):
@@ -171,6 +193,7 @@ def test_match_closed_loop_audit_flags_missing_pre_requirements(tmp_path: Path):
             CREATE TABLE prediction_runs (id TEXT PRIMARY KEY, match_id TEXT);
             CREATE TABLE feature_snapshots (id TEXT PRIMARY KEY, match_id TEXT);
             CREATE TABLE evidence_items (id TEXT PRIMARY KEY, match_id TEXT);
+            CREATE TABLE matches (id TEXT PRIMARY KEY);
             """
         )
         conn.execute(
@@ -184,6 +207,7 @@ def test_match_closed_loop_audit_flags_missing_pre_requirements(tmp_path: Path):
     result = audit_match_closed_loop(db_path, match_ids=["194"], phase="pre", repo_root=tmp_path)
 
     assert result["passed"] is False
+    assert "match_parent" in result["matches"][0]["missing"]
     assert "prediction_runs" in result["matches"][0]["missing"]
     assert "feature_snapshots" in result["matches"][0]["missing"]
 
@@ -227,12 +251,14 @@ def test_match_closed_loop_audit_passes_complete_pre_and_post(tmp_path: Path):
             CREATE TABLE prediction_learning_log (id TEXT PRIMARY KEY, match_id TEXT);
             CREATE TABLE postmatch_eval (id TEXT PRIMARY KEY, prediction_run_id TEXT);
             CREATE TABLE signal_evaluations (id TEXT PRIMARY KEY, match_id TEXT);
+            CREATE TABLE matches (id TEXT PRIMARY KEY);
             """
         )
         conn.execute(
             "INSERT INTO pre_match_snapshots VALUES (?, ?, ?, ?, ?, ?)",
             ("pre-1", "199", "2026-07-07T00:00:00+00:00", "Portugal", "Spain", "2026-07-07T20:00:00"),
         )
+        conn.execute("INSERT INTO matches VALUES (?)", ("199",))
         conn.execute(
             "INSERT INTO prediction_snapshots VALUES (?, ?, ?, ?)",
             ("snap-1", "199", "2026-07-07T00:00:00+00:00", "reports/predictions/2026-07-07_Portugal_vs_Spain_prediction.md"),

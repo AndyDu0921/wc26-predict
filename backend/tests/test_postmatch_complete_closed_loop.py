@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-import pytest
 
 from scripts.run_postmatch_complete import (
     _learning_log_prediction_run_id,

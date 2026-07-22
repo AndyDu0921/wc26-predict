@@ -257,7 +257,10 @@ def _component_probs(snapshot: sqlite3.Row) -> dict[str, Any]:
     return normalized
 
 
-def _pipeline_params(snapshot: sqlite3.Row) -> dict[str, Any]:
+def _pipeline_params(
+    conn: sqlite3.Connection,
+    snapshot: sqlite3.Row,
+) -> dict[str, Any]:
     fields = [
         "weight_config_label",
         "weight_config",
@@ -280,9 +283,18 @@ def _pipeline_params(snapshot: sqlite3.Row) -> dict[str, Any]:
         "fused_score_matrix",
         "source_score_matrices",
     ]
+    schedule = _schedule_result(conn, str(snapshot["match_id"]))
     params: dict[str, Any] = {
         "backfill_source": "pre_match_snapshots",
         "source_snapshot_id": snapshot["id"],
+        "stage": str(schedule["stage"] or "") if schedule is not None else "",
+        "venue": schedule["venue"] if schedule is not None else None,
+        "is_neutral": (
+            bool(snapshot["is_neutral"])
+            if "is_neutral" in snapshot.keys()
+            else True
+        ),
+        "kickoff_at": snapshot["kickoff_at"],
     }
     for field in fields:
         value = snapshot[field]
@@ -365,7 +377,7 @@ def _prediction_snapshot_values(
         "missing_inputs": _json_dump(_json_load(snapshot["missing_inputs"], [])),
         "confidence": snapshot["confidence"],
         "calibration_monitor": _json_dump({}),
-        "pipeline_params": _json_dump(_pipeline_params(snapshot)),
+        "pipeline_params": _json_dump(_pipeline_params(conn, snapshot)),
         "report_path": report_path,
         "report_markdown": report_md,
         "component_probs": _json_dump(_component_probs(snapshot)),
@@ -406,9 +418,13 @@ def _prediction_run_values(
 def _schedule_result(conn: sqlite3.Connection, match_id: str) -> sqlite3.Row | None:
     keys = _match_id_keys(match_id)
     placeholders, params = _in_clause(keys)
+    columns = _table_columns(conn, "wc26_schedule")
+    stage_expr = "stage" if "stage" in columns else "NULL AS stage"
+    venue_expr = "venue" if "venue" in columns else "NULL AS venue"
     return conn.execute(
         f"""
-        SELECT id, home_team, away_team, home_goals, away_goals, match_status
+        SELECT id, home_team, away_team, home_goals, away_goals, match_status,
+               {stage_expr}, {venue_expr}
         FROM wc26_schedule
         WHERE CAST(id AS TEXT) IN ({placeholders})
         """,
@@ -442,7 +458,7 @@ def _ensure_matches_parent(
         return None
 
     schedule = conn.execute(
-        """
+        f"""
         SELECT id, match_number, home_team, away_team, stage, match_date,
                kickoff_time, venue, city, match_status
         FROM wc26_schedule

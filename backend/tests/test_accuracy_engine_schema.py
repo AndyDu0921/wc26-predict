@@ -18,7 +18,7 @@ def test_local_accuracy_engine_tables_exist_after_migration():
     finally:
         conn.close()
 
-    assert version == "h8c9d0e1f2g3"
+    assert version == "i9d0e1f2g3h4"
     assert {
         "feature_snapshots",
         "experiment_runs",
@@ -34,5 +34,6 @@ def test_local_accuracy_engine_tables_exist_after_migration():
         "player_match_minutes",
         "match_player_statistics",
         "match_game_state_segments",
+        "signal_review_log",
     }.issubset(tables)
     assert {"fused_score_matrix", "source_score_matrices"}.issubset(prediction_snapshot_columns)

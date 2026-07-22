@@ -1,8 +1,8 @@
 """snapshot_service.py — Save PreMatchSnapshot to database.
 
-Provides a lightweight, synchronous service that can be called from both
-the artifact pipeline (sync) and the async pipeline. Designed to never
-throw — a failed snapshot save must not block prediction.
+Provides the canonical synchronous pre-match snapshot persistence helper.
+Invalid required inputs raise; storage failures return ``None`` and therefore
+make the canonical closed-loop audit fail.
 
 Usage:
     from app.services.snapshot_service import save_pre_match_snapshot
@@ -17,17 +17,18 @@ Usage:
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
-import sys
 import re
 from pathlib import Path
 from typing import Any
+
+from app.services.sqlite_paths import current_sync_sqlite_path
 
 logger = logging.getLogger(__name__)
 
 # ── DB path resolution ──
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-from app.services.sqlite_paths import current_sync_sqlite_path
 
 
 def _db_path() -> Path:
@@ -62,9 +63,9 @@ def save_pre_match_snapshot(
     # ── Model outputs ──
     component_probs: dict[str, Any] | None = None,
     # ── Final prediction ──
-    final_home_prob: float = 0.333,
-    final_draw_prob: float = 0.334,
-    final_away_prob: float = 0.333,
+    final_home_prob: float | None = None,
+    final_draw_prob: float | None = None,
+    final_away_prob: float | None = None,
     home_xg: float | None = None,
     away_xg: float | None = None,
     top_scores: list[dict[str, Any]] | None = None,
@@ -106,13 +107,31 @@ def save_pre_match_snapshot(
 
     This function is deliberately sync (uses sqlite3 directly) so it can be called
     from any context — CLI, Dashboard, or API — without async/await overhead.
-    A failure is logged but never propagated.
+    Invalid required probabilities raise immediately. Storage failures are
+    logged and return ``None`` so the canonical caller can mark the run incomplete.
     """
     import json
     import uuid
     from datetime import datetime, timezone
 
     import hashlib
+
+    probabilities = (final_home_prob, final_draw_prob, final_away_prob)
+    if any(value is None for value in probabilities):
+        raise ValueError("Pre-match snapshot requires explicit H/D/A probabilities")
+    final_home_prob, final_draw_prob, final_away_prob = (
+        float(final_home_prob),
+        float(final_draw_prob),
+        float(final_away_prob),
+    )
+    if any(
+        not math.isfinite(value) or value < 0.0 or value > 1.0
+        for value in (final_home_prob, final_draw_prob, final_away_prob)
+    ):
+        raise ValueError("Pre-match snapshot probabilities must be finite values in [0, 1]")
+    probability_sum = final_home_prob + final_draw_prob + final_away_prob
+    if not math.isclose(probability_sum, 1.0, abs_tol=1e-6):
+        raise ValueError(f"Pre-match snapshot probabilities sum to {probability_sum:.8f}")
 
     snapshot_id = str(uuid.uuid4())
     freeze_dt = datetime.now(timezone.utc).isoformat()

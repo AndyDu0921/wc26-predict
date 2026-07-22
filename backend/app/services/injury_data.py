@@ -1,7 +1,7 @@
 """Player injury and availability data service.
 
 Bridges external injury data into the NewsSignal system that the
-SignalAdjuster consumes.  Supports multiple data sources:
+the canonical synchronous signal path consumes. Supports multiple data sources:
 
   - Local JSON seed file (for manual updates, no API key needed)
   - Placeholder for Transfermarkt / FlashScore scraping
@@ -17,7 +17,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from app.logging import get_logger
@@ -131,7 +131,7 @@ class InjuryDataService:
         team_id: UUID | None = None,
     ) -> dict[str, Any]:
         """Convert an InjuryRecord into the signal payload format the
-        orchestrator passes to SignalAdjuster.apply_signals().
+        canonical pipeline passes to the signal adjustment layer.
         """
         impact = "negative" if record.status in ("out", "doubtful") else "positive"
         minutes_delta = {
@@ -198,9 +198,9 @@ def fuse_injury_signals(
 ) -> dict[str, float]:
     """Apply injury signals as a simple multiplier on win probability.
 
-    This is a lightweight version of SignalAdjuster that works without
-    database NewsSignal entries.  For the full SignalAdjuster pipeline,
-    injuries should be persisted as NewsSignal rows.
+    This lightweight path works without database NewsSignal entries. For the
+    full evidence-ledger path, injuries should be persisted with traceable
+    source and availability timestamps.
 
     Adjustments:
       - Out (key player):  -15% win prob for affected team

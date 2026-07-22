@@ -111,6 +111,68 @@ def test_after_kickoff_evidence_is_not_strict_ready(tmp_path):
     assert audit["strict_ready"] is False
 
 
+def test_information_snapshot_excludes_evidence_added_after_prediction_as_of(tmp_path):
+    db_path = _db(tmp_path)
+    for suffix, available_at in (
+        ("early", "2026-07-07T08:00:00+00:00"),
+        ("late", "2026-07-07T10:00:00+00:00"),
+    ):
+        upsert_evidence_item(
+            db_path,
+            EvidenceInput(
+                evidence_type="news",
+                source_url=f"https://example.test/{suffix}",
+                title=f"Alpha {suffix} update",
+                content="Alpha striker is injured.",
+                available_at=available_at,
+                reliability_score=0.8,
+                match_id="m1",
+                home_team="Alpha",
+                away_team="Beta",
+            ),
+        )
+
+    extracted = extract_information_signals(
+        db_path,
+        match_id="m1",
+        home_team="Alpha",
+        away_team="Beta",
+        kickoff_at="2026-07-07T20:00:00+00:00",
+        as_of_time="2026-07-07T09:00:00+00:00",
+    )
+    audit = audit_match_information_state(
+        db_path,
+        match_id="m1",
+        home_team="Alpha",
+        away_team="Beta",
+        kickoff_at="2026-07-07T20:00:00+00:00",
+        as_of_time="2026-07-07T09:00:00+00:00",
+    )
+
+    assert extracted["evidence_count"] == 1
+    assert extracted["signals_extracted"] == 1
+    assert audit["evidence_count"] == 1
+    assert audit["checks"]["all_evidence_available_by_as_of"] is True
+    assert audit["excluded_post_as_of_evidence_count"] == 1
+    assert len(audit["post_as_of_evidence_ids"]) == 1
+
+
+def test_missing_kickoff_is_unknown_not_clean(tmp_path):
+    db_path = _db(tmp_path)
+
+    audit = audit_match_information_state(
+        db_path,
+        match_id="m1",
+        home_team="Alpha",
+        away_team="Beta",
+        as_of_time="2026-07-07T09:00:00+00:00",
+    )
+
+    assert audit["checks"]["kickoff_known"] is False
+    assert audit["checks"]["all_evidence_before_kickoff"] is False
+    assert audit["strict_ready"] is False
+
+
 def test_low_confidence_signal_stays_shadow_rejected(tmp_path):
     db_path = _db(tmp_path)
     upsert_evidence_item(

@@ -59,6 +59,7 @@ def _run_parent(source_db: Path, work_dir: Path, *, keep: bool) -> int:
     env["POSTGRES_URL"] = f"sqlite+aiosqlite:///{temp_db.as_posix()}"
     env["PREDICTION_REPORT_DIR"] = str(report_dir)
     env["PYTHONPATH"] = str(BACKEND_DIR)
+    env["PYTHONIOENCODING"] = "utf-8"
     cmd = [
         sys.executable,
         str(Path(__file__).resolve()),
@@ -68,7 +69,16 @@ def _run_parent(source_db: Path, work_dir: Path, *, keep: bool) -> int:
         "--report-dir",
         str(report_dir),
     ]
-    proc = subprocess.run(cmd, cwd=REPO_ROOT, env=env, text=True, capture_output=True, timeout=180)
+    proc = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=180,
+    )
     after = _table_counts(source_db)
     source_unchanged = before == after
     payload: dict[str, Any]
@@ -88,7 +98,7 @@ def _run_parent(source_db: Path, work_dir: Path, *, keep: bool) -> int:
     payload["child_returncode"] = proc.returncode
     if proc.stderr:
         payload["child_stderr"] = proc.stderr
-    print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    print(json.dumps(payload, ensure_ascii=True, indent=2, default=str))
     if not keep and proc.returncode == 0:
         shutil.rmtree(run_dir, ignore_errors=True)
     return 0 if proc.returncode == 0 and source_unchanged and payload.get("passed") else 1
@@ -133,7 +143,7 @@ def _run_child(db_path: Path, report_dir: Path) -> int:
 
     try:
         payload = asyncio.run(_inner())
-        print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+        print(json.dumps(payload, ensure_ascii=True, indent=2, default=str))
         return 0 if payload.get("passed") else 1
     except Exception as exc:
         print(
@@ -143,7 +153,7 @@ def _run_child(db_path: Path, report_dir: Path) -> int:
                     "error": str(exc),
                     "traceback": traceback.format_exc(),
                 },
-                ensure_ascii=False,
+                ensure_ascii=True,
                 indent=2,
             )
         )

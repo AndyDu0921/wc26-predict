@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import time
+import uuid as _uuid
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -8,7 +11,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.dependencies import require_admin_token
@@ -138,12 +140,7 @@ async def get_prediction_history(request: Request, match_id: UUID, db: AsyncSess
     ]
 
 
-# ── Public prediction trigger (no admin auth, rate-limited) ──
-
-import asyncio
-import time
-import uuid as _uuid
-from datetime import datetime as _dt, timezone as _tz
+# ── Authenticated background prediction trigger ──
 
 _prediction_jobs: dict[str, dict] = {}  # prediction_id -> {status, match_id, error, created_at}
 _prediction_jobs_lock = asyncio.Lock()
@@ -161,14 +158,15 @@ async def _cleanup_stale_jobs() -> None:
         _prediction_jobs.pop(jid, None)
 
 @router.post("/{match_id}/trigger-public")
-@limiter.limit("3/minute")
+@limiter.limit("2/minute")
 async def trigger_prediction_public(
     request: Request,
     match_id: UUID,
     payload: TriggerPredictionRequest,
+    _: str = Depends(require_admin_token),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Public prediction trigger. Rate-limited to 3/min. Runs async."""
+    """Backward-compatible background trigger; authentication is mandatory."""
     job_id = _uuid.uuid4().hex[:12]
     _prediction_jobs[job_id] = {
         "status": "running", "match_id": str(match_id), "error": None,

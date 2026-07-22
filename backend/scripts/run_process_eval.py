@@ -25,15 +25,6 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.services.match_stats.process_eval_store import (  # noqa: E402
-    get_snapshot_for_match,
-    store_process_eval,
-    determine_actual_result,
-    determine_predicted_winner,
-    build_classification_pipeline,
-)
-
-
 def get_snapshot(db_path: Path, match_id: str) -> Optional[Dict]:
     """Get the most recent prediction snapshot for a match (by team name match)."""
     conn = sqlite3.connect(str(db_path))
@@ -225,7 +216,7 @@ def main():
     home_stats = team_stats["home"]
     away_stats = team_stats["away"]
 
-    print(f"Team Stats (from DB):")
+    print("Team Stats (from DB):")
     for s, name in [("home", match['home_team']), ("away", match['away_team'])]:
         d = team_stats[s]
         provider = d.get("provider", "unknown")
@@ -238,8 +229,6 @@ def main():
     # Step 4: Run process evaluator
     from app.services.match_stats.process_evaluator import (
         evaluate_process,
-        compute_dominance_index,
-        ProcessEvalResult,
     )
 
     # Determine predicted winner from snapshot
@@ -277,7 +266,6 @@ def main():
         compute_learning_weight,
         get_learning_tier,
     )
-    from app.services.match_stats.quality import compute_data_quality_score
 
     data_quality = max(
         home_stats.get("data_quality_score", 0.5) or 0.5,
@@ -329,36 +317,36 @@ def main():
 
     # Step 8: Print summary
     print(f"{'='*60}")
-    print(f"EVALUATION RESULTS")
+    print("EVALUATION RESULTS")
     print(f"{'='*60}")
-    print(f"")
-    print(f"--- Prediction vs Actual ---")
+    print("")
+    print("--- Prediction vs Actual ---")
     print(f"  Predicted xG:   H={result.predicted_home_xg:.4f}  A={result.predicted_away_xg:.4f}  total={result.predicted_total_goals:.4f}")
     print(f"  Actual xG:      H={result.actual_home_xg:.4f}  A={result.actual_away_xg:.4f}  total={result.actual_total_xg:.4f}")
     print(f"  xG Error:       H={result.xg_home_error:+.4f}  A={result.xg_away_error:+.4f}  MAE={result.xg_mae:.4f}")
     print(f"  Total Goal Err: {result.total_xg_error:+.4f}")
-    print(f"")
-    print(f"--- Direction ---")
+    print("")
+    print("--- Direction ---")
     print(f"  Predicted winner: {predicted_winner} (H={probs['home']:.3f} D={probs['draw']:.3f} A={probs['away']:.3f})")
     print(f"  Actual winner:    {actual_result} ({match['home_goals']}-{match['away_goals']})")
     print(f"  Outcome correct:  {outcome_correct}")
     print(f"  xG direction:     {'correct' if result.xg_direction_correct == 1 else 'wrong' if result.xg_direction_correct == 0 else 'N/A'}")
     print(f"  Process winner:   {result.process_winner}")
-    print(f"")
-    print(f"--- Dominance ---")
+    print("")
+    print("--- Dominance ---")
     print(f"  Home: {result.dominance_index_home:.4f}  Away: {result.dominance_index_away:.4f}")
     print(f"  Finishing: H={result.finishing_delta_home:+.4f}  A={result.finishing_delta_away:+.4f}")
-    print(f"")
-    print(f"--- Classification ---")
+    print("")
+    print("--- Classification ---")
     print(f"  Process Label:     {result.process_label}")
     print(f"  Failure Type:      {result.model_failure_type}")
     print(f"  Learning Weight:   {result.learning_weight:.4f}")
     print(f"  Learning Tier:     {tier}")
     print(f"  Recommended:       {result.recommended_action}")
-    print(f"")
+    print("")
     print(f"  Stored in postmatch_process_eval: row {row_id}")
     print(f"{'='*60}")
-    print(f"Done.")
+    print("Done.")
 
 
 if __name__ == "__main__":

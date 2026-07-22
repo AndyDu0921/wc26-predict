@@ -1,7 +1,6 @@
 """Test market provider selection logic."""
 from __future__ import annotations
 
-import pytest
 
 
 def test_apifootball_com_provider_imports():

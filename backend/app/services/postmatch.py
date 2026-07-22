@@ -11,7 +11,6 @@ Also generates a structured MatchReview dataclass for Dashboard display.
 """
 
 from __future__ import annotations
-import logging
 
 import math
 from dataclasses import dataclass, field
@@ -28,6 +27,11 @@ class MatchReview:
     home_team: str
     away_team: str
     competition: str
+    pred_home_prob: float
+    pred_draw_prob: float
+    pred_away_prob: float
+    pred_home_xg: float
+    pred_away_xg: float
     match_date: str = ""
 
     # ── Actual result ──
@@ -35,12 +39,7 @@ class MatchReview:
     actual_away_goals: int = 0
     actual_outcome: str = ""  # "home" | "draw" | "away"
 
-    # ── Predicted probabilities ──
-    pred_home_prob: float = 0.333
-    pred_draw_prob: float = 0.334
-    pred_away_prob: float = 0.333
-    pred_home_xg: float = 0.0
-    pred_away_xg: float = 0.0
+    # ── Predicted score distribution ──
     pred_top_scores: list[dict[str, Any]] = field(default_factory=list)
 
     # ── Evaluation metrics ──
@@ -111,17 +110,31 @@ def evaluate_prediction(
     Returns:
         MatchReview with all metrics populated.
     """
+    required_probability_keys = ("home_win_prob", "draw_prob", "away_win_prob")
+    required_keys = (*required_probability_keys, "home_xg", "away_xg")
+    missing = [key for key in required_keys if key not in pred_result]
+    if missing:
+        raise ValueError(f"Post-match evaluation requires stored probabilities: {missing}")
+    probabilities = [float(pred_result[key]) for key in required_probability_keys]
+    if any(not math.isfinite(value) or value < 0.0 or value > 1.0 for value in probabilities):
+        raise ValueError("Post-match probabilities must be finite values in [0, 1]")
+    if not math.isclose(sum(probabilities), 1.0, abs_tol=1e-6):
+        raise ValueError(f"Post-match probabilities sum to {sum(probabilities):.8f}")
+    xg_values = [float(pred_result["home_xg"]), float(pred_result["away_xg"])]
+    if any(not math.isfinite(value) or value < 0.0 for value in xg_values):
+        raise ValueError("Post-match xG values must be finite and non-negative")
+
     review = MatchReview(
         home_team=pred_result.get("home_team", ""),
         away_team=pred_result.get("away_team", ""),
         competition=pred_result.get("competition", ""),
         actual_home_goals=actual_home_goals,
         actual_away_goals=actual_away_goals,
-        pred_home_prob=pred_result.get("home_win_prob", 0.333),
-        pred_draw_prob=pred_result.get("draw_prob", 0.334),
-        pred_away_prob=pred_result.get("away_win_prob", 0.333),
-        pred_home_xg=pred_result.get("home_xg", 0),
-        pred_away_xg=pred_result.get("away_xg", 0),
+        pred_home_prob=probabilities[0],
+        pred_draw_prob=probabilities[1],
+        pred_away_prob=probabilities[2],
+        pred_home_xg=xg_values[0],
+        pred_away_xg=xg_values[1],
         pred_top_scores=pred_result.get("top_scores", []),
     )
 
@@ -232,8 +245,8 @@ def generate_comparison_text(review: MatchReview) -> str:
         "",
         "### 预测 vs 实际",
         "",
-        f"| 指标 | 预测 | 实际 |",
-        f"|---|---|---|",
+        "| 指标 | 预测 | 实际 |",
+        "|---|---|---|",
         f"| {review.home_team} 胜 | {review.pred_home_prob*100:.1f}% | {'✅' if review.actual_outcome == 'home' else '—'} |",
         f"| 平局 | {review.pred_draw_prob*100:.1f}% | {'✅' if review.actual_outcome == 'draw' else '—'} |",
         f"| {review.away_team} 胜 | {review.pred_away_prob*100:.1f}% | {'✅' if review.actual_outcome == 'away' else '—'} |",
@@ -241,8 +254,8 @@ def generate_comparison_text(review: MatchReview) -> str:
         "",
         "### 评估指标",
         "",
-        f"| 指标 | 值 | 说明 |",
-        f"|---|---|---|",
+        "| 指标 | 值 | 说明 |",
+        "|---|---|---|",
         f"| Brier Score | {review.brier_score:.4f} | 0=完美, 1=最差 |",
         f"| Log Loss | {review.log_loss:.4f} | 越低越好 |",
         f"| RPS | {review.rps:.4f} | 越低越好 |",

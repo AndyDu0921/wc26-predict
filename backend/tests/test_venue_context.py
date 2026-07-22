@@ -7,7 +7,6 @@ from app.services.venue_context import (
     venue_altitude,
     venue_country,
     venue_capacity,
-    VenueContext,
     WC26_TEAM_COUNTRY,
 )
 

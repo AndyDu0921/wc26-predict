@@ -9,8 +9,6 @@ NOT available (per-match): xG, Possession%, Pass completion%, Corners, Clearance
 For these fields, use a supplementary provider or manual entry.
 """
 
-import hashlib
-import json
 import logging
 import warnings
 from datetime import datetime, timezone
@@ -109,10 +107,6 @@ class FBrefProvider(MatchStatsProvider):
                 payload["away_stats"]["keeper"] = away_row
         except Exception as e:
             logger.warning(f"FBref keeper fetch failed: {e}")
-
-        # Build result
-        payload_json = json.dumps(payload, default=str, ensure_ascii=False)
-        payload_hash = hashlib.sha256(payload_json.encode()).hexdigest()[:16]
 
         return RawMatchStats(
             match_id=match_id,

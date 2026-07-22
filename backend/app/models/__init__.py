@@ -18,8 +18,7 @@ from app.models.team import Team
 from app.models.team_alias import TeamAlias
 from app.models.market_divergence_log import MarketDivergenceLog
 from app.models.prediction_learning_log import PredictionLearningLog
-from app.models.signal_track_record import SignalTrackRecord
-from app.models.context_performance_matrix import ContextPerformanceMatrix
+from app.models.signal_review_log import SignalReviewLog
 from app.models.match_result_verification import MatchResultVerification
 from app.models.model_weight_proposal import ModelWeightProposal
 from app.models.accuracy_engine import (
@@ -49,13 +48,13 @@ __all__ = [
     "PredictionSnapshot",
     "SourceRegistry",
     "MotivationEvent",
+    "MOTIVATION_TAGS",
     "ManualEvent",
     "Team",
     "TeamAlias",
     "MarketDivergenceLog",
     "PredictionLearningLog",
-    "SignalTrackRecord",
-    "ContextPerformanceMatrix",
+    "SignalReviewLog",
     "MatchResultVerification",
     "ModelWeightProposal",
     "FeatureSnapshot",

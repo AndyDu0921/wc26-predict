@@ -1,6 +1,5 @@
 """Tests for outcome-constrained score matrix calibrator."""
 
-import math
 
 import numpy as np
 import pytest

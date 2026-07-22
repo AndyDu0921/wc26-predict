@@ -1,46 +1,49 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Reporting
 
-If you discover a security vulnerability in this project, please **do not** open a public issue.
+Do not publish credentials, exploitable payloads, private evidence, or match-provider tokens in a public issue. Use the repository host's private security advisory channel, or contact the maintainer privately, and include impact, reproduction steps, and the affected revision.
 
-Instead, report it privately:
+## Supported Code
 
-1. **Email**: Open an issue with the title `[SECURITY]` and we will exchange contact information
-2. Include a clear description of the vulnerability, steps to reproduce, and potential impact
+Security fixes target the latest revision on `master` and the active V4.12 hardening branch. Historical alpha/beta releases are retained for audit only.
 
-## Scope
+## Runtime Contract
 
-Security concerns relevant to this project include:
+- `ADMIN_TOKEN` must be a generated secret of at least 32 characters. Known defaults and weak values are rejected at request time and application startup.
+- Prediction and analysis mutation routes require bearer authentication and rate limits.
+- Wildcard CORS is rejected while credentialed requests are enabled.
+- `.env`, `.env.local`, `backend/.env`, database backups, and runtime model files must not be committed.
+- Market API keys should use the narrowest provider scope available.
+- Public reports may contain market odds as research evidence, but betting instructions, guaranteed outcomes, and stake language are prohibited.
 
-- **API key exposure** — accidental commits of `.env` files or hardcoded credentials
-- **Dependency vulnerabilities** — outdated packages with known CVEs
-- **Data leakage** — prediction pipeline accessing future information during backtesting
-- **Input injection** — malicious inputs through API endpoints (match names, team names)
+## Data And Model Safety
 
-## Best Practices for Contributors
+- Pre-match strict features may only use evidence whose `available_at` is no later than the prediction freeze time and kickoff.
+- Post-match events, player statistics, and results must never be joined into the same match's pre-match feature snapshot.
+- API/worker prediction currently requires one aligned SQLite database. Postgres or mismatched sync/async paths fail closed to prevent split persistence.
+- Required production model files are loaded only through `backend/artifacts/active_bundle.json`. The exact bytes are path-confined, size-checked, and SHA-256 verified before trusted local pickle deserialization.
+- Treat `active_bundle.json` as trusted deployment configuration: runtime identities should have read-only access to the manifest and registered artifacts.
+- Missing or tampered required artifacts stop prediction. Runtime inference must never retrain a replacement model implicitly.
+- Training writes an immutable `candidate_unvalidated` bundle. Activation requires same-cohort temporal evidence and explicit human promotion.
+- Tournament simulation must fail when a component prediction fails; placeholder probabilities are prohibited.
 
-- Never commit `.env`, `.env.local`, or any file containing API keys
-- Run `git status` before committing to check for accidental sensitive file inclusion
-- Rotate API keys immediately if they are ever exposed (even in private repos)
-- Keep dependencies updated — check `requirements.txt` for known-vulnerable versions
-- Validate and sanitize all user inputs in API endpoints
+## SQL Construction Contract
 
-## Supported Versions
+- All external values use SQLite parameters (`?`), never string interpolation.
+- Dynamic `IN` lists may generate only `?` placeholders.
+- Dynamic table/column identifiers must be fixed internal allowlists, schema-discovered identifiers, or safely quoted identifiers; request values may never select an identifier.
+- Bandit B608 findings require source review under this contract. They are not blanket-suppressed so a new interpolation site remains visible.
 
-Only the latest version on the `master` branch receives security updates.
+## Required Checks
 
-| Version | Supported |
-|:---|:---|
-| V4.7.0-alpha (master) | ✅ |
-| All older versions | ❌ |
+```powershell
+backend/.venv/Scripts/python.exe backend/scripts/verify_env.py
+backend/.venv/Scripts/python.exe backend/scripts/audit_entrypoints.py --json
+backend/.venv/Scripts/python.exe backend/scripts/audit_public_outputs.py
+backend/.venv/Scripts/python.exe backend/scripts/audit_db_integrity.py
+backend/.venv/Scripts/python.exe -m bandit -r backend/app backend/scripts
+$env:PYTHONUTF8='1'; backend/.venv/Scripts/python.exe -m pip_audit -r backend/requirements.txt
+```
 
-## Security-Related Configuration
-
-- `ADMIN_TOKEN` **must** be changed from the default `change-me` before any deployment
-- API routes under `/api/admin/*` require `ADMIN_TOKEN` authentication
-- Market API keys should use minimal-scope tokens where the provider supports it
-
----
-
-This project takes the security of research data and API credentials seriously. Thank you for helping keep it secure.
+Rotate any credential immediately after suspected exposure, even when the repository is private.

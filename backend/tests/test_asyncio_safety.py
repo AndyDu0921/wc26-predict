@@ -5,7 +5,6 @@ when called from within an existing event loop, and return structured
 degraded reasons.
 """
 import asyncio
-import pytest
 
 
 class TestAsyncioRunSafety:

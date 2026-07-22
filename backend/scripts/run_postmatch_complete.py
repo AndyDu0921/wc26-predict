@@ -243,9 +243,13 @@ def _score_hit_metrics(top_scores, home_score: int, away_score: int) -> tuple[bo
     return exact_hit, top3_hit
 
 
-def _official_score_from_match_data_os(match_id: str) -> tuple[int, int] | None:
+def _official_score_from_match_data_os(
+    match_id: str,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+) -> tuple[int, int] | None:
     try:
-        raw = load_latest_raw_payload(DEFAULT_DB_PATH, match_id, provider="fifa_official")
+        raw = load_latest_raw_payload(db_path, match_id, provider="fifa_official")
     except Exception:
         return None
     if not raw or not isinstance(raw.get("payload"), dict):
@@ -385,10 +389,16 @@ async def _upsert_postmatch_eval(
     }
 
 
-def _lookup_process_eval_detail(home_team: str, away_team: str) -> dict[str, object]:
+def _lookup_process_eval_detail(
+    home_team: str,
+    away_team: str,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+) -> dict[str, object]:
     learning_weight, tier, failure_type, process_label = _lookup_process_eval_weight(
         home_team,
         away_team,
+        db_path=db_path,
     )
     detail: dict[str, object] = {
         "learning_weight": learning_weight,
@@ -401,7 +411,6 @@ def _lookup_process_eval_detail(home_team: str, away_team: str) -> dict[str, obj
     }
     try:
         import sqlite3
-        db_path = BACKEND_DIR / "data" / "local_stage2.db"
         conn = sqlite3.connect(str(db_path))
         row = conn.execute(
             """
@@ -493,7 +502,10 @@ async def _fallback_pre_match_snapshot(db, match_id: str) -> PredictionSnapshot 
 
 
 def _lookup_process_eval_weight(
-    home_team: str, away_team: str,
+    home_team: str,
+    away_team: str,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
 ) -> tuple[float, str, str | None, str | None]:
     """Look up the process evaluation learning_weight for a match by team names.
 
@@ -506,7 +518,7 @@ def _lookup_process_eval_weight(
         Default: (1.0, "full", None, None) if no evaluation exists yet.
     """
     import sqlite3
-    db_path = BACKEND_DIR / "data" / "local_stage2.db"
+    db_path = Path(db_path)
     if not db_path.exists():
         return 1.0, "full", None, None
 
@@ -556,18 +568,20 @@ async def run_complete_postmatch(
     data_source: str = "manual",
     dry_run: bool = False,
     trust_db_score: bool = False,
+    db_path: str | Path = DEFAULT_DB_PATH,
 ) -> dict:
     """Execute the complete 7-step post-match pipeline.
 
     Returns a dict with per-step status and final summary.
     """
     match_uuid = match_id.replace("-", "").strip()
+    resolved_db_path = Path(db_path).resolve()
     verification_match_id = match_uuid
     pipeline_status = {step: "pending" for step in PIPELINE_STEPS}
     pipeline_data: dict = {}
 
     print(f"\n{'='*70}")
-    print(f"  POST-MATCH COMPLETE PIPELINE")
+    print("  POST-MATCH COMPLETE PIPELINE")
     print(f"  Match: {match_uuid} | Score: {home_score}-{away_score}")
     print(f"  Mode: {'DRY-RUN' if dry_run else 'LIVE'}")
     print(f"{'='*70}")
@@ -577,7 +591,7 @@ async def run_complete_postmatch(
         # STEP 1: Multi-source score verification (HARD GATE)
         # ═══════════════════════════════════════════════════════════
         print(f"\n{'─'*50}")
-        print(f"  STEP 1/7: Score Verification Gate")
+        print("  STEP 1/7: Score Verification Gate")
         print(f"{'─'*50}")
 
         verification_service = get_verification_service()
@@ -591,7 +605,7 @@ async def run_complete_postmatch(
             source_name="match_results_import",
             source_tier=SourceTier.REPUTABLE_DATA_PROVIDER,
             match_status="Finished",
-            notes=f"complete_postmatch pipeline (snapshot lookup pending)",
+            notes="complete_postmatch pipeline (snapshot lookup pending)",
         )
         print("  + Source 1: match_results_import (tier 3)")
 
@@ -660,7 +674,10 @@ async def run_complete_postmatch(
                 print(f"  ⚠ URL fetch error: {e}")
 
         if not second_source_added:
-            official_score = _official_score_from_match_data_os(verification_match_id)
+            official_score = _official_score_from_match_data_os(
+                verification_match_id,
+                db_path=resolved_db_path,
+            )
             if official_score == (home_score, away_score):
                 await verification_service.add_source_result(
                     db=db,
@@ -701,13 +718,13 @@ async def run_complete_postmatch(
 
         if consensus is None or not consensus.is_verified:
             pipeline_status["verify_score"] = "FAILED"
-            print(f"\n  ⛔ HARD STOP: Score verification FAILED")
+            print("\n  ⛔ HARD STOP: Score verification FAILED")
             print(f"     Sources: {consensus.source_count if consensus else 0}/2 required")
             print(f"     The score {home_score}-{away_score} could not be independently verified.")
-            print(f"     Re-run with --verify-url <URL> pointing to a sports site")
-            print(f"     that confirms the score (ESPN, SkySports, FIFA.com, etc.)")
+            print("     Re-run with --verify-url <URL> pointing to a sports site")
+            print("     that confirms the score (ESPN, SkySports, FIFA.com, etc.)")
             if not verify_url:
-                print(f"     Or provide --verify-url with a match report URL.")
+                print("     Or provide --verify-url with a match report URL.")
             return {
                 "status": "ABORTED",
                 "failed_at_step": "verify_score",
@@ -726,7 +743,7 @@ async def run_complete_postmatch(
         # STEP 2: Find prediction snapshot
         # ═══════════════════════════════════════════════════════════
         print(f"\n{'─'*50}")
-        print(f"  STEP 2/7: Find Prediction Snapshot")
+        print("  STEP 2/7: Find Prediction Snapshot")
         print(f"{'─'*50}")
 
         # match_id can be stored as raw 32-char hex OR 36-char UUID with hyphens.
@@ -796,7 +813,7 @@ async def run_complete_postmatch(
             )
         )
         if existing.scalar_one_or_none() is not None:
-            print(f"  → Removing old learning log for clean re-run")
+            print("  → Removing old learning log for clean re-run")
             await db.execute(
                 delete(PredictionLearningLog).where(
                     PredictionLearningLog.snapshot_id.in_(learning_log_snapshot_ids)
@@ -808,7 +825,7 @@ async def run_complete_postmatch(
         # STEP 3: Collect Opta data
         # ═══════════════════════════════════════════════════════════
         print(f"\n{'─'*50}")
-        print(f"  STEP 3/7: Collect Match Statistics")
+        print("  STEP 3/7: Collect Match Statistics")
         print(f"{'─'*50}")
 
         opta_stats = {
@@ -838,7 +855,7 @@ async def run_complete_postmatch(
             pipeline_status["collect_opta_data"] = "incomplete"
             print(f"  ⚠ Incomplete stats — missing: {', '.join(missing_stats)}")
             print(f"     Available: {len(available_stats)} stats from source '{data_source}'")
-            print(f"     Learning will proceed but report will note data gaps.")
+            print("     Learning will proceed but report will note data gaps.")
         else:
             pipeline_status["collect_opta_data"] = "passed"
             print(f"  ✅ All core stats available ({len(available_stats)} metrics from {data_source})")
@@ -851,7 +868,7 @@ async def run_complete_postmatch(
                 print(f"     {k}: {v}")
 
         rich_context = load_rich_postmatch_context(
-            DEFAULT_DB_PATH,
+            resolved_db_path,
             match_id=match_uuid,
             home_team=getattr(snapshot, "home_team", None),
             away_team=getattr(snapshot, "away_team", None),
@@ -873,7 +890,7 @@ async def run_complete_postmatch(
         # STEP 4: Update match_results table
         # ═══════════════════════════════════════════════════════════
         print(f"\n{'─'*50}")
-        print(f"  STEP 4/7: Update match_results Table")
+        print("  STEP 4/7: Update match_results Table")
         print(f"{'─'*50}")
 
         # Ensure match_results row exists
@@ -918,13 +935,13 @@ async def run_complete_postmatch(
         )
 
         pipeline_status["update_match_results"] = "passed"
-        print(f"  ✅ match_results updated")
+        print("  ✅ match_results updated")
 
         # ═══════════════════════════════════════════════════════════
         # STEP 5: Run Learning Engine
         # ═══════════════════════════════════════════════════════════
         print(f"\n{'─'*50}")
-        print(f"  STEP 5/7: Learning Engine — Error Attribution")
+        print("  STEP 5/7: Learning Engine — Error Attribution")
         print(f"{'─'*50}")
 
         if dry_run:
@@ -937,11 +954,13 @@ async def run_complete_postmatch(
                 _lookup_process_eval_weight(
                     getattr(snapshot, 'home_team', ''),
                     getattr(snapshot, 'away_team', ''),
+                    db_path=resolved_db_path,
                 )
             )
             pipeline_data["learning_weight_detail"] = _lookup_process_eval_detail(
                 getattr(snapshot, 'home_team', ''),
                 getattr(snapshot, 'away_team', ''),
+                db_path=resolved_db_path,
             )
             error_log = await engine.process_match_result(
                 snapshot,
@@ -950,11 +969,12 @@ async def run_complete_postmatch(
                 db,
                 verified_result_id=verified_result_id,
                 learning_weight=learning_weight,
+                db_path=resolved_db_path,
             )
 
             pipeline_status["run_learning_engine"] = "passed"
             pipeline_data["learning_log"] = error_log
-            print(f"  ✅ Learning complete:")
+            print("  ✅ Learning complete:")
             print(f"     Brier: {error_log.error_magnitude:.4f}")
             print(f"     Direction: {error_log.error_direction}")
             print(f"     Status: {error_log.status}")
@@ -966,7 +986,7 @@ async def run_complete_postmatch(
         # STEP 6: Generate analysis
         # ═══════════════════════════════════════════════════════════
         print(f"\n{'─'*50}")
-        print(f"  STEP 6/7: Generate Post-Match Analysis")
+        print("  STEP 6/7: Generate Post-Match Analysis")
         print(f"{'─'*50}")
 
         baseline = snapshot.baseline_probs or {}
@@ -1012,7 +1032,7 @@ async def run_complete_postmatch(
         pipeline_status["generate_analysis"] = "passed"
         pipeline_data["analysis"] = analysis
 
-        print(f"  ✅ Analysis generated:")
+        print("  ✅ Analysis generated:")
         print(f"     Prediction: {analysis['predicted']} → Favored: {pred_fav}")
         print(f"     Actual: {actual_result} win | Direction: {'✅ correct' if dir_correct else '❌ wrong'}")
         print(f"     Brier: {brier:.4f}")
@@ -1020,7 +1040,7 @@ async def run_complete_postmatch(
         print(f"     Data: {analysis['data_completeness']}")
 
         # Per-component breakdown
-        print(f"\n  Component-level review:")
+        print("\n  Component-level review:")
         component_rows = _component_review_rows(component, actual_idx, actual_vec)
         pipeline_data["component_review_rows"] = component_rows
         learning_log_for_context = pipeline_data.get("learning_log")
@@ -1055,7 +1075,7 @@ async def run_complete_postmatch(
         # STEP 7: Output report
         # ═══════════════════════════════════════════════════════════
         print(f"\n{'─'*50}")
-        print(f"  STEP 7/7: Output Report (3 locations)")
+        print("  STEP 7/7: Output Report (3 locations)")
         print(f"{'─'*50}")
 
         report_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1100,7 +1120,7 @@ async def run_complete_postmatch(
             )
             pipeline_data["postmatch_eval"] = postmatch_eval_summary
             await db.commit()
-            print(f"  ✅ 7a: DB committed")
+            print("  ✅ 7a: DB committed")
             print(
                 "  ✅ Postmatch eval: "
                 f"{postmatch_eval_summary.get('action')} "
@@ -1108,7 +1128,7 @@ async def run_complete_postmatch(
             )
             try:
                 signal_eval_summary = evaluate_match_signals(
-                    DEFAULT_DB_PATH,
+                    resolved_db_path,
                     match_id=match_uuid,
                     home_team=home_team,
                     away_team=away_team,
@@ -1132,7 +1152,7 @@ async def run_complete_postmatch(
         else:
             try:
                 signal_eval_summary = evaluate_match_signals(
-                    DEFAULT_DB_PATH,
+                    resolved_db_path,
                     match_id=match_uuid,
                     home_team=home_team,
                     away_team=away_team,
@@ -1167,6 +1187,7 @@ async def run_complete_postmatch(
         learning_weight_detail = pipeline_data.get("learning_weight_detail") or _lookup_process_eval_detail(
             home_team,
             away_team,
+            db_path=resolved_db_path,
         )
         learning_section = ""
         if learning_log and not dry_run:
@@ -1370,7 +1391,7 @@ metadata:
         closed_loop_audit = None
         if not dry_run:
             closed_loop_audit = audit_match_closed_loop(
-                DEFAULT_DB_PATH,
+                resolved_db_path,
                 match_ids=[match_uuid],
                 phase="post",
             )
@@ -1404,7 +1425,7 @@ metadata:
         }
 
         print(f"\n{'='*70}")
-        print(f"  PIPELINE COMPLETE")
+        print("  PIPELINE COMPLETE")
         print(f"  {'✅' if dir_correct else '❌'} Direction: {'correct' if dir_correct else 'wrong'}")
         print(f"  📊 Brier: {brier:.4f}" if not dry_run else "  📊 Brier: N/A (dry-run)")
         print(f"  📋 Data: {summary['data_completeness']}")

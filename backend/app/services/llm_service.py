@@ -7,7 +7,6 @@ import re
 from abc import ABC, abstractmethod
 from datetime import timedelta
 from datetime import datetime
-from datetime import timezone
 from typing import Any
 from uuid import UUID
 
@@ -303,7 +302,9 @@ class SignalExtractorService:
             directions = {str(item.impact_direction) for item in entries}
             if not {"positive", "negative"}.issubset(directions):
                 continue
-            suffix = hashlib.sha1(f"{anchor}:{signal_type}".encode("utf-8")).hexdigest()[:8]
+            suffix = hashlib.sha256(
+                f"{anchor}:{signal_type}".encode("utf-8")
+            ).hexdigest()[:8]
             conflict_group_id = f"{str(match_id)[:8]}_{suffix}"
             for entry in entries:
                 entry.conflict_group_id = conflict_group_id

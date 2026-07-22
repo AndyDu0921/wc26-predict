@@ -8,10 +8,9 @@ Reuses existing SignalExtractorService from llm_service.py but adds:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from app.services.llm.deepseek_client import DeepSeekClient
-from app.services.llm.schemas import ExtractedSignal, SignalType, ImpactDirection, Severity, MIN_CONFIDENCE
+from app.services.llm.schemas import ExtractedSignal, SignalType, ImpactDirection, Severity
 
 logger = logging.getLogger(__name__)
 

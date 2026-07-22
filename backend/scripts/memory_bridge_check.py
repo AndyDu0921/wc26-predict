@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import io
-import os
 import re
 import sys
 from datetime import datetime
@@ -291,7 +290,7 @@ def main() -> int:
     errors, warnings, info = check_consistency(matched)
 
     # Step 4: Report
-    print(f"── Results ──")
+    print("── Results ──")
     print(f"  Files checked: {len(matched)}")
     print(f"  With DB refs:  {sum(1 for m in matched if m['has_db_ref'])}")
     print(f"  With DB match: {sum(1 for m in matched if m['db_eval_id'])}")
@@ -319,7 +318,7 @@ def main() -> int:
         print("[OK] All checks passed. Memory files and DB are consistent.")
 
     # Summary
-    print(f"── Summary ──")
+    print("── Summary ──")
     print(f"  DB references coverage: "
           f"{sum(1 for m in matched if m['has_db_ref'])}/{len(matched)}")
     if len(matched) > 0 and sum(1 for m in matched if m['has_db_ref']) == 0:

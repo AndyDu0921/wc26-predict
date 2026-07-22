@@ -4,10 +4,8 @@ All extracted signals must conform to this schema before entering the model.
 Low-confidence signals are routed to manual review, not the prediction pipeline.
 """
 from __future__ import annotations
-import logging
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 

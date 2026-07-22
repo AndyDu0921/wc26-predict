@@ -7,11 +7,21 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from app.version import VERSION
-
-
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BACKEND_DIR = ROOT_DIR / "backend"
+KNOWN_UNSAFE_ADMIN_TOKENS = {
+    "",
+    "admin",
+    "change-me",
+    "changeme",
+    "change_me_to_random_32_chars",
+    "secret",
+}
+
+
+def is_secure_admin_token(value: str) -> bool:
+    token = str(value or "").strip()
+    return len(token) >= 32 and token.lower() not in KNOWN_UNSAFE_ADMIN_TOKENS
 
 
 class Settings(BaseSettings):
@@ -65,11 +75,11 @@ class Settings(BaseSettings):
     @field_validator("admin_token", mode="after")
     @classmethod
     def _warn_default_admin_token(cls, value: str) -> str:
-        if value == "CHANGE_ME_TO_RANDOM_32_CHARS":
+        if not is_secure_admin_token(value):
             import logging
             logging.getLogger("app.config").warning(
                 "\n╔══════════════════════════════════════════════════════════════╗\n"
-                "║  SECURITY WARNING: ADMIN_TOKEN is still the default value.   ║\n"
+                "║  SECURITY WARNING: ADMIN_TOKEN is weak or a known default.   ║\n"
                 "║  Generate a secure token and set it in your .env file:       ║\n"
                 "║    python -c \"import secrets; print(secrets.token_urlsafe(32))\"  ║\n"
                 "╚══════════════════════════════════════════════════════════════╝"
@@ -80,7 +90,6 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
-    prediction_model_version: str = Field(default=VERSION, alias="PREDICTION_MODEL_VERSION")
     embedding_mode: Literal["local", "api"] = Field(default="local", alias="EMBEDDING_MODE")
     default_competition_codes: list[str] = Field(
         default_factory=lambda: ["WC", "QCAF", "QAFC", "QCBL", "QCON", "QOFC", "QUFA", "EC", "PL", "PD", "BL1", "SA", "FL1", "CL"],

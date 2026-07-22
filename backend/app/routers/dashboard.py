@@ -7,9 +7,8 @@ All market/odds data is gated behind internal_research mode check.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 

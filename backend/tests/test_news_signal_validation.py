@@ -1,7 +1,6 @@
 """Test news signal validation rules."""
 from __future__ import annotations
 
-import pytest
 
 
 def test_public_safety_filter_imports():

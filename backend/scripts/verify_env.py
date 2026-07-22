@@ -74,9 +74,9 @@ def check_deepseek_config() -> list[tuple[str, str]]:
         results.append((FAIL, f"LLM_PROVIDER={provider} (expected: deepseek)"))
 
     if model == "deepseek-v4-pro":
-        results.append((PASS, f"LLM_MODEL=deepseek-v4-pro"))
+        results.append((PASS, "LLM_MODEL=deepseek-v4-pro"))
     elif model == "deepseek-chat":
-        results.append((FAIL, f"LLM_MODEL=deepseek-chat (deprecated — use deepseek-v4-pro)"))
+        results.append((FAIL, "LLM_MODEL=deepseek-chat (deprecated — use deepseek-v4-pro)"))
     elif not model:
         # Check config.py default
         try:
@@ -161,13 +161,14 @@ def check_db_integrity(db_path: Path | None = None) -> list[tuple[str, str]]:
 
 def check_env_safety() -> list[tuple[str, str]]:
     """Check for unsafe default values."""
-    results = []
+    from app.config import get_settings, is_secure_admin_token
 
-    admin_token = os.environ.get("ADMIN_TOKEN", "")
-    if admin_token in ("change-me", "CHANGE_ME_TO_RANDOM_32_CHARS", ""):
-        results.append((WARN, "ADMIN_TOKEN is default value or empty — unsafe for production"))
+    results = []
+    settings = get_settings()
+    if not is_secure_admin_token(settings.admin_token):
+        results.append((FAIL, "ADMIN_TOKEN is weak/default — runtime will reject admin access"))
     else:
-        results.append((PASS, "ADMIN_TOKEN is set (non-default)"))
+        results.append((PASS, "ADMIN_TOKEN satisfies the runtime security contract"))
 
     # Check we don't print full keys
     for var in ["LLM_API_KEY", "FOOTBALL_DATA_API_KEY", "ODDS_API_KEY",
@@ -181,13 +182,55 @@ def check_env_safety() -> list[tuple[str, str]]:
     return results
 
 
+def check_runtime_artifacts() -> list[tuple[str, str]]:
+    """Verify every component registered in the active runtime bundle."""
+    from app.services.artifact_bundle import load_active_bundle, verified_artifact_path
+
+    try:
+        bundle = load_active_bundle()
+    except Exception as exc:
+        return [(FAIL, f"Active artifact bundle invalid: {exc}")]
+    results = [(PASS, f"Active bundle: {bundle.get('bundle_id')} ({bundle.get('status')})")]
+    for component in sorted((bundle.get("components") or {})):
+        try:
+            path = verified_artifact_path(component)
+            results.append((PASS, f"Artifact verified: {component} ({path.name})"))
+        except Exception as exc:
+            results.append((FAIL, f"Artifact invalid: {component}: {exc}"))
+    training = bundle.get("training_data") or {}
+    if training.get("provenance_complete"):
+        results.append((PASS, "Active artifact training provenance is complete"))
+    else:
+        results.append((WARN, "Active artifact training provenance is incomplete"))
+    return results
+
+
+def check_prediction_database_alignment() -> list[tuple[str, str]]:
+    """Confirm API/worker predictions resolve to the canonical SQLite file."""
+    from app.config import get_settings
+    from app.services.sqlite_paths import configured_async_sqlite_path
+
+    settings = get_settings()
+    path = configured_async_sqlite_path(settings.postgres_url)
+    if path is None:
+        return [
+            (
+                FAIL,
+                "POSTGRES_URL is not SQLite; canonical API/worker prediction will fail closed",
+            )
+        ]
+    expected = (BACKEND_DIR / "data" / "local_stage2.db").resolve()
+    if path != expected:
+        return [(WARN, f"Configured SQLite differs from local canonical DB: {path}")]
+    return [(PASS, f"Canonical prediction DB aligned: {path}")]
+
+
 def main():
     parser = argparse.ArgumentParser(description="WC26 Predict environment verification")
     parser.add_argument("--ci", action="store_true", help="CI mode (skip DB check)")
     parser.add_argument("--quick", action="store_true", help="Quick check (imports + config only)")
     args = parser.parse_args()
 
-    all_results: list[tuple[str, list[tuple[str, str]]]] = []
     exit_code = EXIT_OK
 
     # Always run these
@@ -199,6 +242,8 @@ def main():
 
     if not args.ci and not args.quick:
         sections.append(("Database Integrity", check_db_integrity()))
+        sections.append(("Prediction DB Alignment", check_prediction_database_alignment()))
+        sections.append(("Runtime Artifacts", check_runtime_artifacts()))
 
     # Print results
     print("=" * 60)

@@ -1,7 +1,6 @@
 """Tests for post-calibration KO draw guard."""
 
 from app.core.ko_draw_guard import (
-    KO_DRAW_FLOOR_WARNING,
     _is_ko_stage,
     check_ko_draw_guard,
 )

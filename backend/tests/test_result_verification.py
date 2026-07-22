@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.models.base import Base
 from app.services.result_verification import (
     ConsensusResult,
-    ResultVerificationService,
     SourceTier,
     get_verification_service,
 )
@@ -155,13 +154,9 @@ class TestBrierScore:
         assert _result_index(1, 1) == 1  # draw
         assert _result_index(0, 2) == 2  # away win
 
-    def test_coerce_probs_tolerates_legacy_null_market_payload(self):
-        probs = _coerce_probs({"home": None})
-
-        assert probs["home"] == pytest.approx(1 / 3)
-        assert probs["draw"] == pytest.approx(1 / 3)
-        assert probs["away"] == pytest.approx(1 / 3)
-        assert sum(probs.values()) == pytest.approx(1.0)
+    def test_coerce_probs_rejects_legacy_null_market_payload(self):
+        with pytest.raises(ValueError, match="missing probability"):
+            _coerce_probs({"home": None})
 
     def test_coerce_probs_accepts_alternate_field_names(self):
         probs = _coerce_probs({

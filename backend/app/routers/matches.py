@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.exceptions import NotFoundError
 from app.models.article_evidence import ArticleEvidence
-from app.models.match import Match, MatchResult
+from app.models.match import Match
 from app.models.news_article import NewsArticle
 from app.models.news_signal import NewsSignal
 from app.models.postmatch_eval import PostmatchEval

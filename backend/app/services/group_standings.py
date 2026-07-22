@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.services.sqlite_paths import current_sync_sqlite_path
+
 logger = logging.getLogger(__name__)
 
 # FIFA 2026 tiebreaker order
@@ -63,10 +65,10 @@ class GroupStandingsService:
         third_place = svc.compute_third_place_ranking()
     """
 
-    def __init__(self, db_path: str | None = None) -> None:
+    def __init__(self, db_path: str | Path | None = None) -> None:
         if db_path is None:
-            db_path = str(Path(__file__).resolve().parents[2] / "data" / "local_stage2.db")
-        self._db_path = db_path
+            db_path = current_sync_sqlite_path()
+        self._db_path = str(Path(db_path).expanduser().resolve())
 
     # ------------------------------------------------------------------
     #  Public API
@@ -321,11 +323,8 @@ class GroupStandingsService:
             return scenarios
 
         # Still in contention — analyze what's needed
-        second = teams[1]
-        third_place = teams[2] if position != 2 else teams[1]
-
         if position == 0:
-            scenarios.append(f"🏆 Group leader — needs 1 point to secure")
+            scenarios.append("🏆 Group leader — needs 1 point to secure")
         elif position == 1:
             gap_to_third = team.points - teams[2].points
             if gap_to_third >= 1:
@@ -335,7 +334,7 @@ class GroupStandingsService:
         elif position == 2:
             gap = teams[1].points - team.points
             if gap <= 0:
-                scenarios.append(f"⚔️ Win jumps to 2nd place")
+                scenarios.append("⚔️ Win jumps to 2nd place")
             scenarios.append("⚠️ Fighting for top-2 or 3rd-place qualification")
         else:  # position 3
             gap = teams[2].points - team.points

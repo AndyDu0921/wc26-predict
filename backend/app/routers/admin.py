@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import UTC, timedelta
 from datetime import datetime
 from datetime import timezone
 from uuid import UUID
@@ -9,18 +9,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.database import get_db
 from app.dependencies import require_admin_token
-from app.exceptions import NotFoundError
+from app.exceptions import AppError, NotFoundError
+from app.models.accuracy_engine import EvidenceItem
 from app.models.content_article import ContentArticle
 from app.models.feedback import Feedback
 from app.models.match import Match
 from app.models.match import MatchResult
 from app.models.news_article import NewsArticle
 from app.models.news_signal import NewsSignal
+from app.models.signal_review_log import SignalReviewLog
 from app.models.team import Team
 from app.models.postmatch_eval import PostmatchEval
 from app.models.enums import CompetitionType
@@ -53,6 +54,7 @@ from app.schemas.admin import (
 from app.schemas.common import APIMessage, PaginatedResponse, PaginationMeta
 from app.schemas.feedback import FeedbackItem
 from app.services.calibration import IsotonicCalibrator
+from app.services.artifact_bundle import verified_artifact_path
 from app.services.news_ingest_service import NewsIngestService
 from app.services.canonical_prediction_runner import run_canonical_prediction
 from app.services.football_data_service import FootballDataService
@@ -189,81 +191,71 @@ async def review_signal(
     """Review a single news signal (approve/reject).
 
     - Each review **must** target a single signal (no batch approve).
-    - When approving with enters_model=True, an evidence_id is generated
-      (or accepted from the caller) to create an audit trail.
-    - Every review action is written to signal_review_log.
+    - Approval with enters_model=True requires an existing Evidence Ledger row.
+    - Signal mutation and signal_review_log are committed atomically.
     """
     if payload.status not in ("approved", "rejected"):
-        raise NotFoundError("status must be 'approved' or 'rejected'")
+        raise AppError("status must be 'approved' or 'rejected'")
 
     if not payload.reviewed_by or not payload.reviewed_by.strip():
-        raise NotFoundError("reviewed_by is required (cannot be empty)")
+        raise AppError("reviewed_by is required (cannot be empty)")
 
     result = await db.execute(select(NewsSignal).where(NewsSignal.id == signal_id))
     signal = result.scalar_one_or_none()
     if not signal:
         raise NotFoundError("Signal not found")
 
-    previous_status = signal.review_status
+    previous_status = str(signal.review_status)
+    review_status = ReviewStatus(payload.status)
+    evidence_id: str | None = None
+    if review_status == ReviewStatus.APPROVED and payload.enters_model:
+        evidence_id = str(payload.evidence_id or "").strip()
+        if not evidence_id:
+            raise AppError(
+                "evidence_id is required when an approved signal enters the model"
+            )
+        evidence_result = await db.execute(
+            select(EvidenceItem).where(EvidenceItem.id == evidence_id)
+        )
+        evidence = evidence_result.scalar_one_or_none()
+        if evidence is None:
+            raise AppError(
+                "evidence_id must reference an existing Evidence Ledger row"
+            )
+        signal_match_id = str(signal.match_id or "").replace("-", "").lower()
+        evidence_match_id = str(evidence.match_id or "").replace("-", "").lower()
+        if signal_match_id and evidence_match_id and signal_match_id != evidence_match_id:
+            raise AppError("evidence_id belongs to a different match")
 
-    signal.review_status = ReviewStatus(payload.status)
+    signal.review_status = review_status
     signal.review_notes = payload.notes
     signal.reviewed_by = payload.reviewed_by.strip()
     signal.reviewed_at = datetime.now(timezone.utc)
 
-    if payload.status == ReviewStatus.APPROVED and payload.enters_model:
+    if review_status == ReviewStatus.APPROVED and payload.enters_model:
         signal.enters_model = True
-        # Generate evidence_id if not provided by caller
-        import uuid as _uuid
-        signal.evidence_id = payload.evidence_id or str(_uuid.uuid4())
+        signal.evidence_id = evidence_id
     else:
         signal.enters_model = False
         signal.evidence_id = None
 
+    db.add(
+        SignalReviewLog(
+            signal_id=signal_id,
+            action=payload.status,
+            previous_status=previous_status,
+            new_status=payload.status,
+            reviewer=payload.reviewed_by.strip(),
+            notes=payload.notes,
+        )
+    )
     await db.commit()
     await db.refresh(signal)
-
-    # Write audit log (best-effort, non-blocking)
-    _log_signal_review(
-        signal_id=str(signal_id),
-        action=payload.status,
-        previous_status=str(previous_status),
-        reviewer=payload.reviewed_by.strip(),
-        notes=payload.notes,
-    )
 
     detail_parts = [f"Signal {signal_id} → {payload.status}"]
     if signal.enters_model:
         detail_parts.append(f"(enters model, evidence_id={signal.evidence_id})")
     return APIMessage(status="ok", detail=". ".join(detail_parts))
-
-
-def _log_signal_review(
-    signal_id: str,
-    action: str,
-    previous_status: str,
-    reviewer: str,
-    notes: str | None = None,
-) -> None:
-    """Write a signal_review_log entry (best-effort, never throws)."""
-    import sqlite3
-    from pathlib import Path
-
-    try:
-        db_path = Path(__file__).resolve().parents[2] / "data" / "local_stage2.db"
-        if not db_path.exists():
-            return
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            """INSERT INTO signal_review_log
-               (signal_id, action, previous_status, new_status, reviewer, notes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (signal_id, action, previous_status, action, reviewer, notes or ""),
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass  # audit log is best-effort; never fails the main request
 
 
 @router.post("/signals/manual", response_model=APIMessage)
@@ -419,12 +411,7 @@ async def get_dashboard(request: Request, db: AsyncSession = Depends(get_db)) ->
         for competition, prediction_count in recent_volume_rows.all()
     ]
 
-    calibrator = IsotonicCalibrator()
-    try:
-        calibrator.load(str(settings.model_artifact_dir.parent / "artifacts" / "calibrator.json"))
-    except Exception as exc:
-        logger.warning("Failed to load calibrator JSON: %s", exc)
-    calibrator_stats = calibrator.calibration_stats()
+    calibrator_stats = _active_calibrator_stats()
     fitted_at = calibrator_stats.get("fitted_at")
     if isinstance(fitted_at, str):
         try:
@@ -583,12 +570,7 @@ async def get_hermes_digest(request: Request, db: AsyncSession = Depends(get_db)
             HermesDigestItem(label="24h 赛程", detail=f"未来 24 小时 {upcoming_matches_24h} 场比赛", tone="neutral")
         )
 
-    calibrator = IsotonicCalibrator()
-    try:
-        calibrator.load(str(settings.model_artifact_dir.parent / "artifacts" / "calibrator.json"))
-    except Exception as exc:
-        logger.warning("Failed to load calibrator JSON: %s", exc)
-    calibrator_stats = calibrator.calibration_stats()
+    calibrator_stats = _active_calibrator_stats()
     calibrator_is_fitted = bool(calibrator_stats.get("is_fitted"))
     calibrator_detail = "未训练"
     calibrator_tone = "warning"
@@ -653,6 +635,15 @@ async def get_hermes_digest(request: Request, db: AsyncSession = Depends(get_db)
             ),
         ),
     )
+
+
+def _active_calibrator_stats() -> dict[str, object]:
+    calibrator = IsotonicCalibrator()
+    try:
+        calibrator.load(str(verified_artifact_path("calibrator")))
+    except Exception as exc:
+        logger.error("Active calibrator verification/load failed: %s", exc)
+    return calibrator.calibration_stats()
 
 
 @router.post("/predictions/{match_id}/trigger", response_model=TriggerPredictionResponse)

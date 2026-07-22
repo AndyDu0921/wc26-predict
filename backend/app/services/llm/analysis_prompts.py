@@ -10,7 +10,6 @@ but betting advice, guaranteed outcomes, and monetized tip language are not.
 """
 
 from __future__ import annotations
-import logging
 
 # ── System prompts ──────────────────────────────────────────────────────────────
 

@@ -28,31 +28,6 @@ last_enhanced = st.session_state.get("last_enhanced")
 
 if last_pred is None:
     st.info("暂无预测数据。请先前往 **单场预测** 页面运行一次预测，然后回到此处。")
-    st.divider()
-    if st.button("加载演示数据", key="creator_demo"):
-        st.session_state["last_prediction"] = {
-            "result": {
-                "home_team": "法国",
-                "away_team": "科特迪瓦",
-                "competition": "国际友谊赛",
-                "is_neutral": True,
-                "home_win_prob": 0.366,
-                "draw_prob": 0.242,
-                "away_win_prob": 0.392,
-                "home_xg": 1.07,
-                "away_xg": 0.71,
-                "top_scores": [
-                    {"score": "1:0", "prob": 0.175},
-                    {"score": "0:0", "prob": 0.174},
-                    {"score": "1:1", "prob": 0.134},
-                ],
-                "components_used": ["dixon_coles", "tabular_enhancer", "elo", "pi_rating"],
-            },
-            "quality": None,
-            "timings": {},
-            "total_seconds": 2.16,
-        }
-        st.rerun()
 
 if last_pred is None:
     st.stop()
@@ -70,6 +45,10 @@ def _flatten_prediction_payload(payload: dict) -> dict:
     if isinstance(raw, dict) and "meta" in raw and "prediction" in raw:
         meta = raw.get("meta", {})
         pred = raw.get("prediction", {})
+        required = ("home_win_prob", "draw_prob", "away_win_prob")
+        missing = [key for key in required if key not in pred]
+        if missing:
+            raise ValueError(f"Prediction payload is incomplete: {missing}")
         return {
             "home_team": meta.get("home_team", ""),
             "away_team": meta.get("away_team", ""),
@@ -78,9 +57,9 @@ def _flatten_prediction_payload(payload: dict) -> dict:
             "match_id": meta.get("match_id", ""),
             "match_date": meta.get("match_date", ""),
             "mode": meta.get("mode", "internal_research"),
-            "home_win_prob": pred.get("home_win_prob", 0.333),
-            "draw_prob": pred.get("draw_prob", 0.334),
-            "away_win_prob": pred.get("away_win_prob", 0.333),
+            "home_win_prob": pred["home_win_prob"],
+            "draw_prob": pred["draw_prob"],
+            "away_win_prob": pred["away_win_prob"],
             "home_xg": pred.get("home_xg", 0.0),
             "away_xg": pred.get("away_xg", 0.0),
             "top_scores": pred.get("top_scores", []),

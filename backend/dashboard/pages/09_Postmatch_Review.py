@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -16,8 +17,8 @@ from dashboard.db import db
 from dashboard.components.probability_charts import render_probability_gauge
 
 
-st.title("赛后复盘")
-st.caption("输入实际比分，评估预测准确度，生成 AI 复盘分析")
+st.title("赛后指标预览")
+st.caption("只读比较已保存的赛前快照与输入比分")
 
 # ── Input form ──────────────────────────────────────────────────────────────
 col1, col2, col3 = st.columns([2, 2, 1])
@@ -38,40 +39,61 @@ with col2:
 with col3:
     review_neutral = st.checkbox("中立场地", value=False, key="review_neutral")
 
-col1b, col2b, col3b, col4b = st.columns(4)
+col1b, col2b, col3b = st.columns(3)
 with col1b:
     review_comp = st.text_input("赛事", value="International Friendly", key="review_comp")
 with col2b:
     review_hg = st.number_input("主队进球", min_value=0, max_value=20, value=1, key="review_hg")
 with col3b:
     review_ag = st.number_input("客队进球", min_value=0, max_value=20, value=1, key="review_ag")
-with col4b:
-    review_ai = st.checkbox("AI 复盘", value=True, key="review_ai",
-                            help="使用 DeepSeek V4 Pro 生成赛后分析")
-
 can_review = review_home != review_away
 
-# ── Run review ──────────────────────────────────────────────────────────────
-if st.button("开始复盘", type="primary", disabled=not can_review):
-    with st.status("正在复盘...", expanded=True) as status:
-        # Step 1: Prediction
-        st.write("📊 运行预测模型...")
-        from app.services.prediction_pipeline import PredictionPipeline
 
-        pipeline = PredictionPipeline.from_artifacts(mode="full")
-        pred_result = pipeline.predict_sync(
-            review_home, review_away, review_comp, is_neutral=review_neutral
-        )
-        # Compatibility: build dict for existing evaluate_prediction()
-        result = pred_result.to_dict()["prediction"]
-        result["home_team"] = pred_result.home_team
-        result["away_team"] = pred_result.away_team
-        result["competition"] = pred_result.competition
-        result["is_neutral"] = pred_result.is_neutral
-        result["home_xg"] = pred_result.home_xg
-        result["away_xg"] = pred_result.away_xg
-        result["top_scores"] = pred_result.top_scores
-        result["components_used"] = pred_result.components_used
+def _load_persisted_prediction(home_team: str, away_team: str, competition: str):
+    rows = db.query(
+        """
+        SELECT id, match_id, snapshot_at, competition,
+               final_home_prob, final_draw_prob, final_away_prob,
+               home_xg, away_xg, top_scores, component_probs
+        FROM pre_match_snapshots
+        WHERE home_team=? AND away_team=?
+          AND (?='' OR competition=?)
+        ORDER BY snapshot_at DESC, id DESC
+        LIMIT 1
+        """,
+        (home_team, away_team, competition, competition),
+    )
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "snapshot_id": row["id"],
+        "match_id": row["match_id"],
+        "snapshot_at": row["snapshot_at"],
+        "home_team": home_team,
+        "away_team": away_team,
+        "competition": row["competition"],
+        "home_win_prob": float(row["final_home_prob"]),
+        "draw_prob": float(row["final_draw_prob"]),
+        "away_win_prob": float(row["final_away_prob"]),
+        "home_xg": float(row["home_xg"]),
+        "away_xg": float(row["away_xg"]),
+        "top_scores": json.loads(row["top_scores"] or "[]"),
+        "components_used": list(json.loads(row["component_probs"] or "{}").keys()),
+    }
+
+# ── Run review ──────────────────────────────────────────────────────────────
+if st.button("预览指标", type="primary", disabled=not can_review):
+    with st.status("正在计算...", expanded=True) as status:
+        # Step 1: Load the immutable pre-match prediction. Recomputing here
+        # would train/evaluate with knowledge that only existed after kickoff.
+        st.write("📊 读取赛前预测快照...")
+        result = _load_persisted_prediction(review_home, review_away, review_comp)
+        if result is None:
+            st.error("没有可追溯的赛前预测快照，无法执行可信复盘。")
+            st.stop()
+        result["is_neutral"] = review_neutral
+        st.caption(f"Snapshot {result['snapshot_id']} · {result['snapshot_at']}")
 
         # Step 2: Evaluate
         st.write("📐 计算评估指标...")
@@ -82,13 +104,7 @@ if st.button("开始复盘", type="primary", disabled=not can_review):
 
         review = evaluate_prediction(result, review_hg, review_ag)
 
-        # Step 3: AI review
-        if review_ai:
-            st.write("🤖 生成 AI 复盘...")
-            from app.services.postmatch_ai import generate_ai_review
-            review.ai_review = generate_ai_review(review)
-
-        status.update(label="复盘完成", state="complete")
+        status.update(label="计算完成", state="complete")
 
     # ── Results ──────────────────────────────────────────────────────────
     st.divider()
@@ -177,16 +193,9 @@ if st.button("开始复盘", type="primary", disabled=not can_review):
 
     st.divider()
 
-    # AI review
-    if review.ai_review:
-        st.subheader("🤖 AI 赛后复盘 (DeepSeek V4 Pro)")
-        st.markdown(review.ai_review)
-    elif review_ai:
-        st.warning("AI 复盘生成失败，请重试。")
-
     # Raw comparison text
-    with st.expander("完整复盘文本"):
+    with st.expander("完整比较文本"):
         st.markdown(generate_comparison_text(review))
 
 st.divider()
-st.caption("赛后复盘基于模型预测与实际比分对比。评级仅反映单场预测质量，不构成对模型整体性能的判断。")
+st.caption("这里只读预览单场指标；正式赛后闭环由唯一赛后入口执行。")

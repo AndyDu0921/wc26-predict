@@ -21,11 +21,10 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ── Market blend constants (mirrored from market_calibrator.py) ─────────────────
+# Legacy Dashboard argument retained for API compatibility. The canonical
+# pipeline owns the actual market blend policy.
 MAX_MARKET_BLEND = 0.25
-MIN_MARKET_BLEND = 0.05
 DIVERGENCE_THRESHOLD = 0.12
-BLEND_SATURATION = 2000
 
 
 @dataclass
@@ -48,9 +47,9 @@ class EnhancedPredictionResult:
     timings: Any = None  # PredictionTimer
 
     # ── Final probabilities (after market blend, if applied) ──
-    final_home_prob: float = 0.333
-    final_draw_prob: float = 0.334
-    final_away_prob: float = 0.333
+    final_home_prob: float | None = None
+    final_draw_prob: float | None = None
+    final_away_prob: float | None = None
 
     # ── Market data ──
     market_probs: dict[str, Any] | None = None
@@ -104,6 +103,7 @@ def run_enhanced_prediction(
     market_blend_max: float = MAX_MARKET_BLEND,
     match_id: str | None = None,
     match_date: str | datetime | None = None,
+    stage: str = "",
     venue: str | None = None,
     save_snapshot: bool = False,
     require_full_context: bool = False,
@@ -152,24 +152,27 @@ def run_enhanced_prediction(
     )
 
     try:
-        from app.services.prediction_pipeline import PredictionPipeline
+        from app.services.canonical_prediction_core import (
+            PredictionInvocation,
+            execute_prediction_core,
+        )
         from app.services.run_quality import RunQuality
 
-        pipeline = PredictionPipeline.from_artifacts(mode=mode)
-        pred = pipeline.predict_sync(
-            home_team,
-            away_team,
-            competition,
+        pred = execute_prediction_core(PredictionInvocation(
+            home_team=home_team,
+            away_team=away_team,
+            competition=competition,
             is_neutral=is_neutral,
             mode=mode,
             match_id=match_id or "",
-            match_date=match_date,
+            kickoff_at=match_date,
+            stage=stage,
             venue=venue,
             save_snapshot=save_snapshot,
             enable_market=enable_market,
             enable_weather=enable_weather if require_full_context else False,
             require_full_context=require_full_context,
-        )
+        ))
 
         result.base_result = _prediction_result_to_flat_dict(pred)
         result.final_home_prob = pred.home_win_prob
@@ -198,9 +201,7 @@ def run_enhanced_prediction(
 
     except Exception as exc:
         logger.error("Base enhanced prediction failed: %s", exc)
-        result.llm_error = f"Base prediction failed: {exc}"
-        result.total_seconds = time_module.perf_counter() - t_start
-        return result
+        raise RuntimeError(f"Base enhanced prediction failed: {exc}") from exc
 
     if enable_weather:
         weather = _fetch_weather(home_team, away_team, venue=venue)
@@ -262,47 +263,6 @@ def _prediction_result_to_flat_dict(pred: Any) -> dict[str, Any]:
     }
 
 
-def _fetch_market(
-    home_team: str,
-    away_team: str,
-    competition: str,
-) -> dict[str, Any] | None:
-    """Fetch market consensus synchronously. Returns None on failure."""
-    try:
-        from app.services.market.sync_provider import fetch_market_consensus_sync
-
-        return fetch_market_consensus_sync(home_team, away_team, competition)
-    except ImportError as e:
-        logger.warning("sync_provider not available: %s", e)
-        return None
-
-
-def _save_market_consensus_to_db(
-    *,
-    home_team: str,
-    away_team: str,
-    competition: str,
-    market_probs: dict[str, Any],
-    kickoff_at: str = "",
-) -> None:
-    """Persist market consensus to DB (best-effort, never throws)."""
-    try:
-        from app.services.market.consensus_save import save_market_consensus
-
-        save_market_consensus(
-            home_team=home_team,
-            away_team=away_team,
-            competition=competition,
-            market_probs=market_probs,
-            kickoff_at=kickoff_at,
-        )
-    except Exception:
-        logger.debug("Market consensus save skipped", exc_info=True)
-    except Exception as e:
-        logger.warning("Market fetch error: %s", e)
-        return None
-
-
 def _fetch_weather(
     home_team: str,
     away_team: str,
@@ -325,39 +285,6 @@ def _fetch_weather(
     except Exception as e:
         logger.warning("Weather fetch error: %s", e)
         return None
-
-
-def _blend_market(
-    model_home: float,
-    model_draw: float,
-    model_away: float,
-    market_home: float,
-    market_draw: float,
-    market_away: float,
-    max_blend: float = MAX_MARKET_BLEND,
-) -> tuple[float, float, float]:
-    """Blend market implied probabilities into model probabilities.
-
-    Uses a capped linear blend: final = (1-w)*model + w*market
-    where w = max(MIN, min(MAX, max_blend)).
-
-    Returns (home, draw, away) tuple, always normalized to sum=1.0.
-    """
-    weight = max(MIN_MARKET_BLEND, min(MAX_MARKET_BLEND, max_blend))
-    model_weight = 1.0 - weight
-
-    h = model_home * model_weight + market_home * weight
-    d = model_draw * model_weight + market_draw * weight
-    a = model_away * model_weight + market_away * weight
-
-    # Normalize
-    total = h + d + a
-    if total > 0:
-        h /= total
-        d /= total
-        a /= total
-
-    return h, d, a
 
 
 def _generate_llm_analysis(

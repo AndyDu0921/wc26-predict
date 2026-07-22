@@ -6,8 +6,7 @@ then records who was closer after the match finishes.
 
 from __future__ import annotations
 
-from sqlalchemy import DateTime, Float, Boolean, String, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Float, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, JSONVariant

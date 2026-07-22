@@ -1,7 +1,7 @@
 """ManualEvent model — manually injected structured events.
 
 These are user/operator-created events that feed into the Event Ledger
-and eventually the SignalAdjuster. Unlike auto-extracted NewsSignals,
+and the information-state/synchronous signal path. Unlike auto-extracted NewsSignals,
 these come with explicit human confidence and source attribution.
 
 Supported event types (from feature_flags.yaml):
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, func
+from sqlalchemy import Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin

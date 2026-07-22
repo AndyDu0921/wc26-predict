@@ -6,7 +6,6 @@ Provides backward-compatible .to_dict() for existing consumers.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Literal
 
 from app.version import VERSION
@@ -205,7 +204,7 @@ class PredictionResult:
         """Convert to dict matching the snapshot.py result format.
 
         This is the bridge between new PredictionResult and existing
-        consumers: save_prediction_snapshot(), render_markdown(), etc.
+        consumers such as canonical persistence and report rendering.
         """
         wc = self.weight_config
         payload = {

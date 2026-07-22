@@ -7,7 +7,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from starlette.requests import Request
@@ -63,6 +63,43 @@ def test_canonical_prediction_runner_rejects_postgres_url():
         )
 
 
+def test_requested_horizon_is_metadata_not_actual_generation_time():
+    from app.models.enums import PredictionRunType
+    from app.services.canonical_prediction_runner import _resolve_requested_as_of_time
+
+    kickoff = datetime(2026, 7, 20, 20, 0, tzinfo=timezone.utc)
+    match = SimpleNamespace(match_date=kickoff)
+
+    assert _resolve_requested_as_of_time(match, PredictionRunType.T_MINUS_24H) == kickoff - timedelta(hours=24)
+    assert _resolve_requested_as_of_time(match, PredictionRunType.T_MINUS_3H) == kickoff - timedelta(hours=3)
+    assert _resolve_requested_as_of_time(match, PredictionRunType.MANUAL) is None
+
+
+def test_canonical_core_runs_outside_application_event_loop(monkeypatch):
+    from app.services import canonical_prediction_runner as runner
+    from app.services.canonical_prediction_core import PredictionInvocation
+
+    sentinel = object()
+
+    def fake_execute(invocation):
+        assert invocation.home_team == "Alpha"
+        with pytest.raises(RuntimeError, match="no running event loop"):
+            asyncio.get_running_loop()
+        return sentinel
+
+    monkeypatch.setattr(runner, "execute_prediction_core", fake_execute)
+    invocation = PredictionInvocation(
+        home_team="Alpha",
+        away_team="Beta",
+        competition="Test",
+        enable_weather=True,
+    )
+
+    result = asyncio.run(runner._execute_prediction_in_worker_thread(invocation))
+
+    assert result is sentinel
+
+
 def test_canonical_prediction_runner_persists_closed_loop_on_temp_db():
     repo_root = Path(__file__).resolve().parents[2]
     source_db = repo_root / "backend" / "data" / "local_stage2.db"
@@ -73,6 +110,8 @@ def test_canonical_prediction_runner_persists_closed_loop_on_temp_db():
         [sys.executable, str(repo_root / "backend" / "scripts" / "smoke_canonical_trigger.py")],
         cwd=repo_root,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         timeout=240,
     )
@@ -202,3 +241,79 @@ def test_worker_prediction_trigger_calls_canonical_runner(monkeypatch):
     assert result == {"checked_matches": 1, "created": 2}
     assert [call[1] for call in calls] == ["t_minus_24h", "t_minus_3h"]
     assert all(call[0] == match_id for call in calls)
+
+
+def test_worker_postmatch_trigger_delegates_to_complete_pipeline(monkeypatch, tmp_path):
+    from app.services import sqlite_paths
+    from app.workers import tasks
+    from scripts import run_postmatch_complete
+
+    match_id = uuid4()
+    run_id = uuid4()
+    fake_run = SimpleNamespace(
+        id=run_id,
+        match_id=match_id,
+        match=SimpleNamespace(
+            result=SimpleNamespace(home_goals=2, away_goals=1),
+        ),
+    )
+
+    class FakeResult:
+        def __init__(self, *, rows=None, scalar=None):
+            self._rows = rows
+            self._scalar = scalar
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return list(self._rows or [])
+
+        def scalar_one_or_none(self):
+            return self._scalar
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def execute(self, stmt):
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResult(rows=[fake_run])
+            return FakeResult(scalar=None)
+
+    delegated = []
+
+    async def fake_complete_postmatch(**kwargs):
+        delegated.append(kwargs)
+        return {"status": "COMPLETE"}
+
+    temp_db = tmp_path / "worker.db"
+    temp_db.write_bytes(b"")
+    monkeypatch.setattr(tasks, "AsyncSessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(
+        sqlite_paths,
+        "assert_canonical_sqlite_alignment",
+        lambda: temp_db,
+    )
+    monkeypatch.setattr(
+        run_postmatch_complete,
+        "run_complete_postmatch",
+        fake_complete_postmatch,
+    )
+
+    result = asyncio.run(tasks._postmatch_eval())
+
+    assert result == {"created": 1, "deferred": 0, "failed": 0}
+    assert len(delegated) == 1
+    assert delegated[0]["match_id"] == str(match_id)
+    assert delegated[0]["home_score"] == 2
+    assert delegated[0]["away_score"] == 1
+    assert delegated[0]["trust_db_score"] is False
+    assert delegated[0]["db_path"] == temp_db

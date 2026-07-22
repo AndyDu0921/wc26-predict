@@ -115,6 +115,7 @@ def build_project_state_report(
                 "table_counts": table_counts,
                 "integrity": integrity_payload,
             },
+            "model_runtime": _artifact_bundle_payload(repo_root),
             "accuracy_os": registry_payload,
             "competition_state": {
                 "competition": WC26_COMPETITION,
@@ -314,6 +315,25 @@ def _operational_state(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _artifact_bundle_payload(repo_root: Path) -> dict[str, Any]:
+    manifest = repo_root / "backend" / "artifacts" / "active_bundle.json"
+    if not manifest.is_file():
+        return {"status": "missing", "path": str(manifest)}
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "invalid", "path": str(manifest), "error": str(exc)}
+    components = payload.get("components") if isinstance(payload, dict) else None
+    return {
+        "status": str(payload.get("status") or "unknown"),
+        "bundle_id": payload.get("bundle_id"),
+        "manifest_path": str(manifest.relative_to(repo_root)).replace("\\", "/"),
+        "promotion_evidence": payload.get("promotion_evidence", False),
+        "training_data": payload.get("training_data", {}),
+        "component_count": len(components) if isinstance(components, dict) else 0,
+    }
+
+
 def _known_risks(report: dict[str, Any]) -> list[dict[str, Any]]:
     risks: list[dict[str, Any]] = []
     registry = report.get("accuracy_os", {}).get("summary") or {}
@@ -327,6 +347,40 @@ def _known_risks(report: dict[str, Any]) -> list[dict[str, Any]]:
                     "target": 50,
                     "diagnostic_count": registry.get("diagnostic_count"),
                 },
+            }
+        )
+    if registry:
+        cohort_count = int(
+            (registry.get("strict_model_cohort_counts") or {}).get(VERSION, 0)
+        )
+        if cohort_count < 30:
+            risks.append(
+                {
+                    "code": "current_version_cohort_below_minimum",
+                    "severity": "P0",
+                    "evidence": {
+                        "model_cohort": VERSION,
+                        "strict_count": cohort_count,
+                        "engineering_minimum": 30,
+                        "preferred_target": 50,
+                    },
+                    "note": "No current-version predictive improvement may be claimed.",
+                }
+            )
+    runtime = report.get("model_runtime") or {}
+    training_data = runtime.get("training_data") or {}
+    if runtime.get("status") != "promoted" or not training_data.get("provenance_complete"):
+        risks.append(
+            {
+                "code": "active_artifact_provenance_incomplete",
+                "severity": "P0",
+                "evidence": {
+                    "bundle_id": runtime.get("bundle_id"),
+                    "status": runtime.get("status"),
+                    "training_cutoff": training_data.get("cutoff"),
+                    "provenance_complete": bool(training_data.get("provenance_complete")),
+                },
+                "note": "Hash integrity is not equivalent to temporal training provenance.",
             }
         )
     for stage in report["competition_state"]["stage_summary"]:
@@ -413,6 +467,28 @@ def _recommended_next_actions(report: dict[str, Any]) -> list[dict[str, Any]]:
                     "evidence": risk["evidence"],
                 }
             )
+        elif risk["code"] == "current_version_cohort_below_minimum":
+            actions.append(
+                {
+                    "priority": "P0",
+                    "action": (
+                        "Keep the current version frozen and collect same-cohort temporal outcomes; "
+                        "do not use pooled historical metrics as promotion evidence."
+                    ),
+                    "evidence": risk["evidence"],
+                }
+            )
+        elif risk["code"] == "active_artifact_provenance_incomplete":
+            actions.append(
+                {
+                    "priority": "P0",
+                    "action": (
+                        "Train the next shadow bundle with exact cutoff and row fingerprint, then "
+                        "promote only after same-cohort paired gates and manual approval."
+                    ),
+                    "evidence": risk["evidence"],
+                }
+            )
     return actions
 
 
@@ -424,6 +500,8 @@ def _handoff_checklist() -> list[str]:
         "Use official provider adapters for FIFA data when possible; do not rely on uncited web snippets.",
         "Do not alter historical predictions, production weights, or artifacts without an explicit request.",
         "For completed matches, verify closed-loop tables before rerunning postmatch work.",
+        "State the model cohort and sample size before quoting any accuracy metric.",
+        "Verify active artifact hashes and training provenance separately.",
     ]
 
 

@@ -243,3 +243,67 @@ def test_backfill_normalizes_existing_prediction_run_signals(tmp_path, backfill_
     approved = json.loads(conn.execute("SELECT approved_signals FROM prediction_runs WHERE id = ?", ("run-199",)).fetchone()[0])
     assert approved[0]["id"] == "sig-1"
     assert approved[0]["team"] == "Norway"
+
+
+def test_backfill_creates_missing_match_parent_from_schedule(tmp_path, backfill_module):
+    conn = _make_conn(tmp_path)
+    conn.executescript(
+        """
+        ALTER TABLE wc26_schedule ADD COLUMN match_number INTEGER;
+        ALTER TABLE wc26_schedule ADD COLUMN stage TEXT;
+        ALTER TABLE wc26_schedule ADD COLUMN match_date TEXT;
+        ALTER TABLE wc26_schedule ADD COLUMN kickoff_time TEXT;
+        ALTER TABLE wc26_schedule ADD COLUMN venue TEXT;
+        ALTER TABLE wc26_schedule ADD COLUMN city TEXT;
+        CREATE TABLE matches (
+            id TEXT PRIMARY KEY,
+            external_id TEXT,
+            home_team_id TEXT,
+            away_team_id TEXT,
+            match_date TEXT,
+            competition TEXT,
+            competition_weight REAL,
+            stage TEXT,
+            venue TEXT,
+            is_neutral_venue INTEGER,
+            status TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            competition_type TEXT
+        );
+        """
+    )
+    _insert_snapshot(conn, "206")
+    conn.execute("INSERT INTO teams VALUES (?, ?)", ("team-home", "Brazil"))
+    conn.execute("INSERT INTO teams VALUES (?, ?)", ("team-away", "Norway"))
+    conn.execute(
+        """
+        INSERT INTO wc26_schedule (
+            id, home_team, away_team, home_goals, away_goals, match_status,
+            match_number, stage, match_date, kickoff_time, venue, city
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "206", "Brazil", "Norway", None, None, "SCHEDULED",
+            102, "Semifinal", "2026-07-16", "03:00", "Test Stadium", "Test City",
+        ),
+    )
+    conn.commit()
+
+    actions = backfill_module.repair_match(conn, "206", persist=True)
+
+    assert "insert_matches_parent" in {item["action"] for item in actions}
+    parent = conn.execute(
+        "SELECT external_id, stage, status FROM matches WHERE id = ?",
+        ("206",),
+    ).fetchone()
+    assert dict(parent) == {
+        "external_id": "wc26_schedule:206",
+        "stage": "Semifinal",
+        "status": "scheduled",
+    }
+    params = json.loads(
+        conn.execute("SELECT pipeline_params FROM prediction_snapshots").fetchone()[0]
+    )
+    assert params["stage"] == "Semifinal"
+    assert params["is_neutral"] is True

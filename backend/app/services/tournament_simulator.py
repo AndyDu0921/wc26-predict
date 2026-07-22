@@ -13,19 +13,19 @@ Usage (as a library):
 """
 
 from __future__ import annotations
-import logging
-logger = logging.getLogger(__name__)
 
 import json
+import logging
 import sqlite3
-import sys
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # ── Round-stages and how the bracket resolves ─────────────────────────
 
@@ -102,58 +102,11 @@ class TeamProbabilities:
     champion_prob: float = 0.0
 
 
-# ── Default match probability helpers ─────────────────────────────────
-
-
-def _default_group_prob() -> dict[str, float]:
-    """Default 3-way probabilities for an unknown group match (40/30/30)."""
-    return {"home_win": 0.40, "draw": 0.30, "away_win": 0.30}
-
-
-def _default_knockout_prob() -> dict[str, float]:
-    """Default for an unknown knockout match (35/30/35) — balanced."""
-    return {"home_win": 0.35, "draw": 0.30, "away_win": 0.35}
-
-
 # ── Core simulator ────────────────────────────────────────────────────
 
 
-# ── Feature flag ──
-# UNVERIFIED_SOURCE: The polynomial below is attributed to "Csató & Gyimesi
-# (2025) EJOR — 40,000+ matches", but the known Csató & Gyimesi (2025) EJOR
-# paper covers 48-team World Cup format and competitive imbalance, NOT a
-# win-probability → expected-goals polynomial.  Until the true source is
-# confirmed, this MUST NOT be enabled in the main prediction pipeline.
-# It only affects the tournament simulator (Monte Carlo scoreline sampling),
-# not live match predictions.
-USE_CG_LAMBDA_POLYNOMIAL = False
-
-
-def _win_prob_to_xg(w: float) -> float:
-    """Convert a win probability to expected goals.
-
-    UNVERIFIED_SOURCE: Polynomial attributed to Csató & Gyimesi (2025) EJOR
-    but the known publication does not contain this formula.  Source pending
-    verification.
-
-    Polynomial (40,000+ matches):
-      λ = 3.904·W⁴ − 0.585·W³ − 2.983·W² + 3.132·W + 0.332
-    """
-    return (
-        3.904 * w ** 4
-        - 0.585 * w ** 3
-        - 2.983 * w ** 2
-        + 3.132 * w
-        + 0.332
-    )
-
-
-def _heuristic_xg_from_win_prob(w: float) -> float:
-    """Simple heuristic: expected goals ≈ 0.8 + 0.6 * win_prob.
-
-    This is a conservative fallback when the unverified Csató-Gyimesi
-    polynomial is disabled.
-    """
+def _conditional_score_rate(w: float) -> float:
+    """Research-only score rate used after an H/D/A outcome is sampled."""
     return 0.8 + 0.6 * w
 
 
@@ -177,8 +130,12 @@ class TournamentSimulator:
         # Schedule data: list of dicts keyed by match_number
         self.schedule: dict[int, dict[str, Any]] = {}
 
-        # Match probabilities: keyed by (home, away) tuple
-        self._probs: dict[tuple[str, str], dict[str, float]] = {}
+        # Match probabilities are stage-aware so group evidence cannot silently
+        # become a knockout forecast for the reverse fixture.
+        self._probs: dict[tuple[str, str, bool], dict[str, float]] = {}
+        self._probability_resolver: (
+            Callable[[str, str, bool], dict[str, float]] | None
+        ) = None
 
         # Group team assignments: group_name -> [team1, team2, team3, team4]
         self.groups: dict[str, list[str]] = {}
@@ -298,7 +255,12 @@ class TournamentSimulator:
     # ── Match probability setup ──────────────────────────────────────
 
     def set_match_probability(
-        self, home: str, away: str, probs: dict[str, float]
+        self,
+        home: str,
+        away: str,
+        probs: dict[str, float],
+        *,
+        is_group: bool = True,
     ) -> None:
         """Set 3-way outcome probabilities for (home, away).
 
@@ -307,16 +269,26 @@ class TournamentSimulator:
             away: Away team name.
             probs: Dict with keys 'home_win', 'draw', 'away_win' summing to 1.0.
         """
-        total = sum(probs.get(k, 0.0) for k in ("home_win", "draw", "away_win"))
+        values = [float(probs.get(k, 0.0)) for k in ("home_win", "draw", "away_win")]
+        if any(not np.isfinite(value) or value < 0.0 or value > 1.0 for value in values):
+            raise ValueError(f"Probabilities must be finite values in [0, 1], got {values}")
+        total = sum(values)
         if not abs(total - 1.0) < 0.01:
             raise ValueError(
                 f"Probabilities must sum to ~1.0, got {total:.4f}"
             )
-        self._probs[(home, away)] = {
-            "home_win": probs.get("home_win", 0.0),
-            "draw": probs.get("draw", 0.0),
-            "away_win": probs.get("away_win", 0.0),
+        self._probs[(home, away, is_group)] = {
+            "home_win": values[0] / total,
+            "draw": values[1] / total,
+            "away_win": values[2] / total,
         }
+
+    def set_probability_resolver(
+        self,
+        resolver: Callable[[str, str, bool], dict[str, float]],
+    ) -> None:
+        """Resolve and cache previously unseen stage-specific matchups."""
+        self._probability_resolver = resolver
 
     def load_probabilities_from_db(self, db_path: str) -> None:
         """Load pre-computed match probabilities from a predictions table.
@@ -367,13 +339,13 @@ class TournamentSimulator:
 
     # ── Internal simulation helpers ──────────────────────────────────
 
-    def _get_3way(self, home: str, away: str) -> dict[str, float]:
-        """Return 3-way probs for (home, away); fallback to defaults."""
-        key = (home, away)
+    def _get_3way(self, home: str, away: str, *, is_group: bool) -> dict[str, float]:
+        """Return stage-specific probabilities or fail closed."""
+        key = (home, away, is_group)
         if key in self._probs:
             return self._probs[key]
         # Try reverse
-        rev = (away, home)
+        rev = (away, home, is_group)
         if rev in self._probs:
             p = self._probs[rev]
             return {
@@ -381,8 +353,14 @@ class TournamentSimulator:
                 "draw": p["draw"],
                 "away_win": p["home_win"],
             }
-        # Default
-        return _default_group_prob()
+        if self._probability_resolver is None:
+            raise KeyError(
+                f"No {'group' if is_group else 'knockout'} probability for "
+                f"{home} vs {away}; placeholder probabilities are prohibited"
+            )
+        resolved = self._probability_resolver(home, away, is_group)
+        self.set_match_probability(home, away, resolved, is_group=is_group)
+        return self._probs[key]
 
     def _simulate_match(
         self, home: str, away: str, is_group: bool = True
@@ -394,49 +372,22 @@ class TournamentSimulator:
 
         Returns (home_goals, away_goals).
         """
-        probs = self._get_3way(home, away)
+        probs = self._get_3way(home, away, is_group=is_group)
 
-        # Convert 3-way probs to approximate expected goals via
-        # a simple logistic-style mapping.
-        # For a draw: we want draws ~= 2 * poisson.pmf(0, lam) * poisson.pmf(0, mu)
-        # Simplified: map win probs to relative scoring rates.
         hw, dr, aw = probs["home_win"], probs["draw"], probs["away_win"]
-
-        # Base rates from win probability.
-        # UNVERIFIED_SOURCE: see _win_prob_to_xg docstring.
-        # Feature-gated: USE_CG_LAMBDA_POLYNOMIAL (default False).
-        if USE_CG_LAMBDA_POLYNOMIAL:
-            base_lam = _win_prob_to_xg(hw)
-            base_mu = _win_prob_to_xg(aw)
-        else:
-            base_lam = _heuristic_xg_from_win_prob(hw)
-            base_mu = _heuristic_xg_from_win_prob(aw)
-
-        # Clamp
-        lam = max(0.3, min(2.5, base_lam))
-        mu = max(0.3, min(2.5, base_mu))
-
-        # Poisson sample
-        hg = self._rng.poisson(lam)
-        ag = self._rng.poisson(mu)
-
-        # Adjust for draw: if probs say high draw but we got lop-sided,
-        # resample. This is a simplified rejection approach.
-        max_attempts = 10
-        attempts = 0
-        while attempts < max_attempts:
-            if dr > 0.35 and hg != ag:
-                # High draw probability, try again
-                hg = self._rng.poisson(lam)
-                ag = self._rng.poisson(mu)
-                attempts += 1
-            else:
-                break
-            # After too many attempts, force a draw if draw prob is high
-            if attempts >= max_attempts - 1 and dr > 0.35:
-                goals = self._rng.poisson((lam + mu) / 2)
-                hg, ag = goals, goals
-
+        outcome = int(self._rng.choice(3, p=[hw, dr, aw]))
+        lam = _conditional_score_rate(hw)
+        mu = _conditional_score_rate(aw)
+        if outcome == 1:
+            goals = int(self._rng.poisson((lam + mu) / 2.0))
+            return goals, goals
+        if outcome == 0:
+            ag = int(self._rng.poisson(mu))
+            margin = 1 + int(self._rng.poisson(max(0.1, lam - mu)))
+            return ag + margin, ag
+        hg = int(self._rng.poisson(lam))
+        margin = 1 + int(self._rng.poisson(max(0.1, mu - lam)))
+        ag = hg + margin
         return int(hg), int(ag)
 
     def _simulate_knockout_match(

@@ -10,13 +10,10 @@ Design principles (confirmed with user 2026-05-15):
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
 import httpx
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.services.market.provider_base import MarketProvider

@@ -7,6 +7,7 @@ import pytest
 from app.services.candidate_experiments import (
     CandidateExperimentConfig,
     _score_logloss_summary,
+    _score_paired_evidence,
     _ece,
     _shadow_gate_decision,
     run_candidate_experiment,
@@ -474,6 +475,18 @@ def test_score_logloss_penalizes_out_of_support_result_instead_of_skipping():
     assert summary["mean"] == pytest.approx(27.631021, abs=1e-6)
 
 
+def test_score_candidate_has_separate_paired_logloss_evidence():
+    evidence = _score_paired_evidence([{
+        "score_matrix": [[0.2, 0.1], [0.3, 0.4]],
+        "candidate_score_matrix": [[0.1, 0.1], [0.2, 0.6]],
+        "actual_home_goals": 1,
+        "actual_away_goals": 1,
+    }])
+
+    assert evidence["n"] == 1
+    assert evidence["mean_score_logloss_delta"] < 0
+
+
 def test_shadow_gate_requires_ci_support_not_only_mean_improvement():
     decision = _shadow_gate_decision(
         {
@@ -524,6 +537,31 @@ def test_shadow_gate_rejects_key_group_degradation():
     assert decision["passed"] is False
     assert decision["status"] == "shadow_rejected"
     assert "knockout_brier_group_degraded" in decision["reasons"]
+
+
+def test_shadow_gate_rejects_candidate_driven_only_by_boundary_probabilities():
+    decision = _shadow_gate_decision(
+        {
+            "brier": {"mean_delta": -0.02, "ci95": [-0.04, -0.001]},
+            "logloss": {"mean_delta": -0.10, "ci95": [-0.20, -0.01]},
+            "rps": {"mean_delta": -0.01, "ci95": [-0.02, -0.001]},
+        },
+        {},
+        {
+            "excluding_boundary_probabilities": {
+                "n": 30,
+                "paired_deltas": {
+                    "brier": {"mean_delta": 0.01, "ci95": [-0.01, 0.03]},
+                    "logloss": {"mean_delta": 0.02, "ci95": [-0.02, 0.05]},
+                    "rps": {"mean_delta": -0.01, "ci95": [-0.02, -0.001]},
+                },
+            },
+            "by_model_cohort": {"legacy": {"n": 35}},
+        },
+    )
+
+    assert decision["passed"] is False
+    assert "boundary_clean_brier_worsened" in decision["reasons"]
 
 
 def test_local_learning_log_schema_matches_v47_score_fields():

@@ -11,7 +11,6 @@ Verifies:
 
 from __future__ import annotations
 
-import math
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -464,6 +463,25 @@ class TestEdgeCases:
 
 
 class TestEnsureTables:
+    def test_default_path_uses_configured_sqlite(self, tmp_db, monkeypatch):
+        from app.services import score_calibration_tracker as tracker
+
+        monkeypatch.setattr(
+            tracker,
+            "current_sync_sqlite_path",
+            lambda: Path(tmp_db).resolve(),
+        )
+
+        result = tracker.log_score_calibration(
+            match_id="configured-db",
+            home_goals=1,
+            away_goals=0,
+            score_matrix=_make_uniform_matrix(),
+        )
+
+        assert len(result) == 4
+        assert len(tracker.get_calibration_log(match_id="configured-db")) == 4
+
     def test_create_twice_is_safe(self, tmp_db):
         assert ensure_tables(tmp_db) is True
         assert ensure_tables(tmp_db) is True  # second call should be fine

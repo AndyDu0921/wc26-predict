@@ -101,6 +101,7 @@ def run_candidate_experiment(
                 "current_probs": current,
                 "candidate_probs": candidate,
                 "score_matrix": row.get("score_matrix"),
+                "candidate_score_matrix": candidate_result.score_matrix,
                 "actual_home_goals": row["actual_home_goals"],
                 "actual_away_goals": row["actual_away_goals"],
                 "candidate_payload": candidate_result.payload,
@@ -142,11 +143,17 @@ def run_candidate_experiment(
         [row["candidate_probs"] for row in paired_rows],
         [row["actual_idx"] for row in paired_rows],
         paired_rows,
+        score_matrix_key="candidate_score_matrix",
     )
     paired_deltas = _paired_deltas(paired_rows)
     group_metrics = _group_metrics(paired_rows)
+    robustness_metrics = _robustness_metrics(paired_rows)
     status = "completed"
-    gate_decision = _shadow_gate_decision(paired_deltas, group_metrics)
+    gate_decision = _shadow_gate_decision(
+        paired_deltas,
+        group_metrics,
+        robustness_metrics,
+    )
 
     return {
         "schema_version": "candidate_experiment.v2",
@@ -165,8 +172,9 @@ def run_candidate_experiment(
         "unavailable_reasons": unavailable_reasons,
         "metrics_current": current_metrics,
         "metrics_candidate": candidate_metrics,
-        "robustness_metrics": _robustness_metrics(paired_rows),
+        "robustness_metrics": robustness_metrics,
         "paired_deltas": paired_deltas,
+        "score_paired_evidence": _score_paired_evidence(paired_rows),
         "group_metrics": group_metrics,
         "leakage_checks": _leakage_summary(registry["samples"]),
         "gate_decision": gate_decision,
@@ -186,6 +194,9 @@ def _candidate_prediction_rows(paired_rows: list[dict[str, Any]]) -> list[dict[s
                 "current_probs": row["current_probs"],
                 "candidate_probs": row["candidate_probs"],
                 "component_payload": row.get("candidate_payload") or {},
+                "candidate_score_matrix_available": isinstance(
+                    row.get("candidate_score_matrix"), list
+                ),
             }
         )
     return payload
@@ -241,6 +252,7 @@ def _robustness_metrics(paired_rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "excluding_boundary_probabilities": {
             "n": len(clean_boundary),
+            "paired_deltas": _paired_deltas(clean_boundary) if clean_boundary else None,
             "current": _aggregate_metrics(
                 [row["current_probs"] for row in clean_boundary],
                 [row["actual_idx"] for row in clean_boundary],
@@ -251,6 +263,7 @@ def _robustness_metrics(paired_rows: list[dict[str, Any]]) -> dict[str, Any]:
                 [row["candidate_probs"] for row in clean_boundary],
                 [row["actual_idx"] for row in clean_boundary],
                 clean_boundary,
+                score_matrix_key="candidate_score_matrix",
             ) if clean_boundary else None,
         },
         "by_model_cohort": {
@@ -266,6 +279,7 @@ def _robustness_metrics(paired_rows: list[dict[str, Any]]) -> dict[str, Any]:
                     [row["candidate_probs"] for row in rows],
                     [row["actual_idx"] for row in rows],
                     rows,
+                    score_matrix_key="candidate_score_matrix",
                 ),
             }
             for cohort, rows in sorted(cohort_groups.items())
@@ -366,6 +380,7 @@ def _group_metric_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _shadow_gate_decision(
     paired_deltas: dict[str, Any],
     group_metrics: dict[str, Any] | None = None,
+    robustness_metrics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     worsened = [
         metric for metric, payload in paired_deltas.items()
@@ -405,6 +420,13 @@ def _shadow_gate_decision(
             "status": "shadow_rejected",
             "passed": False,
             "reasons": [f"{item}_group_degraded" for item in degraded_groups],
+        }
+    boundary_reasons = _boundary_robustness_reasons(robustness_metrics or {})
+    if boundary_reasons:
+        return {
+            "status": "shadow_rejected",
+            "passed": False,
+            "reasons": boundary_reasons,
         }
     return {
         "status": "shadow_candidate_only",
@@ -501,6 +523,69 @@ def _score_logloss_summary(
         "n": len(values),
         "out_of_support_count": out_of_support_count,
     }
+
+
+def _boundary_robustness_reasons(robustness_metrics: dict[str, Any]) -> list[str]:
+    clean = robustness_metrics.get("excluding_boundary_probabilities") or {}
+    if not clean:
+        return []
+    clean_n = int(clean.get("n", 0) or 0)
+    by_cohort = robustness_metrics.get("by_model_cohort") or {}
+    total_n = sum(int((payload or {}).get("n", 0) or 0) for payload in by_cohort.values())
+    required_clean = max(20, math.ceil(total_n * 0.70))
+    if clean_n < required_clean:
+        return [f"boundary_clean_samples_{clean_n}_below_{required_clean}"]
+    deltas = clean.get("paired_deltas") or {}
+    worsened = [
+        metric
+        for metric, payload in deltas.items()
+        if float((payload or {}).get("mean_delta", 0.0) or 0.0) > 0
+    ]
+    if worsened:
+        return [f"boundary_clean_{metric}_worsened" for metric in worsened]
+    supported = [
+        metric
+        for metric, payload in deltas.items()
+        if float((payload or {}).get("mean_delta", 0.0) or 0.0) <= -0.001
+        and float(((payload or {}).get("ci95") or [0.0, 1.0])[1]) <= 0
+    ]
+    if len(supported) < 2:
+        return ["boundary_clean_slice_lacks_two_supported_improvements"]
+    return []
+
+
+def _score_paired_evidence(paired_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    deltas: list[float] = []
+    for row in paired_rows:
+        current = _score_probability_for_actual(row, "score_matrix")
+        candidate = _score_probability_for_actual(row, "candidate_score_matrix")
+        if current is None or candidate is None:
+            continue
+        deltas.append(-math.log(max(candidate, 1e-12)) + math.log(max(current, 1e-12)))
+    return {
+        "n": len(deltas),
+        "mean_score_logloss_delta": _mean(deltas) if deltas else None,
+        "ci95": _bootstrap_ci95(deltas) if deltas else None,
+        "lower_is_better": True,
+        "status": (
+            "supported_improvement"
+            if deltas and _mean(deltas) < 0 and _bootstrap_ci95(deltas)[1] <= 0
+            else "inconclusive_or_worse"
+        ),
+    }
+
+
+def _score_probability_for_actual(row: dict[str, Any], key: str) -> float | None:
+    matrix = row.get(key)
+    home_goals = row.get("actual_home_goals")
+    away_goals = row.get("actual_away_goals")
+    if not isinstance(matrix, list) or home_goals is None or away_goals is None:
+        return None
+    home = int(home_goals)
+    away = int(away_goals)
+    if home >= len(matrix) or not isinstance(matrix[home], list) or away >= len(matrix[home]):
+        return 1e-12
+    return max(float(matrix[home][away]), 1e-12)
 
 
 def _vec(probs: dict[str, float]) -> np.ndarray:

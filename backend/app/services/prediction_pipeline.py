@@ -15,15 +15,20 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.engine import apply_market_boost, enforce_draw_floor, fuse_dc_enhancer_adaptive
 from app.services.calibration import IsotonicCalibrator
+from app.services.artifact_bundle import active_bundle_provenance, verified_artifact_path
 from app.services.dixon_coles import DixonColesModel
 from app.services.elo_ratings import EloRatingSystem
-from app.services.market_calibrator import get_calibrator
+from app.services.market_calibrator import MarketCalibrator, get_calibrator
 from app.services.pi_ratings import PiRatingWrapper
 from app.services.sqlite_paths import current_sync_sqlite_path
 from app.services.prediction_kernel_adapter import run_prediction_kernel_from_components
 from app.services.prediction_result import DegradedReason, PredictionResult, SourceStatus
-from app.services.score_matrix_calibrator import SCORE_MATRIX_CALIBRATION_ENABLED
+from app.services.score_matrix_calibrator import (
+    SCORE_MATRIX_CALIBRATION_ENABLED,
+    calibrate_score_matrix,
+)
 from app.core.score_matrix_fusion import build_score_matrix_fusion
 from app.core.ko_draw_guard import check_ko_draw_guard, enforce_ko_draw_post_calibration, _is_ko_stage
 from app.core.weibull_scenario import classify_weibull_scenario, resolve_weibull_action
@@ -40,54 +45,29 @@ DEFAULT_COMPETITION_WEIGHT = 0.9
 WORLD_CUP_COMPETITION_WEIGHT = 1.5
 FRIENDLY_COMPETITION_WEIGHT = 0.5
 
-# ── Re-exports from core engine (V4.3.0: S7 — single source of truth) ──
-from app.core.engine import (
-    WC_XG_CALIBRATION_FACTOR, NEGBIN_R, NEGBIN_FUSION_WEIGHT,
-    negbin_pmf as _negbin_pmf,
-    fuse_dc_enhancer_adaptive,
-    enforce_draw_floor,
-    DRAW_FLOOR,
-    KO_DRAW_FLOOR,
-    run_core_fusion,
-    apply_market_boost,
-    CoreFusionResult,
-    MarketBoostResult,
-)
-
-
 def _load_isotonic_calibrator(competition: str = "") -> IsotonicCalibrator:
     """Load isotonic calibrator with WC-specific fallback.
 
     Priority: calibrator_wc.json (if WC, ≥20 samples) → calibrator.json.
 
-    P1-1: Lowered WC threshold from 50→20. With 54+ WC match evaluations now
-    available, isotonic calibration provides a reliable second-order bias
-    correction that complements (not replaces) market signal.
+    Both files are part of the active artifact bundle. Hash mismatch or a
+    missing registered file is fatal because calibration changes final output.
     """
-    from pathlib import Path as _Path
-
     calibrator = IsotonicCalibrator()
-    backend_dir = _Path(__file__).resolve().parents[2]
-    artifacts_dir = backend_dir / "artifacts"
     is_wc = "world cup" in (competition or "").lower()
 
     if is_wc:
-        wc_path = str(artifacts_dir / "calibrator_wc.json")
-        try:
-            calibrator.load(wc_path)
-            if calibrator.is_fitted and calibrator.training_sample_count >= 20:
-                logger.info("Pipeline: using WC calibrator (%d samples)",
-                            calibrator.training_sample_count)
-                return calibrator
-        except Exception as exc:
-            logger.debug("WC calibrator load failed: %s", exc)
+        calibrator.load(str(verified_artifact_path("calibrator_wc")))
+        if calibrator.is_fitted and calibrator.training_sample_count >= 20:
+            logger.info(
+                "Pipeline: using WC calibrator (%d samples)",
+                calibrator.training_sample_count,
+            )
+            return calibrator
 
     # Fallback: main calibrator
     calibrator = IsotonicCalibrator()
-    try:
-        calibrator.load(str(artifacts_dir / "calibrator.json"))
-    except Exception as exc:
-        logger.warning("Failed to load calibrator artifact: %s", exc)
+    calibrator.load(str(verified_artifact_path("calibrator")))
     return calibrator
 
 
@@ -117,7 +97,12 @@ def _count_market_providers(result: PredictionResult) -> int:
     return 0
 
 
-def _run_postflight_gate(result: PredictionResult, *, is_knockout: bool = False) -> None:
+def _run_postflight_gate(
+    result: PredictionResult,
+    *,
+    is_knockout: bool = False,
+    market_required: bool = True,
+) -> None:
     """Run post-flight verification gate on a completed prediction.
 
     Logs failures but does NOT block — the caller (CLI layer) decides
@@ -136,6 +121,7 @@ def _run_postflight_gate(result: PredictionResult, *, is_knockout: bool = False)
             all_components_run=len(result.components_used),
             market_applied=result.market_applied,
             market_provider_count=market_prov_count,
+            market_required=market_required,
             calibration_applied=result.calibration_applied,
             is_knockout=is_knockout,
             elo_gap=result.elo_gap,
@@ -329,6 +315,7 @@ class PredictionPipeline:
         pipeline = cls()
         pipeline._mode = mode
         pipeline._artifact_timer = timer
+        pipeline._artifact_bundle = active_bundle_provenance()
 
         # ── Load training DataFrame ──
         pipeline._training_df = _load_training_df_artifact(timer)
@@ -477,6 +464,7 @@ class PredictionPipeline:
         """
         if mode is None:
             mode = getattr(self, "_mode", "full")
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         if require_full_context:
             _validate_required_sync_context(
@@ -533,9 +521,15 @@ class PredictionPipeline:
             for w in venue_ctx.warnings:
                 logger.warning("  Venue: %s", w)
 
-        training_df = self._training_df
         artifact_match_date = self._match_date
-        effective_match_date = _coerce_match_datetime(match_date) or artifact_match_date
+        effective_match_date = _coerce_match_datetime(match_date) or datetime.now(timezone.utc)
+        training_df = self._training_df.loc[
+            self._training_df["match_date"] < effective_match_date
+        ].copy()
+        if training_df.empty:
+            raise RuntimeError(
+                "No national-team feature history exists before the prediction cutoff"
+            )
         kickoff_at = (
             effective_match_date.isoformat()
             if hasattr(effective_match_date, "isoformat")
@@ -843,7 +837,14 @@ class PredictionPipeline:
         signal_risk_tags: list[str] = []
         try:
             from app.services.signal_adjuster_sync import apply_signal_adjustments, load_approved_signals
-            approved = load_approved_signals(home_team, away_team, match_id=match_id)
+            approved = load_approved_signals(
+                home_team,
+                away_team,
+                match_id=match_id,
+                as_of_time=now_utc,
+                kickoff_at=kickoff_at,
+                db_path=current_sync_sqlite_path(),
+            )
             if approved:
                 approved_signals = [item for item in approved if isinstance(item, dict)]
                 news_signals_available = True
@@ -1215,13 +1216,20 @@ class PredictionPipeline:
         raw_score_matrix = dc_pred.get("score_matrix")
         if SCORE_MATRIX_CALIBRATION_ENABLED and raw_score_matrix:
             try:
+                expanded_dc_matrix, _ = self._dc.predict_score_matrix(
+                    home_team,
+                    away_team,
+                    is_neutral_venue=effective_is_neutral,
+                    max_goals=10,
+                )
+                raw_score_matrix = expanded_dc_matrix.tolist()
                 dc_home_xg = float(dc_pred.get("home_xg", 0))
                 dc_away_xg = float(dc_pred.get("away_xg", 0))
                 tau_rho = getattr(self._dc, "rho", -0.30) if hasattr(self._dc, "rho") else -0.30
                 wb_score_matrix = None
                 if hasattr(self, "_weibull") and self._weibull is not None:
                     wb_score_matrix = self._weibull.predict_score_matrix(
-                        home_team, away_team, effective_is_neutral,
+                        home_team, away_team, effective_is_neutral, max_goals=10,
                     )
                 score_fusion = build_score_matrix_fusion(
                     raw_score_matrix=raw_score_matrix,
@@ -1234,7 +1242,7 @@ class PredictionPipeline:
                     away_xg=dc_away_xg,
                     tau_rho=tau_rho,
                     weibull_score_matrix=wb_score_matrix,
-                    max_goals=5,
+                    max_goals=10,
                 )
                 calibrated_top_scores = score_fusion.top_scores
                 calibrated_score_matrix = score_fusion.score_matrix
@@ -1352,66 +1360,70 @@ class PredictionPipeline:
         stacking_result: dict[str, Any] | None = None
         from app.core.stacking_features import STACKING_META_LEARNER_ENABLED
         if STACKING_META_LEARNER_ENABLED:
-            try:
-                from app.services.stacking_meta_learner import StackingMetaLearner
-                _artifact_path = str(
-                    _Path(__file__).resolve().parents[2] / "artifacts" / "stacking_meta_learner.json"
-                )
-                _learner = StackingMetaLearner()
-                _learner.load(_artifact_path)
-                if _learner.is_fitted:
-                    _stacked = _learner.predict_proba(component_probs, market_probs)
-                    stacking_result = {
-                        "applied": True,
-                        "pre_stacking_probs": dict(fused),
-                        "stacked_probs": _stacked,
-                        "training_samples": _learner.training_sample_count,
-                    }
-                    fused["home_win_prob"] = _stacked["home_win_prob"]
-                    fused["draw_prob"] = _stacked["draw_prob"]
-                    fused["away_win_prob"] = _stacked["away_win_prob"]
-                    components_used.append("stacking")
-                    logger.info(
-                        "A3 stacking applied (%d training samples)",
-                        _learner.training_sample_count,
-                    )
-                else:
-                    stacking_result = {"applied": False, "reason": "not_fitted"}
-            except Exception as exc:
-                logger.warning("A3 stacking skipped: %s", exc)
-                stacking_result = {"applied": False, "reason": str(exc)}
+            from app.services.stacking_meta_learner import StackingMetaLearner
+
+            _learner = StackingMetaLearner()
+            _learner.load(str(verified_artifact_path("stacking_meta_learner")))
+            if not _learner.is_fitted:
+                raise RuntimeError("Enabled stacking artifact is not fitted")
+            _stacked = _learner.predict_proba(component_probs, market_probs)
+            stacking_result = {
+                "applied": True,
+                "pre_stacking_probs": dict(fused),
+                "stacked_probs": _stacked,
+                "training_samples": _learner.training_sample_count,
+            }
+            fused["home_win_prob"] = _stacked["home_win_prob"]
+            fused["draw_prob"] = _stacked["draw_prob"]
+            fused["away_win_prob"] = _stacked["away_win_prob"]
+            components_used.append("stacking")
+            logger.info(
+                "A3 stacking applied (%d training samples)",
+                _learner.training_sample_count,
+            )
 
         # ── 10.9 B1: Weighted Conformal Prediction (feature-flagged, V4.5) ──
         conformal_result: dict[str, Any] | None = None
         from app.core.conformal_core import WEIGHTED_CONFORMAL_PREDICTION_ENABLED
         if WEIGHTED_CONFORMAL_PREDICTION_ENABLED:
-            try:
-                from app.services.conformal_predictor import WeightedConformalPredictor
-                _cp_path = str(
-                    _Path(__file__).resolve().parents[2] / "artifacts" / "conformal_predictor.json"
-                )
-                _predictor = WeightedConformalPredictor()
-                _predictor.load(_cp_path)
-                if _predictor.is_fitted:
-                    conformal_result = _predictor.predict(
-                        probs=fused,
-                        as_of=kickoff_at or now_utc,
-                    )
-                    # Apply conformal-calibrated probabilities
-                    _cp_probs = conformal_result["adjusted_probs"]
-                    fused["home_win_prob"] = _cp_probs[0]
-                    fused["draw_prob"] = _cp_probs[1]
-                    fused["away_win_prob"] = _cp_probs[2]
-                    components_used.append("conformal")
-                    logger.info(
-                        "B1 conformal prediction applied (set_size=%d, threshold=%.4f)",
-                        conformal_result["set_size"], conformal_result["threshold"],
-                    )
-                else:
-                    conformal_result = {"applied": False, "reason": "not_fitted"}
-            except Exception as exc:
-                logger.warning("B1 conformal prediction skipped: %s", exc)
-                conformal_result = {"applied": False, "reason": str(exc)}
+            from app.services.conformal_predictor import WeightedConformalPredictor
+
+            _predictor = WeightedConformalPredictor()
+            _predictor.load(str(verified_artifact_path("conformal_predictor")))
+            if not _predictor.is_fitted:
+                raise RuntimeError("Enabled conformal artifact is not fitted")
+            conformal_result = _predictor.predict(
+                probs=fused,
+                as_of=kickoff_at or now_utc,
+            )
+            _cp_probs = conformal_result["adjusted_probs"]
+            fused["home_win_prob"] = _cp_probs[0]
+            fused["draw_prob"] = _cp_probs[1]
+            fused["away_win_prob"] = _cp_probs[2]
+            components_used.append("conformal")
+            logger.info(
+                "B1 conformal prediction applied (set_size=%d, threshold=%.4f)",
+                conformal_result["set_size"], conformal_result["threshold"],
+            )
+
+        # Score probabilities must describe the same final 1X2 distribution
+        # after every nonlinear guard/calibrator/stacker has finished.
+        if calibrated_score_matrix is not None:
+            final_score_reconciliation = calibrate_score_matrix(
+                raw_matrix=calibrated_score_matrix,
+                final_probs={
+                    "home_win_prob": fused["home_win_prob"],
+                    "draw_prob": fused["draw_prob"],
+                    "away_win_prob": fused["away_win_prob"],
+                },
+            )
+            calibrated_score_matrix = final_score_reconciliation["calibrated_matrix"]
+            calibrated_top_scores = final_score_reconciliation["top3_scores"]
+            score_matrix_diag["final_outcome_reconciliation"] = {
+                key: value
+                for key, value in final_score_reconciliation.items()
+                if key != "calibrated_matrix"
+            }
 
         # Parameter provenance — traceable fingerprint of model state
         dc_provenance: dict[str, object] = {}
@@ -1420,7 +1432,7 @@ class PredictionPipeline:
                 sorted(self._dc.attack_params.items()),
                 sort_keys=True,
             ).encode()
-            dc_provenance["dc_params_hash"] = hashlib.md5(dc_params_sorted).hexdigest()
+            dc_provenance["dc_params_hash"] = hashlib.sha256(dc_params_sorted).hexdigest()
             dc_provenance["dc_teams"] = len(self._dc.attack_params)
         except Exception:
             dc_provenance["dc_params_hash"] = "unavailable"
@@ -1431,15 +1443,13 @@ class PredictionPipeline:
                 str(training_df["match_date"].min()),
                 str(training_df["match_date"].max()),
             )
-            dc_provenance["training_df_fingerprint"] = hashlib.md5(
+            dc_provenance["training_df_fingerprint"] = hashlib.sha256(
                 str(df_fp).encode()
             ).hexdigest()
             dc_provenance["training_rows"] = len(training_df)
         except Exception:
             dc_provenance["training_df_fingerprint"] = "unavailable"
             dc_provenance["training_rows"] = len(training_df) if training_df is not None else 0
-
-        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Elo detail (available when standard+ mode)
         elo_detail: dict[str, object] = {}
@@ -1450,10 +1460,12 @@ class PredictionPipeline:
                     "home_elo": elo_pred.home_elo,
                     "away_elo": elo_pred.away_elo,
                     "rating_gap": elo_pred.rating_gap,
+                    "draw_kappa": elo_pred.draw_kappa,
                 }
             except AttributeError:
                 pass
 
+        completed_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         result = PredictionResult(
             home_team=home_team,
             away_team=away_team,
@@ -1487,8 +1499,8 @@ class PredictionPipeline:
             source_score_matrices=source_score_matrices_sync,
             weight_config=wc,
             mode="internal_research",
-            as_of=now_utc,
-            generated_at=now_utc,
+            as_of=completed_utc,
+            generated_at=completed_utc,
             confidence=dc_pred.get("data_quality", "fitted"),
             risk_tags=risk_tags,
             confidence_penalty=float(dc_pred.get("confidence_penalty", 0.0)),
@@ -1504,8 +1516,15 @@ class PredictionPipeline:
                 "dc_params_hash": dc_provenance.get("dc_params_hash", "unavailable"),
                 "training_df_fingerprint": dc_provenance.get("training_df_fingerprint", "unavailable"),
                 "training_df_max_date": str(training_df["match_date"].max()) if training_df is not None else "",
+                "training_df_role": "pre_cutoff_enhancer_feature_history",
+                "artifact_training_max_date": str(artifact_match_date),
+                "artifact_bundle": getattr(self, "_artifact_bundle", {}),
+                "generation_started_at": now_utc,
                 "require_full_context": require_full_context,
                 "stage": stage,
+                "is_neutral": effective_is_neutral,
+                "venue": venue,
+                "kickoff_at": kickoff_at,
                 "pre_market_probs": pre_market_probs,
                 "market_weight_used": market_weight_used,
                 "calibration_applied": calibration_applied,
@@ -1560,25 +1579,18 @@ class PredictionPipeline:
             )
 
         # ── Post-flight gate (P0-4) ──
-        _run_postflight_gate(result, is_knockout=bool(stage and stage in (
-            "Round of 32", "Round of 16", "Quarter-finals",
-            "Semi-finals", "Final", "Third Place",
-        )))
+        _run_postflight_gate(
+            result,
+            is_knockout=bool(stage and stage in (
+                "Round of 32", "Round of 16", "Quarter-finals",
+                "Semi-finals", "Final", "Third Place",
+            )),
+            market_required=enable_market,
+        )
 
         return result
 
 # ── Helpers ────────────────────────────────────────────────
-
-def _is_national_competition(competition: str) -> bool:
-    """Detect if a competition is national-team level."""
-    keywords = [
-        "world cup", "euro", "copa", "nations",
-        "international", "friendly", "asian cup",
-        "gold cup", "african cup",
-    ]
-    c = competition.lower()
-    return any(kw in c for kw in keywords)
-
 
 def _lookup_wc_stage(home_team: str, away_team: str, *, match_id: str = "") -> str:
     """Compatibility lookup for callers that did not pass explicit stage.
@@ -1618,19 +1630,6 @@ def _default_competition_weight(competition: str) -> float:
     if any(kw in c for kw in ["friendly", "international friendly"]):
         return FRIENDLY_COMPETITION_WEIGHT
     return DEFAULT_COMPETITION_WEIGHT
-
-
-def _build_context_tags(competition: str, is_neutral: bool) -> list[str]:
-    """Build context tags for ContextAdjuster."""
-    tags = []
-    if is_neutral:
-        tags.append("neutral_venue")
-    c = competition.lower()
-    if any(kw in c for kw in ["derby", "rivalry"]):
-        tags.append("derby")
-    if any(kw in c for kw in ["final", "championship"]):
-        tags.append("cup_final")
-    return tags
 
 
 def _run_async_in_thread(coro):
@@ -1800,15 +1799,19 @@ def _coerce_match_datetime(value: str | datetime | None) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        logger.debug("Invalid match_date supplied to predict_sync: %r", value)
-        return None
+        parsed = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            logger.debug("Invalid match_date supplied to predict_sync: %r", value)
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _save_snapshot_sync(

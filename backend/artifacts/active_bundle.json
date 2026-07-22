@@ -1,0 +1,60 @@
+{
+  "schema_version": "model_artifact_bundle.v1",
+  "bundle_id": "legacy-wc26-7130f601",
+  "registered_at": "2026-07-18T03:57:30.298191+00:00",
+  "status": "legacy_active_unvalidated",
+  "promotion_evidence": false,
+  "training_data": {
+    "cutoff": "unknown",
+    "fingerprint": "cache-key-7130f601463386890dcb73cd8246e1f9",
+    "provenance_complete": false
+  },
+  "components": {
+    "dixon_coles": {
+      "path": "backend/model_artifacts/dc_cache/dc_FIFA World Cup 2026_7130f601463386890dcb73cd8246e1f9.pkl",
+      "sha256": "b8170d2d5890dfc5cbf808d93fbe709bf33586ec521c480ef2018f7df425a213",
+      "size_bytes": 10727
+    },
+    "tabular_enhancer": {
+      "path": "backend/model_artifacts/dc_cache/enhancer_FIFA World Cup 2026_7130f601463386890dcb73cd8246e1f9.pkl",
+      "sha256": "b27a82a4e638a565e57fe4e57a0a951f5904900f9c67e96c6fcd3d604a98b11f",
+      "size_bytes": 382186
+    },
+    "elo": {
+      "path": "backend/artifacts/ratings/elo.json",
+      "sha256": "7b29295801ec9266e74992336ba7a709b1da4fe9aa6443415550a919fb77b375",
+      "size_bytes": 10603
+    },
+    "pi_rating": {
+      "path": "backend/artifacts/ratings/pi.json",
+      "sha256": "cd19c459e556a893691796b5ae95d7603eb56adbfcb613fd110723e5e5702bfc",
+      "size_bytes": 10870
+    },
+    "weibull": {
+      "path": "backend/artifacts/models/weibull.pkl",
+      "sha256": "eb2110788426455293de03debd8814516ef2d3cc6afb82826d88bdadf0310780",
+      "size_bytes": 191382
+    },
+    "calibrator": {
+      "path": "backend/artifacts/calibrator.json",
+      "sha256": "61958d93518da9a657b3d50d49abf7062079326c23631d7e6fcbb9ca8c6d1124",
+      "size_bytes": 1858
+    },
+    "calibrator_wc": {
+      "path": "backend/artifacts/calibrator_wc.json",
+      "sha256": "46b8b700e03dfce4cf7d7e852fb04468ccd965c699cf75d0e57bb211aa9b6bcd",
+      "size_bytes": 1264
+    },
+    "stacking_meta_learner": {
+      "path": "backend/artifacts/stacking_meta_learner.json",
+      "sha256": "7aa08d0be1ce33b17408109b63e8e55392d7c4fe332c1fe78d64814b5c974d0f",
+      "size_bytes": 2575
+    },
+    "conformal_predictor": {
+      "path": "backend/artifacts/conformal_predictor.json",
+      "sha256": "baf8cbb1e0e58d48e366efe517db24920cffe9b33c26eb78476dee5614179398",
+      "size_bytes": 12152
+    }
+  },
+  "notes": "Legacy bundle registration does not prove predictive improvement. Promotion still requires temporal paired gates."
+}

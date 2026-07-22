@@ -37,7 +37,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from sqlalchemy import text
 
-from app.config import get_settings
+from app.config import get_settings, is_secure_admin_token
 from app.database import AsyncSessionLocal
 from app.exceptions import AppError
 from app.logging import configure_logging, get_logger
@@ -88,11 +88,13 @@ async def _check_redis_startup() -> None:
 
 def _enforce_startup_security() -> None:
     """Fail closed for unsafe runtime secrets before serving requests."""
-    if settings.admin_token == "CHANGE_ME_TO_RANDOM_32_CHARS":
+    if not is_secure_admin_token(settings.admin_token):
         raise RuntimeError(
-            "Refusing to start with default ADMIN_TOKEN. "
-            "Set ADMIN_TOKEN to a generated secret in backend/.env or .env."
+            "Refusing to start with a weak or default ADMIN_TOKEN. "
+            "Set a generated secret of at least 32 characters in backend/.env or .env."
         )
+    if "*" in settings.cors_origins:
+        raise RuntimeError("Refusing wildcard CORS while credentialed requests are enabled.")
 
 
 @asynccontextmanager

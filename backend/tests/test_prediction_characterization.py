@@ -19,7 +19,6 @@ import os
 import subprocess
 import sys
 import math
-from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -61,6 +60,7 @@ def _run_cli_prediction(home: str, away: str, competition: str,
         "--no-market",
         "--no-weather",
         "--no-save",
+        "--no-auto-resolve",
     ]
     if stage:
         cmd += ["--stage", stage]
@@ -107,6 +107,7 @@ def _run_sync_prediction(home: str, away: str, competition: str,
     result = pipeline.predict_sync(
         home, away, competition,
         is_neutral=True,
+        stage=stage,
         enable_market=False,
         enable_weather=False,
         save_snapshot=False,
@@ -256,6 +257,27 @@ class TestStructuralInvariants:
                                        "Group A - Matchday 1")
         pred = result.get("prediction", result)
         assert pred.get("negbin_applied") is True
+
+    def test_final_score_matrix_matches_final_outcome_probabilities(self):
+        result = _run_sync_prediction(
+            "Brazil",
+            "Haiti",
+            "FIFA World Cup 2026",
+            "Group A - Matchday 1",
+        )
+        pred = result["prediction"]
+        matrix = pred["score_matrix"]
+        assert len(matrix) == 11
+        assert all(len(row) == 11 for row in matrix)
+        bucket = {
+            "home": sum(matrix[h][a] for h in range(11) for a in range(11) if h > a),
+            "draw": sum(matrix[h][a] for h in range(11) for a in range(11) if h == a),
+            "away": sum(matrix[h][a] for h in range(11) for a in range(11) if h < a),
+        }
+        assert bucket["home"] == pytest.approx(pred["home_win_prob"], abs=1e-8)
+        assert bucket["draw"] == pytest.approx(pred["draw_prob"], abs=1e-8)
+        assert bucket["away"] == pytest.approx(pred["away_win_prob"], abs=1e-8)
+        assert result["meta"]["stage"] == "Group A - Matchday 1"
 
 
 # ── path parity tests ───────────────────────────────────────────

@@ -11,7 +11,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import streamlit as st
 
-from dashboard.dashboard_config import VERSION, EXPECTED_TEAMS, EXPECTED_MATCHES
+from dashboard.dashboard_config import VERSION, EXPECTED_MATCHES
 from dashboard.db import db
 from dashboard.components.metric_cards import render_metric_row
 
@@ -46,13 +46,13 @@ except Exception as e:
 # ── 模型文件状态 ──────────────────────────────────────────────────────────────
 st.subheader("模型文件")
 try:
-    from app.services.artifact_registry import load_registry
+    from app.services.artifact_bundle import load_active_bundle, verified_artifact_path
 
-    registry = load_registry()
-    # registry is a flat dict — components, trained_at, data_fingerprint at top level
-    components = registry.get("components", {})
-    trained_at = registry.get("trained_at", "从未训练")
-    fingerprint = registry.get("data_fingerprint", "?")
+    bundle = load_active_bundle()
+    components = bundle.get("components", {})
+    registered_at = bundle.get("registered_at", "未注册")
+    training_data = bundle.get("training_data", {})
+    fingerprint = training_data.get("fingerprint", "?")
 
     if components:
         cols = st.columns(4)
@@ -63,23 +63,28 @@ try:
             "pi_rating": "Pi 评级",
             "weibull": "Weibull（可选）",
         }
-        status_map = {"ready": "就绪", "failed": "失败", "missing": "缺失"}
         for i, (comp_name, comp_info) in enumerate(components.items()):
-            status = comp_info.get("status", "未知")
-            icon = ":white_check_mark:" if status == "ready" else ":x:"
-            trained = str(comp_info.get("trained_at", "?"))[:16]
+            try:
+                verified_artifact_path(comp_name)
+                status = "已校验"
+                icon = ":white_check_mark:"
+            except Exception:
+                status = "不可用"
+                icon = ":x:"
             display_name = name_map.get(comp_name, comp_name)
-            display_status = status_map.get(status, status)
             with cols[i % 4]:
                 st.metric(
                     label=f"{icon} {display_name}",
-                    value=display_status,
-                    delta=trained,
+                    value=status,
+                    delta=str(comp_info.get("sha256", ""))[:12],
                 )
     else:
         st.warning("未找到已训练的模型。请先运行 `python scripts/train_models.py`")
 
-    st.caption(f"上次训练: {trained_at} | 数据指纹: {fingerprint}")
+    st.caption(
+        f"Bundle: {bundle.get('bundle_id', '?')} | 注册: {registered_at} | "
+        f"数据指纹: {fingerprint}"
+    )
 except Exception as e:
     st.error(f"无法加载模型注册表: {e}")
 

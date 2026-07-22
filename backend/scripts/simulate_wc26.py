@@ -13,9 +13,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import pickle
 import sys
 import time
 from pathlib import Path
@@ -24,10 +21,9 @@ from typing import Any
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
-import numpy as np
 import pandas as pd
 
-from app.services.artifact_registry import load_registry, validate_bundle
+from app.services.artifact_bundle import load_active_bundle
 from app.services.dixon_coles import DixonColesModel
 from app.services.tournament_simulator import TournamentSimulator
 from app.services.elo_ratings import EloRatingSystem
@@ -38,22 +34,13 @@ from app.services.tabular_match_model import (
 from app.services.weights import get_weight_config
 from app.services.weibull_model import WeibullWrapper
 from app.services.market.sync_provider import fetch_market_consensus_sync
+from app.services.sqlite_paths import current_sync_sqlite_path
 from app.core.engine import (
     run_core_fusion,
     apply_market_boost,
 )
 
 # ── Constants ──────────────────────────────────────────────────────────
-
-ARTIFACTS_DIR = BACKEND_DIR / "artifacts"
-MODELS_DIR = ARTIFACTS_DIR / "models"
-RATINGS_DIR = ARTIFACTS_DIR / "ratings"
-DATAFRAMES_DIR = ARTIFACTS_DIR / "dataframes"
-DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
-
-ELO_PATH = RATINGS_DIR / "elo.json"
-PI_PATH = RATINGS_DIR / "pi.json"
-DF_PATH = DATAFRAMES_DIR / "national_finished_matches.pkl"
 
 MODE_REQUIRED_COMPONENTS = {
     "baseline": ["dixon_coles"],
@@ -83,21 +70,19 @@ def load_enhancer() -> TabularMatchEnhancer:
 
 
 def load_elo() -> EloRatingSystem:
-    if not ELO_PATH.exists():
-        raise FileNotFoundError(f"Elo artifact not found at {ELO_PATH}")
-    elo_data = json.loads(ELO_PATH.read_text("utf-8"))
-    elo = EloRatingSystem()
-    elo.ratings = {str(k): float(v) for k, v in elo_data.items()}
-    return elo
+    """Load the same hash-verified Elo artifact as canonical prediction."""
+    from app.services.prediction_core import _load_elo
+    from app.services.prediction_timer import PredictionTimer
+
+    return _load_elo(PredictionTimer())
 
 
 def load_pi() -> PiRatingWrapper:
-    if not PI_PATH.exists():
-        raise FileNotFoundError(f"Pi-Rating artifact not found at {PI_PATH}")
-    pi_data = json.loads(PI_PATH.read_text("utf-8"))
-    pi_model = PiRatingWrapper()
-    pi_model.team_ratings = {str(k): float(v) for k, v in pi_data.items()}
-    return pi_model
+    """Load the same hash-verified Pi artifact as canonical prediction."""
+    from app.services.prediction_core import _load_pi
+    from app.services.prediction_timer import PredictionTimer
+
+    return _load_pi(PredictionTimer())
 
 
 def load_weibull(training_df: pd.DataFrame) -> WeibullWrapper | None:
@@ -114,29 +99,11 @@ def load_weibull(training_df: pd.DataFrame) -> WeibullWrapper | None:
 
 
 def load_training_df() -> pd.DataFrame:
-    if DF_PATH.exists():
-        return pd.read_pickle(str(DF_PATH))
-    # Fallback: SQLite
-    import sqlite3
-    conn = sqlite3.connect(str(DB_PATH))
-    df = pd.read_sql_query(
-        """
-        SELECT ht.name AS home_team, at.name AS away_team,
-               mr.home_goals, mr.away_goals, m.match_date,
-               COALESCE(m.competition_weight, 1.0) AS competition_weight,
-               COALESCE(m.is_neutral_venue, 0) AS is_neutral_venue
-        FROM matches m
-        JOIN teams ht ON m.home_team_id = ht.id
-        JOIN teams at ON m.away_team_id = at.id
-        JOIN match_results mr ON m.id = mr.match_id
-        WHERE m.competition_type = 'national' AND m.status = 'finished'
-          AND m.match_date >= '2018-01-01'
-        ORDER BY m.match_date
-        """,
-        conn,
-    )
-    conn.close()
-    return df
+    """Load canonical feature history without an executable pickle cache."""
+    from app.services.prediction_core import _load_training_df
+    from app.services.prediction_timer import PredictionTimer
+
+    return _load_training_df(PredictionTimer())
 
 
 # ── Group-team loading ─────────────────────────────────────────────────
@@ -144,7 +111,7 @@ def load_training_df() -> pd.DataFrame:
 
 def load_group_teams() -> dict[str, list[str]]:
     import sqlite3
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(current_sync_sqlite_path()))
     groups: dict[str, list[str]] = {}
     for g in GROUPS:
         rows = conn.execute(
@@ -173,6 +140,8 @@ def predict_group_match(
     away: str,
     mode: str,
     weight_config: Any,
+    *,
+    enable_market: bool = True,
 ) -> dict[str, float]:
     """Predict 3-way probabilities for a single group match.
 
@@ -222,11 +191,7 @@ def predict_group_match(
 
     pi_probs = None
     if mode == "full" and pi_model is not None:
-        try:
-            pi_pred = pi_model.predict(home, away, is_neutral)
-            pi_probs = pi_pred
-        except Exception:
-            pass
+        pi_probs = pi_model.predict(home, away, is_neutral)
 
     # Step 3: Unified core fusion (DC→Enhancer→NegBin→Weibull→Elo→Pi)
     fusion = run_core_fusion(
@@ -248,6 +213,8 @@ def predict_group_match(
 
     # Step 4: Market consensus (R5-5)
     try:
+        if not enable_market:
+            return fused
         market_raw = fetch_market_consensus_sync(
             home, away, "FIFA World Cup 2026", timeout=8.0,
         )
@@ -296,19 +263,18 @@ def main() -> None:
 
     t_start = time.perf_counter()
     print(f"{'='*70}")
-    print(f"  WC26 Tournament Simulation")
+    print("  WC26 Tournament Simulation")
     print(f"  Runs: {args.runs:,}  |  Mode: {args.mode}")
     print(f"{'='*70}")
 
-    # 1. Validate artifact registry
-    print("\n[1] Validating artifact registry...")
-    registry = load_registry()
-    ok, missing = validate_bundle(registry, args.mode)
-    if not ok:
-        print(f"  ERROR: Missing required artifacts: {missing}")
-        print("  Run: python scripts/train_models.py")
-        sys.exit(1)
-    print(f"  Registry OK ({args.mode} mode)")
+    # 1. Validate the same immutable bundle used by canonical prediction.
+    print("\n[1] Validating active artifact bundle...")
+    bundle = load_active_bundle()
+    available = set((bundle.get("components") or {}).keys())
+    missing = [name for name in MODE_REQUIRED_COMPONENTS[args.mode] if name not in available]
+    if missing:
+        raise RuntimeError(f"Active artifact bundle is missing required components: {missing}")
+    print(f"  Active bundle OK: {bundle.get('bundle_id')} ({args.mode} mode)")
 
     # 2. Load all artifacts
     print("\n[2] Loading artifacts...")
@@ -333,14 +299,16 @@ def main() -> None:
     # 2.5. Load Weibull (fit once for all matches, best-effort)
     weibull = load_weibull(training_df) if args.mode in ("standard", "full") else None
     if weibull and weibull._fitted:
-        print(f"  Weibull fitted OK")
+        print("  Weibull fitted OK")
     else:
-        print(f"  Weibull: unavailable (continuing without)")
+        print("  Weibull: unavailable (continuing without)")
 
     # 3. Load weight config
-    weight_config = get_weight_config("FIFA World Cup 2026", "Group Stage")
-    print(f"  Weights: DC={weight_config.dc:.2f}  Enh={weight_config.enhancer:.2f}  "
-          f"Wb={weight_config.weibull:.2f}  Elo={weight_config.elo:.2f}  Pi={weight_config.pi:.2f}")
+    group_weight_config = get_weight_config("FIFA World Cup 2026", "Group Stage")
+    knockout_weight_config = get_weight_config("FIFA World Cup 2026", "Knockout")
+    print(f"  Group weights: DC={group_weight_config.dc:.2f}  "
+          f"Enh={group_weight_config.enhancer:.2f}  Wb={group_weight_config.weibull:.2f}  "
+          f"Elo={group_weight_config.elo:.2f}  Pi={group_weight_config.pi:.2f}")
 
     # 4. Load group teams
     print("\n[3] Loading group assignments...")
@@ -352,9 +320,10 @@ def main() -> None:
     print(f"  Total teams: {len(all_teams)}")
 
     # 5. Predict all 72 group matches
-    print(f"\n[4] Predicting 72 group-stage matches...")
+    print("\n[4] Predicting 72 group-stage matches...")
     match_probs: dict[tuple[str, str], dict[str, float]] = {}
     predicted_count = 0
+    failures: list[str] = []
     for g in GROUPS:
         if g not in groups:
             continue
@@ -365,7 +334,7 @@ def main() -> None:
             try:
                 probs = predict_group_match(
                     dc, enhancer, elo, pi_model, weibull,
-                    training_df, home, away, args.mode, weight_config,
+                    training_df, home, away, args.mode, group_weight_config,
                 )
                 match_probs[(home, away)] = probs
                 predicted_count += 1
@@ -373,17 +342,42 @@ def main() -> None:
                     print(f"  {home} vs {away}: H={probs['home_win_prob']:.3f} "
                           f"D={probs['draw_prob']:.3f} A={probs['away_win_prob']:.3f}")
             except Exception as e:
-                print(f"  WARNING: Failed to predict {home} vs {away}: {e}")
-                match_probs[(home, away)] = {
-                    "home_win_prob": 0.40, "draw_prob": 0.30, "away_win_prob": 0.30,
-                }
-                predicted_count += 1
+                failures.append(f"{home} vs {away}: {e}")
+                print(f"  ERROR: Failed to predict {home} vs {away}: {e}")
+    if failures:
+        raise RuntimeError(
+            f"Tournament simulation aborted: {len(failures)} match predictions failed; "
+            "no placeholder probabilities were substituted."
+        )
     print(f"  Predicted {predicted_count} matches")
 
     # 6. Build and run simulator
     print(f"\n[5] Running TournamentSimulator ({args.runs:,} runs)...")
     sim = TournamentSimulator(runs=args.runs, seed=args.seed)
-    sim.load_schedule(str(DB_PATH))
+    sim.load_schedule(str(current_sync_sqlite_path()))
+
+    def resolve_matchup(home: str, away: str, is_group: bool) -> dict[str, float]:
+        weights = group_weight_config if is_group else knockout_weight_config
+        resolved = predict_group_match(
+            dc,
+            enhancer,
+            elo,
+            pi_model,
+            weibull,
+            training_df,
+            home,
+            away,
+            args.mode,
+            weights,
+            enable_market=is_group,
+        )
+        return {
+            "home_win": resolved["home_win_prob"],
+            "draw": resolved["draw_prob"],
+            "away_win": resolved["away_win_prob"],
+        }
+
+    sim.set_probability_resolver(resolve_matchup)
 
     for (home, away), probs in match_probs.items():
         sim.set_match_probability(home, away, {
@@ -392,7 +386,7 @@ def main() -> None:
             "away_win": probs["away_win_prob"],
         })
 
-    results = sim.run()
+    sim.run()
 
     # 7. Print summary
     print(f"\n{sim.summary()}")

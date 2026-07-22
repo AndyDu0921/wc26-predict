@@ -35,7 +35,7 @@ LEARNING_WEIGHT_BY_LABEL: Dict[str, float] = {
 }
 
 # Learning weight tiers
-LEARNING_TIER_FULL = 0.70    # Can enter BacktestGate for weight proposals
+LEARNING_TIER_FULL = 0.70    # Eligible to generate a gated shadow proposal.
 LEARNING_TIER_DIAGNOSTIC = 0.30  # Record for stats, don't propose changes
 # Below 0.30: record only, no learning
 

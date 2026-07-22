@@ -15,9 +15,9 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # ── Database path ────────────────────────────────────────────────────────────
 BACKEND_DIR = Path(__file__).resolve().parents[1]

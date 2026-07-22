@@ -48,7 +48,7 @@ if str(BACKEND_DIR) not in sys.path:
 from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.models.manual_event import (
-    ManualEvent, ALLOWED_EVENT_TYPES, ALLOWED_SEVERITIES, EVENT_TYPE_CONFIG,
+    ManualEvent, ALLOWED_EVENT_TYPES, ALLOWED_SEVERITIES,
 )
 from app.models.team import Team
 from app.models.player import Player
@@ -183,7 +183,7 @@ async def add_event(args) -> None:
         await db.commit()
         await db.refresh(event)
 
-        print(f"✅ 事件已注入")
+        print("✅ 事件已注入")
         print(f"   ID:       {event.id}")
         print(f"   类型:     {event.event_type}")
         print(f"   球队:     {event.team_name}")

@@ -7,25 +7,22 @@ POST /api/analysis/generate
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.dependencies import require_admin_token
+from app.rate_limit import limiter
+from app.services.sqlite_paths import assert_canonical_sqlite_alignment
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
-
-DB_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "data",
-    "local_stage2.db",
-)
 
 ANALYSIS_SYSTEM_PROMPT = """你是一位专业的足球分析师。你的任务是根据提供的比赛数据、模型预测和历史战绩，撰写深度赛前分析报告。
 
@@ -39,7 +36,11 @@ ANALYSIS_SYSTEM_PROMPT = """你是一位专业的足球分析师。你的任务�
 
 class AnalysisRequest(BaseModel):
     match_id: str
-    extra_context: str = Field(default="", description="用户手动输入的补充情报（伤停/新闻等）")
+    extra_context: str = Field(
+        default="",
+        max_length=4000,
+        description="用户手动输入的补充情报（伤停/新闻等）",
+    )
 
 
 class AnalysisResponse(BaseModel):
@@ -48,9 +49,9 @@ class AnalysisResponse(BaseModel):
     generated_at: str
 
 
-def _read_match_data(clean_id: str) -> dict[str, Any] | None:
+def _read_match_data(clean_id: str, db_path: str | Path) -> dict[str, Any] | None:
     """Read match + prediction + recent form from SQLite (sync, called via asyncio.to_thread)."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(Path(db_path).expanduser().resolve()))
     conn.row_factory = sqlite3.Row
 
     try:
@@ -122,7 +123,12 @@ def _read_match_data(clean_id: str) -> dict[str, Any] | None:
 
 
 @router.post("/generate", response_model=AnalysisResponse)
-async def generate_analysis(req: AnalysisRequest):
+@limiter.limit("2/minute")
+async def generate_analysis(
+    request: Request,
+    req: AnalysisRequest,
+    _: str = Depends(require_admin_token),
+):
     settings = get_settings()
     deepseek_key = settings.llm_api_key or os.getenv("LLM_API_KEY", "")
     _base = (settings.llm_base_url or "https://api.deepseek.com").rstrip("/")
@@ -136,7 +142,11 @@ async def generate_analysis(req: AnalysisRequest):
     clean_id = req.match_id.replace("-", "")
 
     # ── Read match & prediction data (offloaded to thread to avoid blocking) ─
-    match_data = await asyncio.to_thread(_read_match_data, clean_id)
+    try:
+        db_path = assert_canonical_sqlite_alignment()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    match_data = await asyncio.to_thread(_read_match_data, clean_id, db_path)
 
     if match_data is None:
         raise HTTPException(status_code=404, detail="比赛不存在")

@@ -113,6 +113,7 @@ def _payload_from_snapshot(row: dict[str, Any], *, db_path: str | Path) -> dict[
         home_team=row.get("home_team"),
         away_team=row.get("away_team"),
         kickoff_at=row.get("kickoff_at"),
+        as_of_time=row.get("snapshot_at"),
     )
     return {
         "schema_version": "feature_snapshot.v2.closed_loop",

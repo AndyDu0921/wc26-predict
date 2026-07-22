@@ -204,7 +204,6 @@ class TestFusionGraphReportsAllSteps:
 
     def test_steps_populated(self) -> None:
         fg = FusionGraph(blend_params=_default_blend_params())
-        cp = _make_component_probs()
 
         fg.add_step(
             "dc+enhancer", "base_weight=0.55",
@@ -249,7 +248,6 @@ class TestFusionGraphReportsAllSteps:
     def test_to_dict_full_pipeline(self) -> None:
         """Simulate full 4-model pipeline and check step count in dict."""
         fg = FusionGraph(blend_params=_default_blend_params())
-        cp = _make_component_probs()
 
         # Step 1
         fg.add_step("dc+enhancer", "base_weight=0.55", {

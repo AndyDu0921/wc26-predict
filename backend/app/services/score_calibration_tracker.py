@@ -25,14 +25,12 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-import sys
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.services.sqlite_paths import current_sync_sqlite_path
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
+logger = logging.getLogger(__name__)
 
 # ── Score bucket definitions ──
 # We bucket by total goals (home + away) since this is the dimension most
@@ -410,8 +408,8 @@ def get_calibration_log(
 
 def _resolve_path(db_path: str | Path | None) -> Path:
     if db_path is not None:
-        return Path(db_path)
-    return DB_PATH
+        return Path(db_path).expanduser().resolve()
+    return current_sync_sqlite_path()
 
 
 def _rebuild_drift_from_log(conn: sqlite3.Connection) -> None:

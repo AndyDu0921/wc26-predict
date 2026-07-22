@@ -54,6 +54,15 @@ SCAN_PATHS = [
     ".github",
 ]
 SCAN_EXCLUDE_DIRS = {"archive"}
+RUNTIME_SCAN_PATHS = ["backend/app", "backend/dashboard", "backend/scripts"]
+FORBIDDEN_RUNTIME_REFERENCES = [
+    "app.services.artifact_registry",
+    "app.services.postmatch_ai",
+    '{"home": 0.33, "draw": 0.34, "away": 0.33}',
+    'pred.get("home_win_prob", 0.333)',
+    'pred_result.get("home_win_prob", 0.333)',
+    "_default_group_prob(",
+]
 
 
 def audit_entrypoints(*, repo_root: Path = REPO_ROOT) -> dict[str, Any]:
@@ -64,9 +73,15 @@ def audit_entrypoints(*, repo_root: Path = REPO_ROOT) -> dict[str, Any]:
         rel_path for rel_path in REMOVED_ENTRYPOINTS if (repo_root / rel_path).exists()
     ]
     stale_references = _find_stale_references(repo_root)
-    passed = not missing_current and not still_present_removed and not stale_references
+    forbidden_runtime_references = _find_forbidden_runtime_references(repo_root)
+    passed = (
+        not missing_current
+        and not still_present_removed
+        and not stale_references
+        and not forbidden_runtime_references
+    )
     return {
-        "schema_version": "entrypoint_audit.v1",
+        "schema_version": "entrypoint_audit.v2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "passed": passed,
         "current_entrypoints": CURRENT_ENTRYPOINTS,
@@ -74,6 +89,7 @@ def audit_entrypoints(*, repo_root: Path = REPO_ROOT) -> dict[str, Any]:
         "missing_current": missing_current,
         "still_present_removed": still_present_removed,
         "stale_references": stale_references,
+        "forbidden_runtime_references": forbidden_runtime_references,
     }
 
 
@@ -100,6 +116,33 @@ def _find_stale_references(repo_root: Path) -> list[dict[str, Any]]:
                                 "path": path.relative_to(repo_root).as_posix(),
                                 "line": line_no,
                                 "entrypoint": needle,
+                                "context": line.strip(),
+                            }
+                        )
+    return findings
+
+
+def _find_forbidden_runtime_references(repo_root: Path) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for rel_scan_path in RUNTIME_SCAN_PATHS:
+        scan_path = repo_root / rel_scan_path
+        if not scan_path.exists():
+            continue
+        for path in sorted(scan_path.rglob("*.py")):
+            if path.resolve() == Path(__file__).resolve():
+                continue
+            try:
+                lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            for line_no, line in enumerate(lines, 1):
+                for needle in FORBIDDEN_RUNTIME_REFERENCES:
+                    if needle in line:
+                        findings.append(
+                            {
+                                "path": path.relative_to(repo_root).as_posix(),
+                                "line": line_no,
+                                "reference": needle,
                                 "context": line.strip(),
                             }
                         )

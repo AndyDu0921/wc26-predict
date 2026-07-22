@@ -1,5 +1,4 @@
 from __future__ import annotations
-import logging
 
 from dataclasses import asdict
 from dataclasses import dataclass
@@ -315,7 +314,6 @@ class TabularMatchEnhancer:
         recent_xg_for_avg, recent_xg_against_avg.
         """
         team_col = "home_team" if side == "home" else "away_team"
-        opp_col = "away_team" if side == "home" else "home_team"
 
         df = df.copy()
         df["_idx"] = range(len(df))
@@ -482,8 +480,22 @@ class TabularMatchEnhancer:
         if history_df.empty:
             return self._default_profile(match_date)
 
-        home_rows = self._build_team_rows(history_df.loc[history_df["home_team"] == team_name].copy(), side="home")
-        away_rows = self._build_team_rows(history_df.loc[history_df["away_team"] == team_name].copy(), side="away")
+        target_timestamp = pd.Timestamp(match_date)
+        if target_timestamp.tzinfo is None:
+            target_timestamp = target_timestamp.tz_localize("UTC")
+        else:
+            target_timestamp = target_timestamp.tz_convert("UTC")
+        history_dates = pd.to_datetime(history_df["match_date"], utc=True, errors="coerce")
+        eligible_history = history_df.loc[history_dates < target_timestamp]
+
+        home_rows = self._build_team_rows(
+            eligible_history.loc[eligible_history["home_team"] == team_name].copy(),
+            side="home",
+        )
+        away_rows = self._build_team_rows(
+            eligible_history.loc[eligible_history["away_team"] == team_name].copy(),
+            side="away",
+        )
 
         team_rows = pd.concat([home_rows, away_rows], ignore_index=True).sort_values("match_date")
 
@@ -491,11 +503,6 @@ class TabularMatchEnhancer:
             return self._default_profile(match_date, history_df=history_df)
 
         recent_rows = team_rows.tail(5)
-        target_timestamp = pd.Timestamp(match_date)
-        if target_timestamp.tzinfo is None:
-            target_timestamp = target_timestamp.tz_localize("UTC")
-        else:
-            target_timestamp = target_timestamp.tz_convert("UTC")
         rest_days = float((target_timestamp - team_rows["match_date"].max()).days)
         return {
             "matches_played": float(len(team_rows)),

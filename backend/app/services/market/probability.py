@@ -3,7 +3,6 @@
 All functions are pure (no side effects, no network I/O).
 """
 from __future__ import annotations
-import logging
 
 import math
 
@@ -67,9 +66,15 @@ def normalize_1x2_shin(
     if any(o <= 1.0 for o in (home_odds, draw_odds, away_odds)):
         raise ValueError("Odds must be > 1.0")
 
-    # Initial estimate: z = 0 (no informed bettors)
+    # A non-convergent Shin solve falls back to proportional vig removal from
+    # the same observed odds, never to invented uniform probabilities.
+    proportional = normalize_1x2_odds(home_odds, draw_odds, away_odds)
     z = 0.0
-    probs = {"home": 0.33, "draw": 0.34, "away": 0.33}
+    probs = {
+        "home": proportional["home"],
+        "draw": proportional["draw"],
+        "away": proportional["away"],
+    }
 
     for _ in range(max_iter):
         z_prev = z

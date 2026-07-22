@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""train_models.py — Offline training for all WC26 Predict models.
+"""Offline training that emits an immutable, unvalidated candidate bundle.
 
-Trains ALL model components, saves artifacts to backend/artifacts/,
-and writes the artifact registry at model_registry.json.
+Training never replaces ``active_bundle.json``. Promotion is a separate,
+audited operation after same-cohort temporal experiments pass their gates.
 
 Usage:
     python scripts/train_models.py
@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import pickle
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -27,8 +28,6 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-import joblib
-import numpy as np
 import pandas as pd
 import sqlite3
 
@@ -37,50 +36,32 @@ from app.services.tabular_match_model import TabularMatchEnhancer
 from app.services.elo_ratings import EloRatingSystem
 from app.services.pi_ratings import PiRatingWrapper
 from app.services.weibull_model import WeibullWrapper
+from app.services.artifact_bundle import sha256_file
+from app.services.model_cache import CachedDC, CachedEnhancer
+from app.services.sqlite_paths import current_sync_sqlite_path
 
 # ── Paths ──
-DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
 ARTIFACTS_DIR = BACKEND_DIR / "artifacts"
-DATAFRAMES_DIR = ARTIFACTS_DIR / "dataframes"
-MODELS_DIR = ARTIFACTS_DIR / "models"
-RATINGS_DIR = ARTIFACTS_DIR / "ratings"
-REGISTRY_PATH = ARTIFACTS_DIR / "model_registry.json"
-
-
-def _df_cache_path(team_type: str) -> Path:
-    return DATAFRAMES_DIR / f"{team_type}_finished_matches.pkl"
-
+CANDIDATES_DIR = ARTIFACTS_DIR / "candidates"
 
 # ═══════════════════════════════════════════════════════════════════════
 #  1. Data loading
 # ═══════════════════════════════════════════════════════════════════════
 
 def load_training_data(team_type: str, refresh: bool = False) -> pd.DataFrame:
-    """Load finished match data from SQLite (sync, no FastAPI async).
+    """Load finished matches from the canonical SQLite source of truth.
 
-    Uses a cached pickle file for reuse.  Pass refresh=True to reload
-    from SQLite and overwrite the cache.
+    ``refresh`` remains accepted for CLI compatibility; executable dataframe
+    caches are deliberately no longer read or written.
     """
-    DATAFRAMES_DIR.mkdir(parents=True, exist_ok=True)
-    cache_path = _df_cache_path(team_type)
+    del refresh
+    db_path = current_sync_sqlite_path()
+    if not db_path.exists():
+        raise FileNotFoundError(f"Database not found: {db_path}")
 
-    if not refresh and cache_path.exists():
-        print(f"  Loading cached dataframe from {cache_path}", flush=True)
-        df = pd.read_pickle(cache_path)
-        print(f"  Cached: {len(df)} matches, {df.home_team.nunique()} teams", flush=True)
-        return df
-
-    if not DB_PATH.exists():
-        raise FileNotFoundError(f"Database not found: {DB_PATH}")
-
-    print(f"  Loading data from SQLite ({DB_PATH}) ...", flush=True)
-    conn = sqlite3.connect(str(DB_PATH))
-
-    team_filter = ""
-    if team_type:
-        team_filter = f"AND ht.team_type = '{team_type}' AND at.team_type = '{team_type}'"
-
-    query = f"""
+    print(f"  Loading data from SQLite ({db_path}) ...", flush=True)
+    conn = sqlite3.connect(str(db_path))
+    query = """
         SELECT ht.name AS home_team,
                at.name AS away_team,
                mr.home_goals,
@@ -98,28 +79,35 @@ def load_training_data(team_type: str, refresh: bool = False) -> pd.DataFrame:
         JOIN teams at ON m.away_team_id = at.id
         JOIN match_results mr ON m.id = mr.match_id
         WHERE m.status = 'finished'
-        {team_filter}
+          AND (? = '' OR (ht.team_type = ? AND at.team_type = ?))
         ORDER BY m.match_date ASC
     """
-    df = pd.read_sql_query(query, conn)
+    df = pd.read_sql_query(query, conn, params=(team_type, team_type, team_type))
     conn.close()
 
     df["match_date"] = pd.to_datetime(df["match_date"], utc=True, format="ISO8601")
-    df.to_pickle(cache_path)
     print(f"  Loaded {len(df)} matches, {df.home_team.nunique()} teams", flush=True)
     return df
 
 
 def compute_fingerprint(df: pd.DataFrame) -> str:
-    """MD5 fingerprint of (row_count, max_match_date, team_count).
-
-    Used to detect data drift between training runs.
-    """
-    row_count = len(df)
-    max_date = str(df["match_date"].max()) if not df.empty else "none"
-    team_count = int(df["home_team"].nunique()) if not df.empty else 0
-    raw = f"{row_count}:{max_date}:{team_count}"
-    return hashlib.md5(raw.encode()).hexdigest()[:12]
+    """Content fingerprint over the actual ordered training rows."""
+    if df.empty:
+        return hashlib.sha256(b"empty-training-data").hexdigest()
+    columns = [
+        name
+        for name in (
+            "home_team", "away_team", "home_goals", "away_goals",
+            "match_date", "competition_weight", "is_neutral_venue",
+            "competition", "competition_type", "stage", "home_xg", "away_xg",
+        )
+        if name in df.columns
+    ]
+    stable = df.loc[:, columns].copy()
+    stable["match_date"] = stable["match_date"].astype(str)
+    stable = stable.sort_values(columns, kind="stable").reset_index(drop=True)
+    row_hashes = pd.util.hash_pandas_object(stable, index=False).values.tobytes()
+    return hashlib.sha256(row_hashes).hexdigest()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -177,7 +165,7 @@ def train_pi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
 def _weibull_worker(df_path: str, output_path: str, result_queue: "Queue[str]") -> None:
     """Run inside a child process: fit Weibull, pickle on success, signal back."""
     try:
-        df = pd.read_pickle(df_path)
+        df = pd.read_csv(df_path, parse_dates=["match_date"])
         wb = WeibullWrapper()
         success = wb.fit(df)
         if success:
@@ -190,21 +178,24 @@ def _weibull_worker(df_path: str, output_path: str, result_queue: "Queue[str]") 
         result_queue.put(f"failed:{exc}")
 
 
-def train_weibull(df: pd.DataFrame) -> tuple[bool, float, str]:
+def train_weibull(
+    df: pd.DataFrame,
+    *,
+    output_path: Path,
+) -> tuple[bool, float, str]:
     """Fit Weibull in a separate *process* with a 120-second timeout.
 
     Returns (success, elapsed_seconds, status_label) where status_label
     is ``"ready"``, ``"disabled_timeout"``, or ``"failed"``.
     """
     print("  [5/5] Training Weibull (subprocess, timeout=120s) ...", end=" ", flush=True)
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Use last 2000 matches (form-sensitive model)
     wb_df = df.sort_values("match_date").tail(2000).copy()
-    temp_df_path = MODELS_DIR / "_weibull_temp_df.pkl"
-    output_path = MODELS_DIR / "weibull.pkl"
+    temp_df_path = output_path.parent / "_weibull_temp_df.csv.gz"
 
-    wb_df.to_pickle(temp_df_path)
+    wb_df.to_csv(temp_df_path, index=False, compression="gzip")
 
     result_queue: Queue[str] = Queue()
     proc = Process(
@@ -259,51 +250,63 @@ def _try_remove(path: Path) -> None:
 #  3. Artifact save helpers
 # ═══════════════════════════════════════════════════════════════════════
 
-def save_dc(dc: DixonColesModel, df: pd.DataFrame) -> None:
-    """Persist DC model to disk cache (single source of truth since V3.8.0)."""
-    from app.services.model_cache_disk import save_dc_model_to_disk
-    save_dc_model_to_disk(dc, "FIFA World Cup 2026", df)
+def save_dc(dc: DixonColesModel, path: Path) -> None:
+    cached = CachedDC(
+        attack_params=dc.attack_params.copy(),
+        defense_params=dc.defense_params.copy(),
+        home_advantage=dc.home_advantage,
+        rho=dc.rho,
+        _team_order=list(dc._team_order),
+        trained_at=getattr(dc, "trained_at", datetime.now(timezone.utc)),
+    )
+    _write_pickle(path, cached)
 
 
-def save_enhancer(enh: TabularMatchEnhancer, df: pd.DataFrame) -> None:
-    """Persist Enhancer to disk cache (single source of truth since V3.8.0)."""
-    from app.services.model_cache_disk import save_enhancer_to_disk
-    from app.services.model_cache import CachedEnhancer
-    from datetime import datetime
+def save_enhancer(enh: TabularMatchEnhancer, path: Path) -> None:
     cached = CachedEnhancer(
         model=enh.model,
         feature_columns=enh.feature_columns.copy(),
         training_sample_count=enh.training_sample_count,
-        fitted_at=getattr(enh, "fitted_at", datetime.now()),
+        fitted_at=getattr(enh, "fitted_at", datetime.now(timezone.utc)),
     )
-    save_enhancer_to_disk(cached, "FIFA World Cup 2026", df)
+    _write_pickle(path, cached)
 
 
-def save_elo_ratings(ratings: dict[str, float]) -> None:
-    RATINGS_DIR.mkdir(parents=True, exist_ok=True)
-    path = RATINGS_DIR / "elo.json"
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(ratings, f, ensure_ascii=False, indent=2, sort_keys=True)
+def save_ratings(ratings: dict[str, float], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(ratings, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     print(f"    -> {path}  ({len(ratings)} teams)", flush=True)
 
 
-def save_pi_ratings(ratings: dict[str, float]) -> None:
-    RATINGS_DIR.mkdir(parents=True, exist_ok=True)
-    path = RATINGS_DIR / "pi.json"
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(ratings, f, ensure_ascii=False, indent=2, sort_keys=True)
-    print(f"    -> {path}  ({len(ratings)} teams)", flush=True)
+def _write_pickle(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as handle:
+        pickle.dump(value, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"    -> {path}", flush=True)
+
+
+def _artifact_record(path: Path) -> dict[str, Any]:
+    relative = path.resolve().relative_to(BACKEND_DIR.parent.resolve()).as_posix()
+    return {
+        "path": relative,
+        "sha256": sha256_file(path),
+        "size_bytes": path.stat().st_size,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════
 #  4. Registry
 # ═══════════════════════════════════════════════════════════════════════
 
-def write_registry(registry: dict[str, Any]) -> None:
-    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-    with open(REGISTRY_PATH, "w", encoding="utf-8") as f:
+def write_registry(registry: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
         json.dump(registry, f, ensure_ascii=False, indent=2)
-    print(f"  Registry: {REGISTRY_PATH}", flush=True)
+        f.write("\n")
+    print(f"  Registry: {path}", flush=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -322,12 +325,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--refresh",
         action="store_true",
-        help="Force retrain even if cached dataframe exists",
+        help="Compatibility flag; training data is always reloaded from canonical SQLite",
     )
     p.add_argument(
         "--skip-weibull",
         action="store_true",
         help="Skip Weibull training entirely",
+    )
+    p.add_argument(
+        "--bundle-id",
+        default="",
+        help="Optional immutable candidate bundle id.",
+    )
+    p.add_argument(
+        "--output-root",
+        default=str(CANDIDATES_DIR),
+        help="Root directory for immutable candidate bundles.",
     )
     return p.parse_args()
 
@@ -339,7 +352,7 @@ def main() -> None:
     print("  WC26 Predict — Offline Training")
     print(f"    Team type:       {args.team_type}")
     if args.refresh:
-        print("    --refresh:       Force reload data from SQLite")
+        print("    --refresh:       accepted (canonical SQLite is always reloaded)")
     if args.skip_weibull:
         print("    --skip-weibull:  Weibull will NOT be trained")
     print("=" * 60)
@@ -350,14 +363,39 @@ def main() -> None:
     df = load_training_data(args.team_type, refresh=args.refresh)
     fingerprint = compute_fingerprint(df)
     training_rows = len(df)
+    training_cutoff = (
+        pd.Timestamp(df["match_date"].max()).isoformat()
+        if not df.empty
+        else "unknown"
+    )
+    generated_token = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    bundle_id = args.bundle_id or f"candidate-{generated_token}-{fingerprint[:12]}"
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", bundle_id):
+        raise ValueError("bundle-id may contain only letters, digits, dot, underscore, and hyphen")
+    bundle_dir = (Path(args.output_root) / bundle_id).resolve()
+    output_root = Path(args.output_root).resolve()
+    if output_root not in bundle_dir.parents:
+        raise ValueError("candidate bundle path escapes output-root")
+    if bundle_dir.exists():
+        raise FileExistsError(f"Candidate bundle already exists: {bundle_dir}")
+    bundle_dir.mkdir(parents=True)
+    artifact_paths = {
+        "dixon_coles": bundle_dir / "dixon_coles.pkl",
+        "tabular_enhancer": bundle_dir / "tabular_enhancer.pkl",
+        "elo": bundle_dir / "elo.json",
+        "pi_rating": bundle_dir / "pi_rating.json",
+        "weibull": bundle_dir / "weibull.pkl",
+    }
     print(f"    Fingerprint:  {fingerprint}")
+    print(f"    Cutoff:       {training_cutoff}")
+    print(f"    Bundle:       {bundle_id}")
     print(f"    Rows:         {training_rows}")
     print(f"    Date range:   {df['match_date'].min().date()}  ->  {df['match_date'].max().date()}")
     print(f"    Teams:        {df.home_team.nunique()}")
     print()
 
     # Ensure all output directories exist
-    for d in (ARTIFACTS_DIR, DATAFRAMES_DIR, MODELS_DIR, RATINGS_DIR):
+    for d in (ARTIFACTS_DIR, CANDIDATES_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
     # ── 2. Train models ─────────────────────────────────────────────
@@ -367,7 +405,7 @@ def main() -> None:
     # a. Dixon-Coles
     try:
         dc_model, dc_sec = train_dixon_coles(df)
-        save_dc(dc_model, df)
+        save_dc(dc_model, artifact_paths["dixon_coles"])
         components["dixon_coles"] = {
             "status": "ready",
             "fit_seconds": round(dc_sec, 1),
@@ -385,7 +423,7 @@ def main() -> None:
     # b. TabularMatchEnhancer
     try:
         enh_model, enh_sec = train_enhancer(df)
-        save_enhancer(enh_model, df)
+        save_enhancer(enh_model, artifact_paths["tabular_enhancer"])
         components["tabular_enhancer"] = {
             "status": "ready",
             "fit_seconds": round(enh_sec, 1),
@@ -403,7 +441,7 @@ def main() -> None:
     # c. Elo
     try:
         elo_ratings, elo_sec = train_elo(df)
-        save_elo_ratings(elo_ratings)
+        save_ratings(elo_ratings, artifact_paths["elo"])
         components["elo"] = {
             "status": "ready",
             "fit_seconds": round(elo_sec, 1),
@@ -421,7 +459,7 @@ def main() -> None:
     # d. Pi-Rating
     try:
         pi_ratings, pi_sec = train_pi(df)
-        save_pi_ratings(pi_ratings)
+        save_ratings(pi_ratings, artifact_paths["pi_rating"])
         components["pi_rating"] = {
             "status": "ready",
             "fit_seconds": round(pi_sec, 1),
@@ -446,7 +484,10 @@ def main() -> None:
         }
     else:
         try:
-            wb_ok, wb_sec, wb_status = train_weibull(df)
+            wb_ok, wb_sec, wb_status = train_weibull(
+                df,
+                output_path=artifact_paths["weibull"],
+            )
             components["weibull"] = {
                 "status": wb_status,
                 "fit_seconds": round(wb_sec, 1),
@@ -472,13 +513,49 @@ def main() -> None:
         "total_seconds": round(total_elapsed, 1),
         "components": components,
     }
-    write_registry(registry)
+    registry_path = bundle_dir / "training_registry.json"
+    write_registry(registry, registry_path)
+    bundle_components = {
+        name: _artifact_record(path)
+        for name, path in artifact_paths.items()
+        if path.is_file() and components.get(name, {}).get("status") == "ready"
+    }
+    bundle_manifest = {
+        "schema_version": "model_artifact_bundle.v1",
+        "bundle_id": bundle_id,
+        "registered_at": datetime.now(timezone.utc).isoformat(),
+        "status": "candidate_unvalidated",
+        "promotion_evidence": False,
+        "training_data": {
+            "cutoff": training_cutoff,
+            "fingerprint": fingerprint,
+            "row_count": training_rows,
+            "team_type": args.team_type,
+            "provenance_complete": training_cutoff != "unknown",
+        },
+        "components": bundle_components,
+        "training_registry": _artifact_record(registry_path),
+        "notes": (
+            "Immutable training output only. It is not active and cannot be "
+            "promoted without same-cohort temporal experiment evidence."
+        ),
+    }
+    manifest_path = bundle_dir / "bundle.json"
+    manifest_path.write_text(
+        json.dumps(bundle_manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     # ── 4. Print summary ────────────────────────────────────────────
-    _print_summary(components, total_elapsed)
+    _print_summary(components, total_elapsed, manifest_path=manifest_path)
 
 
-def _print_summary(components: dict[str, dict[str, Any]], total_elapsed: float) -> None:
+def _print_summary(
+    components: dict[str, dict[str, Any]],
+    total_elapsed: float,
+    *,
+    manifest_path: Path,
+) -> None:
     labels = {
         "dixon_coles": "Dixon-Coles",
         "tabular_enhancer": "TabularEnhancer",
@@ -497,7 +574,7 @@ def _print_summary(components: dict[str, dict[str, Any]], total_elapsed: float) 
         if status == "ready":
             status_fmt = "ready"
         elif status == "disabled_timeout":
-            status_fmt = f"TIMEOUT (disabled)"
+            status_fmt = "TIMEOUT (disabled)"
         elif status == "failed":
             err = info.get("error", "")
             status_fmt = f"FAILED  {err[:60]}"
@@ -510,7 +587,8 @@ def _print_summary(components: dict[str, dict[str, Any]], total_elapsed: float) 
         print(f"  {label:<20} {seconds:>6.1f}s ({status_fmt})")
 
     print(f"  {'Total':<20} {total_elapsed:>6.1f}s")
-    print(f"  Registry: {REGISTRY_PATH}")
+    print(f"  Candidate manifest: {manifest_path}")
+    print("  Active bundle: unchanged")
     print()
 
 

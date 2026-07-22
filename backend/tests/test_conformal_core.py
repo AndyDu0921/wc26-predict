@@ -12,7 +12,6 @@ from app.core.conformal_core import (
     nonconformity_score,
     recency_weight,
     compute_prediction_set,
-    CONFORMAL_MIN_CALIBRATION_SIZE,
 )
 
 

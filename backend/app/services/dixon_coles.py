@@ -1,9 +1,7 @@
 from __future__ import annotations
-import logging
-
-logger = logging.getLogger(__name__)
 
 import json
+import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC
@@ -20,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.models import Match, MatchResult, Team
+
+logger = logging.getLogger(__name__)
 
 # --- Cold-start configuration ---
 # Minimum matches required before a team is considered "warm"

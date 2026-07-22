@@ -64,7 +64,7 @@ class WeibullWrapper:
         home_unique = ",".join(sorted(df["home_team"].unique()))
         away_unique = ",".join(sorted(df["away_team"].unique()))
         payload = f"{len(df)}|{df['match_date'].max()}|{home_unique}|{away_unique}"
-        return hashlib.md5(payload.encode()).hexdigest()[:32]
+        return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
     def fit(self, df: pd.DataFrame) -> bool:
         """Fit the Weibull model on training data.

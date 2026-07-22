@@ -603,5 +603,66 @@
       "BetNow",
       "bet365"
     ]
+  },
+  "Argentina|England": {
+    "captured_at": "2026-07-15T03:58:56.949755+00:00",
+    "bookmakers": [
+      {
+        "name": "FanDuel",
+        "region": "US",
+        "home": 3.0,
+        "draw": 2.85,
+        "away": 2.7
+      },
+      {
+        "name": "BetMGM",
+        "region": "US",
+        "home": 2.9,
+        "draw": 3.0,
+        "away": 2.55
+      },
+      {
+        "name": "Bet365",
+        "region": "UK",
+        "home": 3.0,
+        "draw": 3.0,
+        "away": 2.62
+      },
+      {
+        "name": "Pinnacle",
+        "region": "INTL",
+        "home": 3.12,
+        "draw": 3.1,
+        "away": 2.7
+      },
+      {
+        "name": "Betano",
+        "region": "BR",
+        "home": 3.0,
+        "draw": 2.9,
+        "away": 2.57
+      },
+      {
+        "name": "RotoWire",
+        "region": "US",
+        "home": 3.16,
+        "draw": 3.01,
+        "away": 2.72
+      },
+      {
+        "name": "KDUS_VSiN",
+        "region": "US",
+        "home": 3.05,
+        "draw": 2.95,
+        "away": 2.6
+      },
+      {
+        "name": "DraftKings",
+        "region": "US",
+        "home": 2.95,
+        "draw": 2.94,
+        "away": 2.79
+      }
+    ]
   }
 }

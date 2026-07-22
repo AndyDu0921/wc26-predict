@@ -43,6 +43,7 @@ class EvaluationRegistryRow:
     horizon_hours: float | None
     horizon_bucket: str
     stage: str
+    is_neutral: bool | None
     match_result_id: str | None
     schedule_id: str | None
     schedule_match_number: int | None
@@ -74,6 +75,7 @@ class EvaluationRegistryRow:
     eligible_for_backtest: bool
     exclusion_reasons: list[str]
     current_probs: dict[str, float] | None
+    component_probs: dict[str, Any]
     probability_quality_status: str
     probability_quality_issues: list[str]
     score_matrix: list[list[float]] | None
@@ -130,9 +132,14 @@ def build_evaluation_registry(
 def _load_match_results(conn: sqlite3.Connection, competition: str) -> list[sqlite3.Row]:
     if not _has_table(conn, "matches") or not _has_table(conn, "match_results"):
         return []
+    neutral_select = (
+        "COALESCE(m.is_neutral_venue, 0)"
+        if _has_column(conn, "matches", "is_neutral_venue")
+        else "0"
+    )
     return list(
         conn.execute(
-            """
+            f"""
             SELECT
                 CAST(m.id AS TEXT) AS match_id,
                 ht.name AS home_team,
@@ -140,7 +147,8 @@ def _load_match_results(conn: sqlite3.Connection, competition: str) -> list[sqli
                 mr.home_goals AS home_goals,
                 mr.away_goals AS away_goals,
                 m.match_date AS match_date,
-                COALESCE(m.stage, '') AS stage
+                COALESCE(m.stage, '') AS stage,
+                {neutral_select} AS is_neutral_venue
             FROM matches m
             JOIN teams ht ON m.home_team_id = ht.id
             JOIN teams at ON m.away_team_id = at.id
@@ -254,6 +262,7 @@ def _build_row(
     away_team = str((match or schedule)["away_team"])
     match_date = str((match or schedule)["match_date"])
     stage = str((match["stage"] if match else None) or (schedule["stage"] if schedule else "") or "")
+    is_neutral = bool(match["is_neutral_venue"]) if match is not None else True
     match_id = str(match["match_id"]) if match else None
     schedule_id = str(schedule["schedule_id"]) if schedule else None
     schedule_match_number = int(schedule["match_number"]) if schedule else None
@@ -284,6 +293,7 @@ def _build_row(
     current_prob_source = None
     score_matrix = None
     component_count = 0
+    component_probs: dict[str, Any] = {}
     model_version = None
     weight_config_label = None
     snapshot_at = None
@@ -324,7 +334,9 @@ def _build_row(
         current_probs = pre_probs
         current_prob_source = "pre_match_snapshots.final_probs" if current_probs is not None else None
         score_matrix = _json_loads(pre_snapshot["fused_score_matrix"])
-        component_count = _component_count(_json_loads(pre_snapshot["component_probs"]))
+        parsed_components = _json_loads(pre_snapshot["component_probs"])
+        component_probs = parsed_components if isinstance(parsed_components, dict) else {}
+        component_count = _component_count(component_probs)
 
     if prediction_snapshot is not None:
         if model_version is None:
@@ -337,7 +349,9 @@ def _build_row(
                 current_prob_source = "prediction_snapshots.adjusted_or_baseline_probs"
                 weight_config_label = "prediction_snapshot.adjusted_probs"
         if component_count == 0:
-            component_count = _component_count(_json_loads(_row_get(prediction_snapshot, "component_probs")))
+            parsed_components = _json_loads(_row_get(prediction_snapshot, "component_probs"))
+            component_probs = parsed_components if isinstance(parsed_components, dict) else {}
+            component_count = _component_count(component_probs)
 
     probability_quality_issues = _probability_quality_issues(current_probs)
     probability_quality_status = (
@@ -411,6 +425,7 @@ def _build_row(
         horizon_hours=horizon_hours,
         horizon_bucket=horizon_bucket,
         stage=stage,
+        is_neutral=is_neutral,
         match_result_id=match_id,
         schedule_id=schedule_id,
         schedule_match_number=schedule_match_number,
@@ -442,6 +457,7 @@ def _build_row(
         eligible_for_backtest=not exclusions,
         exclusion_reasons=exclusions,
         current_probs=current_probs,
+        component_probs=component_probs,
         probability_quality_status=probability_quality_status,
         probability_quality_issues=probability_quality_issues,
         score_matrix=score_matrix if _valid_matrix(score_matrix) else None,
@@ -700,7 +716,7 @@ def _sample_key(home_team: str, away_team: str, match_date: str) -> str:
     kickoff = _parse_dt(match_date)
     identity_time = kickoff.isoformat() if kickoff is not None else str(match_date)
     raw = f"{_norm(home_team)}::{_norm(away_team)}::{identity_time}"
-    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def _norm(value: str) -> str:

@@ -179,3 +179,33 @@ def test_learning_log_records_wrong_prediction_boolean():
 
     assert db.added is log
     assert log.model_was_right is False
+
+
+def test_market_divergence_uses_multiclass_brier_not_home_only():
+    class _Db:
+        def __init__(self):
+            self.added = None
+
+        def add(self, value):
+            self.added = value
+
+    snapshot = _snapshot(
+        match_id="market-test",
+        baseline_probs={"home": 0.40, "draw": 0.50, "away": 0.10},
+        market_probs={"home": 0.40, "draw": 0.10, "away": 0.50},
+        pipeline_params={},
+    )
+    db = _Db()
+
+    asyncio.run(
+        LearningEngine()._log_market_divergence(
+            snapshot,
+            actual_index=1,
+            db=db,
+        )
+    )
+
+    assert db.added is not None
+    assert db.added.model_home_prob == pytest.approx(0.40)
+    assert db.added.market_home_prob == pytest.approx(0.40)
+    assert db.added.model_was_closer is True

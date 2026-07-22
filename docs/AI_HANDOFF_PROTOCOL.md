@@ -1,96 +1,115 @@
 # AI Handoff Protocol
 
-This project is too stateful to operate from chat memory. Every AI agent must
-recalibrate from project facts before making claims or changing data.
+This project must be operated from persisted facts, not conversational memory.
 
-## Mandatory First Steps
+## Mandatory Startup
 
-Before answering tournament-state questions or running predictions/reviews:
+Before answering tournament-state questions or changing code/data:
 
 1. Read `docs/CURRENT_PROJECT_STATE.md`.
-2. Refresh and read the machine state report:
+2. Run:
 
    ```powershell
    backend/.venv/Scripts/python.exe backend/scripts/build_project_state_report.py --output reports/audits/current_project_state.json
    ```
 
-3. Check the relevant match rows in `reports/audits/current_project_state.json`.
-4. If making code or data changes, run the relevant audit script after the change.
+3. Read the relevant match rows in `reports/audits/current_project_state.json`.
+4. Check `git status --short --branch`; never revert unrelated dirty-worktree changes.
+5. Run the relevant audit after every material operation.
 
 ## Fact Hierarchy
 
-Use this order of authority:
+1. SQLite rows plus immutable pre-match snapshots.
+2. Stored reports/memory and evidence/raw ledgers.
+3. Official provider adapters and persisted payloads.
+4. Project audit output.
+5. External pages only after source URL, retrieval time, and raw/hash evidence are captured.
 
-1. SQLite DB tables and persisted report/memory artifacts.
-2. `evidence_items`, `information_state_signals`, `signal_evaluations`, and `match_data_raw`.
-3. Official provider adapters and stored raw payloads.
-4. Project audit scripts.
-5. External web pages only after the source is captured or cited with URL and time.
+Chat summaries, AI recollection, snippets, and unpersisted web text are hints only.
 
-Never treat these as facts:
+## Canonical Entrypoints
 
-- Compacted conversation summaries.
-- A previous AI's uncited memory.
-- Single web-search result snippets.
-- Browser/fetch summaries that were not persisted to evidence/raw ledgers.
+- Manual prediction: `backend/scripts/predict_match_full.py`.
+- Manual postmatch review: `backend/scripts/run_postmatch_complete.py`.
+- API/admin/worker prediction: `app.services.canonical_prediction_runner.run_canonical_prediction`.
+- All model inference enters `app.services.canonical_prediction_core.execute_prediction_core`.
+- Worker postmatch delegates to `run_postmatch_complete.py`; do not recreate a second evaluator.
 
-## Completed Matches
+Before handing off entrypoint work, run:
 
-For completed matches:
+```powershell
+backend/.venv/Scripts/python.exe backend/scripts/smoke_canonical_trigger.py
+backend/.venv/Scripts/python.exe backend/scripts/audit_entrypoints.py --json
+```
 
-- Do not re-litigate already reviewed results from a single external snippet.
-- Check DB result, prediction snapshot, learning log, process eval, postmatch eval, report, and memory first.
-- If external sources disagree with DB, create a discrepancy note or audit task. Do not overwrite DB unless the user explicitly asks.
-- Distinguish review presence from strict V4.10+ completion:
-  - `postmatch_review_present`: review/learning evidence exists.
-  - `v410_postmatch_complete`: all newer closed-loop fields are present.
+The smoke uses a temporary DB copy. Real DB row counts must remain unchanged.
 
-## Future Matches
+## Prediction Contract
 
-For future or unresolved matches:
+- A complete prediction persists `prediction_runs`, `pre_match_snapshots`, `prediction_snapshots`, and `feature_snapshots` in one SQLite DB.
+- `as_of` is actual generation/freeze time. T-minus horizons are request metadata and must not be recorded as fabricated generation times.
+- News, weather, injury/lineup evidence, and market odds are core inputs.
+- Every strict evidence item requires traceable source and `available_at <= as_of <= kickoff_at`.
+- Missing critical context must be reported as missing; never silently invent it.
+- Required model artifacts must match `active_bundle.json` hashes. Do not bypass the bundle or implicitly retrain during inference.
+- `active_bundle.json` is the only runtime artifact registry. Do not restore the deleted `artifact_registry.py` or `model_registry.json` paths.
+- Training may emit only immutable `candidate_unvalidated` bundles. Tournament simulation must stop on missing predictions and must never insert placeholder probabilities.
+- Market odds are valid evidence. Only betting advice, stake instructions, and guaranteed-outcome language are forbidden.
 
-- Real-time news, weather, injury/lineup information, and market odds are core signals.
-- Do not downplay market odds; they are a major external benchmark and prediction input.
-- Persist evidence with source URL, fetched time, available time, and hash where possible.
-- Do not use a one-off web summary as the only fact source for DB updates.
+## Postmatch Contract
 
-## Prediction Entry Points
+- Verify results with the project's consensus rules before activating learning.
+- Inspect prediction run, snapshots, process eval, learning log, postmatch eval, signal eval, report, and memory.
+- Rich official event/player data is postmatch-only for the same match.
+- Reruns must be idempotent.
+- Learning may write diagnostics and proposals; it must not mutate production weights, multipliers, or artifacts.
+- Attribution from component probabilities is approximate unless the full historical nonlinear chain is replayed. Label it honestly.
 
-- Manual pre-match CLI: `backend/scripts/predict_match_full.py`.
-- Manual post-match CLI: `backend/scripts/run_postmatch_complete.py`.
-- API, admin, and worker prediction triggers must call `app.services.canonical_prediction_runner.run_canonical_prediction`.
-- Do not restore or call removed orchestrator/wrapper scripts.
-- Before handing off production-trigger work, run:
+## Accuracy Claims
 
-  ```powershell
-  backend/.venv/Scripts/python.exe backend/scripts/smoke_canonical_trigger.py
-  ```
+Never quote one number without its sample definition.
 
-The smoke copies `backend/data/local_stage2.db` to `backend/tmp/` and must leave the real DB counts unchanged.
+Required context:
 
-## FIFA Official Data
+- strict/diagnostic/rejected counts;
+- model cohort/version;
+- temporal split method;
+- Brier, LogLoss, RPS, calibration, and score metrics;
+- paired confidence interval;
+- boundary-probability and subgroup robustness;
+- whether the result is descriptive, shadow evidence, or promotion evidence.
 
-FIFA Match Centre web pages may be front-end shells. If a page cannot be parsed:
+Current invariant: V4.12 has no completed same-cohort sample. The predecessor V4.11 strict cohort has only four. Pooled historical metrics are not proof that V4.12 is better.
 
-- Do not conclude that FIFA has no data.
-- Use `collect_official_match_data.py` and the FIFA provider adapter.
-- Prefer stored `match_data_raw` payloads over browser summaries.
-- Be explicit about coverage: FIFA live payloads may provide score, goals, bookings, substitutions, and lineups without full shot map, shot xG, or technical player statistics.
+## Score Interpretation
 
-## Forbidden Without Explicit User Approval
+The score forecast is `P(HG=i, AG=j | pre-match information)`, not a deterministic score. Optimize Score LogLoss, marginal calibration, Top-k coverage, and uncertainty. Do not tune solely for exact-score hits.
 
-- Do not change production model weights.
-- Do not overwrite model artifacts.
-- Do not rewrite historical prediction probabilities.
-- Do not fabricate kickoff times, probabilities, evidence, or timestamps.
-- Do not promote a model from small samples or direction accuracy alone.
-- Do not remove market/odds evidence; only remove betting-advice language.
+Keep 90-minute, extra-time, penalty-shootout, and advancement probabilities separate.
+
+## Forbidden Without Explicit Approval And Evidence
+
+- Changing production numeric weights.
+- Overwriting active artifacts.
+- Rewriting historical prediction probabilities.
+- Backdating evidence or snapshots.
+- Promoting pooled, underpowered, or CI-inconclusive experiments.
+- Using postmatch data in the same match's pre-match features.
+- Restoring removed orchestrators, wrappers, or duplicate persistence paths.
+- Printing or committing credentials.
 
 ## Required Closeout
 
-After material work:
+```powershell
+backend/.venv/Scripts/python.exe -m pytest backend/tests -q
+backend/.venv/Scripts/python.exe -m ruff check backend/app backend/scripts backend/tests
+backend/.venv/Scripts/python.exe -m compileall -q backend/app backend/scripts
+backend/.venv/Scripts/python.exe backend/scripts/audit_db_integrity.py
+backend/.venv/Scripts/python.exe backend/scripts/audit_report_paths.py --json
+backend/.venv/Scripts/python.exe backend/scripts/audit_entrypoints.py --json
+backend/.venv/Scripts/python.exe backend/scripts/audit_public_outputs.py
+backend/.venv/Scripts/python.exe backend/scripts/preflight_accuracy_experiments.py
+git diff --check
+```
 
-1. Regenerate `reports/audits/current_project_state.json`.
-2. Run targeted tests for changed code.
-3. Run `git diff --check`.
-4. Report what changed, what was verified, and what remains unresolved.
+Regenerate `reports/audits/current_project_state.json`, then report what changed, what was verified, and what remains unproven.

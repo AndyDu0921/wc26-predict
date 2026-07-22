@@ -16,9 +16,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
-from app.services.group_standings import GroupStandingsService, GroupTable, TeamStanding
+from app.services.group_standings import GroupStandingsService, GroupTable
 
 logger = logging.getLogger(__name__)
 
@@ -258,11 +257,6 @@ class MatchImportanceCalculator:
         if both_high and h_pts > 0 and a_pts > 0:
             # Check if draw truly benefits both: each team's current position
             # would be maintained or improved by a shared point
-            third_pos = 3
-            gap_to_3rd = min(
-                h_pts - (table.teams[2].points if len(table.teams) > 2 else 0),
-                a_pts - (table.teams[2].points if len(table.teams) > 2 else 0),
-            )
             # If the weaker of the two has at most a 1-pt gap above 3rd,
             # a draw won't necessarily save them — they need to win.
             # If both have >= 1 pt cushion over 3rd, a draw is mutually beneficial.
@@ -275,12 +269,10 @@ class MatchImportanceCalculator:
         # ── DEFENSIVE_ASYMMETRIC: one team would accept a draw, the other must win ──
         # The "satisfied" team plays conservatively; the "desperate" team attacks.
         if h_pos == 1 or h_pos == 2:
-            pts_above_h = h_pts - (table.teams[2].points if len(table.teams) > 2 else 0)
             if a_pos >= 3 and a_pts < h_pts:
                 # Home can accept draw (solid position), away must win
                 return MatchType.DEFENSIVE_ASYMMETRIC
         if a_pos == 1 or a_pos == 2:
-            pts_above_a = a_pts - (table.teams[2].points if len(table.teams) > 2 else 0)
             if h_pos >= 3 and h_pts < a_pts:
                 # Away can accept draw, home must win
                 return MatchType.DEFENSIVE_ASYMMETRIC
@@ -315,8 +307,6 @@ class MatchImportanceCalculator:
             return 0.15  # eliminated — pride only
 
         position = status.get("position", 3)
-        points = status.get("points", 0)
-
         # Higher motivation when in higher position (protecting lead)
         # or in lower position (must fight)
         base = 0.5

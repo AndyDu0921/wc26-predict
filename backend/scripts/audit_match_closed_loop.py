@@ -22,6 +22,7 @@ DEFAULT_DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
 
 
 PREMATCH_REQUIREMENTS = (
+    "match_parent",
     "pre_match_snapshots",
     "prediction_snapshots",
     "prediction_runs",
@@ -82,6 +83,7 @@ def _audit_one(
 ) -> dict[str, Any]:
     context = _match_context(conn, match_id)
     counts = {
+        "match_parent": _count_match_parent(conn, match_id),
         "pre_match_snapshots": _count_direct(conn, "pre_match_snapshots", match_id),
         "prediction_snapshots": _count_direct(conn, "prediction_snapshots", match_id),
         "prediction_runs": _count_direct(conn, "prediction_runs", match_id),
@@ -101,6 +103,7 @@ def _audit_one(
     postmatch_memory = _postmatch_memory_exists(repo_root, context)
 
     checks = {
+        "match_parent": counts["match_parent"] > 0,
         "pre_match_snapshots": counts["pre_match_snapshots"] > 0,
         "prediction_snapshots": counts["prediction_snapshots"] > 0,
         "prediction_runs": counts["prediction_runs"] > 0,
@@ -170,6 +173,17 @@ def _count_direct(conn: sqlite3.Connection, table_name: str, match_id: str) -> i
     placeholders, params = _in_clause(match_id)
     row = conn.execute(
         f"SELECT COUNT(*) AS c FROM {table_name} WHERE CAST(match_id AS TEXT) IN ({placeholders})",
+        params,
+    ).fetchone()
+    return int(row["c"] if row else 0)
+
+
+def _count_match_parent(conn: sqlite3.Connection, match_id: str) -> int:
+    if not _has_table(conn, "matches"):
+        return 0
+    placeholders, params = _in_clause(match_id)
+    row = conn.execute(
+        f"SELECT COUNT(*) AS c FROM matches WHERE CAST(id AS TEXT) IN ({placeholders})",
         params,
     ).fetchone()
     return int(row["c"] if row else 0)

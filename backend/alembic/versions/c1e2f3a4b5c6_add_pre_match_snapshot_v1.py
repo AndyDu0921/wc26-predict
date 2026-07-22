@@ -14,7 +14,6 @@ Adds the immutable pre_match_snapshot table with:
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision: str = 'c1e2f3a4b5c6'

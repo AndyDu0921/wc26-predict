@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import math
-from datetime import UTC
+import hashlib
+import json
+from datetime import UTC, datetime
 from datetime import timedelta
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -11,8 +13,8 @@ from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal
 from app.logging import get_logger
-from app.models import ContentArticle, Match, NewsSignal, PostmatchEval, PostmatchSignalEval, PredictionRun
-from app.models.enums import MatchResultCode, MatchStatus, PredictionRunType, ReviewStatus, SignalEvalLabel
+from app.models import ContentArticle, Match, NewsSignal, PostmatchEval, PredictionRun
+from app.models.enums import MatchStatus, PredictionRunType, ReviewStatus
 from app.services.article_generator import ArticleGeneratorService
 from app.services.calibration import IsotonicCalibrator
 from app.services.embedding_service import EmbeddingService
@@ -23,6 +25,7 @@ from app.services.canonical_prediction_runner import run_canonical_prediction
 from app.config import get_settings
 from app.utils.datetime import utc_now
 from app.utils.task_runs import record_task_run
+from app.version import VERSION
 from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -136,7 +139,9 @@ async def _news_ingest() -> dict[str, int]:
         pending_after = await db.scalar(
             select(func.count()).select_from(NewsSignal).where(NewsSignal.review_status == ReviewStatus.PENDING)
         )
-    logger.info("news_ingest_task counts=%s pending_before=%s pending_after=%s", ingest_counts, pending_before, pending_after)
+    logger.info(
+        "news_ingest_task counts=%s pending_before=%s pending_after=%s", ingest_counts, pending_before, pending_after
+    )
     return {
         "inserted": ingest_counts["inserted"],
         "event_registry": ingest_counts["event_registry"],
@@ -149,6 +154,7 @@ async def _news_ingest() -> dict[str, int]:
 
 async def _trigger_predictions() -> dict[str, int]:
     from app.version import VERSION as CURRENT_VERSION
+
     now = utc_now()
     created = 0
     checked_matches = 0
@@ -186,11 +192,14 @@ async def _trigger_predictions() -> dict[str, int]:
                     if old.model_version == CURRENT_VERSION:
                         continue
                     logger.info(
-                        "Replacing stale prediction: match=%s run_type=%s "
-                        "old_version=%s -> %s",
-                        match.id, run_type, old.model_version, CURRENT_VERSION,
+                        "Replacing stale prediction: match=%s run_type=%s old_version=%s -> %s",
+                        match.id,
+                        run_type,
+                        old.model_version,
+                        CURRENT_VERSION,
                     )
                     from sqlalchemy import delete as sa_delete
+
                     await db.execute(sa_delete(PredictionRun).where(PredictionRun.id == old.id))
                     await db.flush()
                 await run_canonical_prediction(match_id=match.id, run_type=run_type.value, db=db)
@@ -200,31 +209,68 @@ async def _trigger_predictions() -> dict[str, int]:
 
 
 async def _postmatch_eval() -> dict[str, int]:
-    created = 0
+    from app.services.sqlite_paths import assert_canonical_sqlite_alignment
+
+    sync_db_path = assert_canonical_sqlite_alignment()
+    pending: dict[str, tuple[int, int]] = {}
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(PredictionRun)
             .join(Match, Match.id == PredictionRun.match_id)
             .options(selectinload(PredictionRun.match).selectinload(Match.result))
             .where(Match.status == MatchStatus.FINISHED)
-            .order_by(PredictionRun.created_at.asc())
+            .order_by(PredictionRun.created_at.desc())
         )
         prediction_runs = result.scalars().all()
+        seen_matches: set[str] = set()
         for run in prediction_runs:
             if run.match is None or run.match.result is None:
                 continue
+            match_key = str(run.match_id)
+            if match_key in seen_matches:
+                continue
+            seen_matches.add(match_key)
             existing = await db.execute(select(PostmatchEval).where(PostmatchEval.prediction_run_id == run.id))
             if existing.scalar_one_or_none() is not None:
                 continue
+            pending.setdefault(
+                match_key,
+                (int(run.match.result.home_goals), int(run.match.result.away_goals)),
+            )
 
-            evaluation = _build_postmatch_eval(run)
-            db.add(evaluation)
-            await db.flush()
-            await _build_signal_evaluations(run, db)
+    from scripts.run_postmatch_complete import run_complete_postmatch
+
+    created = 0
+    deferred = 0
+    failed = 0
+    for match_id, (home_goals, away_goals) in pending.items():
+        try:
+            summary = await run_complete_postmatch(
+                match_id=match_id,
+                home_score=home_goals,
+                away_score=away_goals,
+                data_source="canonical_postmatch_worker",
+                dry_run=False,
+                trust_db_score=False,
+                db_path=sync_db_path,
+            )
+        except Exception:
+            logger.exception("canonical postmatch worker failed match_id=%s", match_id)
+            failed += 1
+            continue
+        if summary.get("status") == "COMPLETE":
             created += 1
-        await db.commit()
-    logger.info("postmatch_eval_task created=%s", created)
-    return {"created": created}
+        elif summary.get("status") in {"ABORTED", "INCOMPLETE"}:
+            deferred += 1
+        else:
+            failed += 1
+    logger.info(
+        "postmatch_eval_task canonical created=%s deferred=%s failed=%s",
+        created,
+        deferred,
+        failed,
+    )
+    return {"created": created, "deferred": deferred, "failed": failed}
 
 
 async def _generate_article(prediction_run_id: str) -> dict[str, str]:
@@ -273,25 +319,105 @@ async def _retrain_calibrator() -> dict[str, object]:
         result = await db.execute(
             select(PredictionRun, PostmatchEval)
             .join(PostmatchEval, PostmatchEval.prediction_run_id == PredictionRun.id)
+            .where(PredictionRun.model_version == VERSION)
             .order_by(PostmatchEval.created_at.asc())
         )
         records = [
             {
+                "prediction_run_id": str(run.id),
                 "home_win_prob": run.home_win_prob,
                 "draw_prob": run.draw_prob,
                 "away_win_prob": run.away_win_prob,
-                "actual_result": evaluation.actual_result,
+                "actual_result": getattr(evaluation.actual_result, "value", evaluation.actual_result),
             }
             for run, evaluation in result.all()
         ]
-    calibrator = IsotonicCalibrator().fit_from_db_records(records)
-    stats = calibrator.calibration_stats()
-    if calibrator.is_fitted:
-        calibrator.save(str(settings.model_artifact_dir.parent / "artifacts" / "calibrator.json"))
-        logger.info("retrain_calibrator_task stats=%s", stats)
-    else:
-        logger.info("retrain_calibrator_task skipped, insufficient records=%s", len(records))
-    return stats
+    candidate_root = settings.model_artifact_dir.parent / "artifacts" / "candidates" / "calibrator"
+    payload = _materialize_calibrator_candidate(
+        records,
+        candidate_root=candidate_root,
+        model_cohort=VERSION,
+    )
+    logger.info("retrain_calibrator_task candidate_result=%s", payload)
+    return payload
+
+
+def _materialize_calibrator_candidate(
+    records: list[dict[str, object]],
+    *,
+    candidate_root: str | Path,
+    model_cohort: str,
+    min_samples: int = 30,
+) -> dict[str, object]:
+    """Write an immutable calibrator candidate without touching active artifacts."""
+    if len(records) < min_samples:
+        return {
+            "status": "rejected",
+            "reason": "insufficient_same_cohort_samples",
+            "model_cohort": model_cohort,
+            "n_samples": len(records),
+            "minimum_samples": min_samples,
+            "active_artifact_changed": False,
+        }
+
+    stable_records = sorted(
+        records,
+        key=lambda item: str(item.get("prediction_run_id") or ""),
+    )
+    encoded = json.dumps(
+        stable_records,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    fingerprint = hashlib.sha256(encoded).hexdigest()
+    output_dir = Path(candidate_root) / model_cohort / fingerprint[:16]
+    artifact_path = output_dir / "calibrator.json"
+    manifest_path = output_dir / "candidate.json"
+    if artifact_path.is_file() and manifest_path.is_file():
+        return {
+            "status": "exists",
+            "model_cohort": model_cohort,
+            "n_samples": len(records),
+            "training_fingerprint": fingerprint,
+            "artifact_path": str(artifact_path),
+            "manifest_path": str(manifest_path),
+            "active_artifact_changed": False,
+        }
+
+    calibrator = IsotonicCalibrator().fit_from_db_records(stable_records)
+    if not calibrator.is_fitted:
+        return {
+            "status": "rejected",
+            "reason": "calibrator_not_fitted",
+            "model_cohort": model_cohort,
+            "n_samples": len(records),
+            "active_artifact_changed": False,
+        }
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    calibrator.save(str(artifact_path))
+    manifest = {
+        "schema_version": "calibrator_candidate.v1",
+        "status": "candidate_unvalidated",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "model_cohort": model_cohort,
+        "n_samples": len(records),
+        "training_fingerprint": fingerprint,
+        "artifact_path": artifact_path.name,
+        "calibration_stats": calibrator.calibration_stats(),
+        "promotion_evidence": False,
+        "active_artifact_changed": False,
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        **manifest,
+        "artifact_path": str(artifact_path),
+        "manifest_path": str(manifest_path),
+    }
 
 
 async def _embed_articles() -> dict[str, int]:
@@ -300,81 +426,3 @@ async def _embed_articles() -> dict[str, int]:
         processed = await service.batch_embed_articles(db, batch_size=20)
     logger.info("embed_articles_task processed=%s", processed)
     return {"processed": processed}
-
-
-def _build_postmatch_eval(run: PredictionRun) -> PostmatchEval:
-    result = run.match.result
-    assert result is not None
-
-    actual_index = 0 if result.home_goals > result.away_goals else 1 if result.home_goals == result.away_goals else 2
-    probs = [run.home_win_prob, run.draw_prob, run.away_win_prob]
-    actual = [0.0, 0.0, 0.0]
-    actual[actual_index] = 1.0
-    brier = sum((prob - observed) ** 2 for prob, observed in zip(probs, actual, strict=False))
-    log_loss = -math.log(max(probs[actual_index], 1e-12))
-    exact_score = f"{result.home_goals}:{result.away_goals}"
-    top3_hit = any(item["score"] == exact_score for item in run.top3_scores)
-    bucket = min(10, max(1, int(max(probs) * 10) + 1))
-
-    return PostmatchEval(
-        prediction_run_id=run.id,
-        actual_home_goals=result.home_goals,
-        actual_away_goals=result.away_goals,
-        actual_result=MatchResultCode.HOME if actual_index == 0 else MatchResultCode.DRAW if actual_index == 1 else MatchResultCode.AWAY,
-        brier_score=brier,
-        log_loss=log_loss,
-        exact_score_hit=bool(run.top3_scores and run.top3_scores[0]["score"] == exact_score),
-        top3_hit=top3_hit,
-        calibration_bucket=bucket,
-        notes="Auto-generated postmatch evaluation",
-    )
-
-
-async def _build_signal_evaluations(run: PredictionRun, db) -> None:
-    if not run.approved_signals:
-        return
-    signal_ids = [item["id"] for item in run.approved_signals if item.get("id")]
-    if not signal_ids:
-        return
-    result = await db.execute(
-        select(NewsSignal).where(NewsSignal.id.in_(signal_ids))
-    )
-    signals = result.scalars().all()
-    for signal in signals:
-        exists = await db.execute(
-            select(PostmatchSignalEval).where(
-                PostmatchSignalEval.prediction_run_id == run.id,
-                PostmatchSignalEval.signal_id == signal.id,
-            )
-        )
-        if exists.scalar_one_or_none() is not None:
-            continue
-        verdict = _score_signal_verdict(run, signal)
-        db.add(
-            PostmatchSignalEval(
-                match_id=run.match_id,
-                prediction_run_id=run.id,
-                signal_id=signal.id,
-                verdict=verdict,
-                notes="Auto-scored from final result",
-            )
-        )
-
-
-def _score_signal_verdict(run: PredictionRun, signal: NewsSignal) -> SignalEvalLabel:
-    result = run.match.result
-    assert result is not None
-    home_won = result.home_goals > result.away_goals
-    away_won = result.away_goals > result.home_goals
-    team_side = "home" if signal.team_id == run.match.home_team_id else "away" if signal.team_id == run.match.away_team_id else None
-    if signal.impact_direction == "neutral" or team_side is None:
-        return SignalEvalLabel.NEUTRAL
-    if signal.impact_direction == "uncertain":
-        return SignalEvalLabel.UNKNOWN
-    if team_side == "home":
-        if signal.impact_direction == "positive":
-            return SignalEvalLabel.ACCURATE if home_won else SignalEvalLabel.MISLEADING
-        return SignalEvalLabel.ACCURATE if not home_won else SignalEvalLabel.MISLEADING
-    if signal.impact_direction == "positive":
-        return SignalEvalLabel.ACCURATE if away_won else SignalEvalLabel.MISLEADING
-    return SignalEvalLabel.ACCURATE if not away_won else SignalEvalLabel.MISLEADING

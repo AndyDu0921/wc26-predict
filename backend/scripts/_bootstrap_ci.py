@@ -19,12 +19,8 @@ import io
 import json
 import math
 import random
-import sqlite3
 import sys
-from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
@@ -392,19 +388,19 @@ def print_bootstrap_summary(result: dict):
     use_unicode = _can_use_box_drawing()
 
     print(f"\n{'='*70}")
-    print(f"BOOTSTRAP UNCERTAINTY QUANTIFICATION")
+    print("BOOTSTRAP UNCERTAINTY QUANTIFICATION")
     print(f"  {result['home_team']} vs {result['away_team']} (neutral={result['is_neutral']})")
     print(f"  Bootstrap samples: {result['n_bootstrap']} (failed: {result['n_failed']})")
     print(f"{'='*70}")
 
     if use_unicode:
         print(f"\n  ╔{'═'*12}╤{'═'*10}╤{'═'*48}╗")
-        print(f"  ║  Outcome      │  Point   │  95% Bootstrap CI                          ║")
+        print("  ║  Outcome      │  Point   │  95% Bootstrap CI                          ║")
         print(f"  ╠{'═'*12}╪{'═'*10}╪{'═'*48}╣")
     else:
         sep = "+" + "-"*12 + "+" + "-"*10 + "+" + "-"*48 + "+"
         print(f"\n  {sep}")
-        print(f"  |  Outcome      |  Point   |  95% Bootstrap CI                          |")
+        print("  |  Outcome      |  Point   |  95% Bootstrap CI                          |")
         print(f"  |{'='*12}|{'='*10}|{'='*48}|")
 
     for key, label in [("home_win", f"{result['home_team']} win"),
@@ -426,7 +422,7 @@ def print_bootstrap_summary(result: dict):
         print(f"  +{'-'*12}+{'-'*10}+{'-'*48}+")
 
     # xG uncertainty
-    print(f"\n  xG Bootstrap (95% CI):")
+    print("\n  xG Bootstrap (95% CI):")
     for key, team in [("home", result['home_team']), ("away", result['away_team'])]:
         bsg = result["bootstrap_xg"][key]
         base_xg = result["base_xg"][key]
@@ -435,7 +431,7 @@ def print_bootstrap_summary(result: dict):
         print(f"    {team}: {base_xg:.2f} [{ci_lo:.2f} – {ci_hi:.2f}]")
 
     # Distribution shape
-    print(f"\n  Home win percentile distribution:")
+    print("\n  Home win percentile distribution:")
     hw = result["bootstrap_distribution"]["home_win"]["percentiles"]
     print(f"    P5={hw['5']}%  P25={hw['25']}%  P50={hw['50']}%  P75={hw['75']}%  P95={hw['95']}%")
     print(f"    Spread (P95-P5): {float(hw['95']) - float(hw['5']):.1f}pp")
@@ -452,7 +448,7 @@ def main():
     print(f"  {home} vs {away} | Neutral: {neutral} | Iterations: {n_iter}")
     print("=" * 70)
 
-    print(f"\n[1] Extracting team match data...")
+    print("\n[1] Extracting team match data...")
     result = bootstrap_lambda_ci(home, away, is_neutral=neutral, n_bootstrap=n_iter)
 
     if result:

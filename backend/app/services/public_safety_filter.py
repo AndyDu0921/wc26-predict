@@ -7,13 +7,12 @@ market data needed for model quality.
 Design: Pure functions, no side effects, importable from anywhere.
 """
 from __future__ import annotations
-import logging
 
+import logging
 import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
-from datetime import datetime, timezone
-from typing import Any
 
 # ── Forbidden advice/promotional terms ──
 # Raw odds and bookmaker names are allowed as data.  The blocked terms below

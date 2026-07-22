@@ -11,21 +11,27 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
-from app.services.evaluation_registry import DEFAULT_DB_PATH, build_evaluation_registry
-from app.services.evaluation_registry_repair import build_evaluation_registry_repair_report
+from app.services.evaluation_registry import DEFAULT_DB_PATH, build_evaluation_registry  # noqa: E402
+from app.services.evaluation_registry_repair import build_evaluation_registry_repair_report  # noqa: E402
 from app.services.model_change_proposals import (
     build_data_repair_proposal_from_repair_report,
     build_learning_log_weight_proposal,
     build_proposal_from_experiment,
     build_registry_feature_rule_proposal,
     persist_model_change_proposal,
-)
+)  # noqa: E402
+from app.version import VERSION  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate proposal-only self-evolution records")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH))
     parser.add_argument("--min-active-logs", type=int, default=30)
+    parser.add_argument(
+        "--model-cohort",
+        default=VERSION,
+        help="Only use verified learning logs from this model version; use 'all' for diagnostics.",
+    )
     parser.add_argument(
         "--experiment-batch-json",
         default="",
@@ -42,6 +48,9 @@ def main() -> int:
             args.db_path,
             sample_registry_hash=registry["registry_hash"],
             min_active_logs=args.min_active_logs,
+            required_model_cohort=(
+                None if args.model_cohort.strip().lower() == "all" else args.model_cohort.strip()
+            ),
         ),
         build_registry_feature_rule_proposal(registry),
         build_data_repair_proposal_from_repair_report(repair_report),

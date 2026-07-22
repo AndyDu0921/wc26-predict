@@ -1,0 +1,11 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+"backend/scripts/*.py" = ["E402"]
+"backend/dashboard/*.py" = ["E402"]
+"backend/dashboard/pages/*.py" = ["E402"]
+"backend/tests/test_dashboard_*.py" = ["E402"]

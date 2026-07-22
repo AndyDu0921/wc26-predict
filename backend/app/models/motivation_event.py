@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -31,7 +31,7 @@ class MotivationEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Core motivation tag (see MOTIVATION_TAGS definition)
     motivation_tag: Mapped[str] = mapped_column(String(30), nullable=False)
 
-    # Numeric strength 0.0–1.0, used by SignalAdjuster
+    # Numeric strength 0.0-1.0, consumed by the canonical signal path.
     motivation_strength: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
 
     # Human-readable explanation

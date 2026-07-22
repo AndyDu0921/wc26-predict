@@ -75,6 +75,7 @@ def build_proposal_from_experiment(result: dict[str, Any]) -> ModelChangeProposa
             "candidate_name": candidate_name,
             "candidate_family": result.get("candidate_family"),
             "experiment_id": result.get("experiment_id"),
+            "required_model_cohort": result.get("required_model_cohort"),
             "shadow_only": True,
         },
         metrics=metrics,
@@ -85,6 +86,7 @@ def build_proposal_from_experiment(result: dict[str, Any]) -> ModelChangeProposa
             "leakage_checks": result.get("leakage_checks"),
             "candidate_availability": result.get("candidate_availability"),
             "unavailable_reasons": result.get("unavailable_reasons"),
+            "required_model_cohort": result.get("required_model_cohort"),
         },
         notes="Generated from shadow experiment; does not apply production changes.",
     )
@@ -138,14 +140,36 @@ def build_learning_log_weight_proposal(
     *,
     sample_registry_hash: str | None = None,
     min_active_logs: int = 30,
+    required_model_cohort: str | None = None,
 ) -> ModelChangeProposalCandidate:
-    """Build a proposal from learning-log marginal attribution evidence."""
+    """Build a proposal from verified, optionally same-cohort learning logs."""
     path = Path(db_path)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     try:
         if not _has_table(conn, "prediction_learning_log"):
             rows = []
+        elif required_model_cohort:
+            columns = _table_columns(conn, "prediction_learning_log")
+            if "prediction_run_id" not in columns or not _has_table(conn, "prediction_runs"):
+                rows = []
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT
+                        pll.status, pll.learning_weight, pll.learning_tier,
+                        pll.dc_marginal, pll.enhancer_marginal, pll.elo_marginal,
+                        pll.market_marginal, pll.signal_marginal,
+                        pll.score_log_loss, pll.score_exact_hit, pll.score_top3_hit
+                    FROM prediction_learning_log pll
+                    JOIN prediction_runs pr ON CAST(pr.id AS TEXT) = CAST(pll.prediction_run_id AS TEXT)
+                    WHERE pll.status = 'active'
+                      AND pll.learning_tier IN ('full', 'diagnostic')
+                      AND pll.learning_weight > 0
+                      AND pr.model_version = ?
+                    """,
+                    (required_model_cohort,),
+                ).fetchall()
         else:
             rows = conn.execute(
                 """
@@ -155,8 +179,9 @@ def build_learning_log_weight_proposal(
                     market_marginal, signal_marginal,
                     score_log_loss, score_exact_hit, score_top3_hit
                 FROM prediction_learning_log
-                WHERE status='active'
-                   OR learning_tier IN ('full', 'diagnostic')
+                WHERE status = 'active'
+                  AND learning_tier IN ('full', 'diagnostic')
+                  AND learning_weight > 0
                 """
             ).fetchall()
     finally:
@@ -193,6 +218,7 @@ def build_learning_log_weight_proposal(
         gate_decision=gate,
         evidence={
             "min_active_logs": min_active_logs,
+            "required_model_cohort": required_model_cohort,
             "score_metric_rows": sum(1 for row in active_rows if row.get("score_log_loss") is not None),
         },
         notes="Proposal-only marginal review; no production weights were changed.",
@@ -332,7 +358,8 @@ def update_model_change_proposal_status(
         _require_table(conn)
         row = conn.execute(
             """
-            SELECT id, status, evidence
+            SELECT id, status, evidence, gate_decision, sample_registry_hash,
+                   candidate_payload
             FROM model_change_proposals
             WHERE id=?
             """,
@@ -342,6 +369,27 @@ def update_model_change_proposal_status(
             raise KeyError(f"Proposal not found: {proposal_id}")
 
         evidence = _loads(row[2])
+        gate_decision = _loads(row[3])
+        candidate_payload = _loads(row[5])
+        if new_status in MANUAL_APPROVAL_STATUSES and not gate_decision.get("passed"):
+            raise ValueError(f"{new_status} requires gate_decision.passed=true")
+        if new_status == "approved_for_shadow" and row[1] not in {
+            "proposal_pending_review",
+            "approved_for_shadow",
+        }:
+            raise ValueError(f"Cannot approve shadow proposal from status={row[1]}")
+        if new_status == "promoted_config":
+            if row[1] != "approved_for_shadow":
+                raise ValueError("promoted_config requires prior approved_for_shadow status")
+            required_cohort = (
+                evidence.get("required_model_cohort")
+                or candidate_payload.get("required_model_cohort")
+            )
+            n_samples = int(evidence.get("n_samples", 0) or 0)
+            if not row[4] or not required_cohort or n_samples < 30:
+                raise ValueError(
+                    "promoted_config requires registry hash, same-cohort evidence, and n_samples>=30"
+                )
         history = list(evidence.get("review_history") or [])
         history.append(
             {
@@ -503,6 +551,12 @@ def _has_table(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    if not _has_table(conn, table_name):
+        return set()
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table_name})")}
+
+
 def _find_existing_by_fingerprint(conn: sqlite3.Connection, fingerprint: str) -> tuple[Any, ...] | None:
     for row in conn.execute(
         """
@@ -550,9 +604,13 @@ def _fingerprint_payload(payload: dict[str, Any]) -> dict[str, Any]:
     candidate_payload.pop("experiment_id", None)
     if candidate_payload.get("candidate_family") is None:
         candidate_payload.pop("candidate_family", None)
+    if candidate_payload.get("required_model_cohort") is None:
+        candidate_payload.pop("required_model_cohort", None)
     normalized["candidate_payload"] = candidate_payload
     evidence = dict(normalized.get("evidence") or {})
     evidence.pop("fingerprint", None)
+    if evidence.get("required_model_cohort") is None:
+        evidence.pop("required_model_cohort", None)
     normalized["evidence"] = evidence
     return normalized
 

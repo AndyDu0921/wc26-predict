@@ -13,8 +13,6 @@ Idempotent -- deletes any existing wc26_* data before inserting.
 from __future__ import annotations
 
 import sqlite3
-import sys
-from datetime import date, datetime
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -439,12 +437,12 @@ def run() -> None:
         cursor.execute(f"DELETE FROM {table}")
 
     # Seed
-    groups_count = seed_groups(cursor)
+    seed_groups(cursor)
     group_matches_count = seed_group_matches(cursor)
     knockout_matches_count = seed_knockout_matches(cursor)
-    standings_count = seed_standings(cursor)
-    third_place_count = seed_third_place_ranking(cursor)
-    paths_count = seed_knockout_paths(cursor)
+    seed_standings(cursor)
+    seed_third_place_ranking(cursor)
+    seed_knockout_paths(cursor)
 
     conn.commit()
 

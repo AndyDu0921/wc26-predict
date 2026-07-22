@@ -14,9 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.services.sqlite_paths import current_sync_sqlite_path
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
 
 _ALIASES = {
     "usa": "united states",
@@ -102,11 +101,15 @@ def resolve_match_id(
     competition: str = "",
     kickoff_at: str | None = None,
     stage: str | None = None,
-    db_path: str | Path = DEFAULT_DB_PATH,
+    db_path: str | Path | None = None,
     min_confidence: float = 0.82,
 ) -> ResolvedMatch | None:
     """Resolve a match id from team names, competition, and optional time."""
-    path = Path(db_path)
+    path = (
+        Path(db_path).expanduser().resolve()
+        if db_path is not None
+        else current_sync_sqlite_path()
+    )
     if not path.exists():
         return None
 
@@ -206,7 +209,7 @@ def resolve_match_id(
 def resolve_match_id_from_mapping(
     data: dict[str, Any],
     *,
-    db_path: str | Path = DEFAULT_DB_PATH,
+    db_path: str | Path | None = None,
     min_confidence: float = 0.82,
 ) -> ResolvedMatch | None:
     """Resolve from a dict-like row with common prediction snapshot keys."""

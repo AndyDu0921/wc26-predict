@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Float, JSON, DateTime, Text
+from sqlalchemy import String, JSON, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base

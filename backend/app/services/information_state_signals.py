@@ -185,7 +185,7 @@ def _stable_signal_id(team: str, player: str, available_at: str | None, status: 
     raw = f"{_norm(team)}::{_norm(player)}::{available_at or ''}::{status}"
     import hashlib
 
-    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def _parse_dt(raw: Any) -> datetime | None:

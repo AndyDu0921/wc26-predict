@@ -10,7 +10,6 @@ Reference: Constantinou & Fenton (2012)
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd

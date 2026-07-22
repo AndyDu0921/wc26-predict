@@ -23,8 +23,8 @@ from dashboard.components.fusion_graph_view import render_fusion_graph
 from dashboard.components.run_quality_panel import render_run_quality, render_timings
 
 
-st.title("单场预测")
-st.caption("4 模型融合预测 + 实时市场赔率 + 天气 + AI 分析")
+st.title("单场概率预览")
+st.caption("Canonical core 只读预览 + 市场赔率 + 天气 + AI 解释")
 
 # ── 输入表单 ──────────────────────────────────────────────────────────────────
 col1, col2, col3 = st.columns([2, 2, 1])
@@ -134,7 +134,6 @@ def _run_enhanced(home_team, away_team, competition, is_neutral, mode):
     # Status tags
     tag_cols = st.columns(4)
     with tag_cols[0]:
-        delta = ""
         if enhanced.market_divergence_triggered:
             st.warning(f"⚠️ 市场分歧 {enhanced.market_divergence*100:.1f}pp")
         elif enhanced.market_probs:
@@ -307,25 +306,29 @@ def _run_enhanced(home_team, away_team, competition, is_neutral, mode):
 # ── Artifact-only mode ────────────────────────────────────────────────────────
 
 def _run_artifact_only(home_team, away_team, competition, is_neutral, mode):
-    """Run artifact prediction via PredictionPipeline (correct entry point)."""
-    from app.services.prediction_pipeline import PredictionPipeline
+    """Run a read-only preview through the canonical model adapter."""
+    from app.services.canonical_prediction_core import (
+        PredictionInvocation,
+        execute_prediction_core,
+    )
     from app.services.run_quality import RunQuality
     from app.services.prediction_timer import PredictionTimer
 
     with st.spinner("正在运行预测管线..."):
         try:
-            pipeline = PredictionPipeline.from_artifacts(mode=mode)
-            result = pipeline.predict_sync(
-                home_team,
-                away_team,
-                competition,
+            result = execute_prediction_core(PredictionInvocation(
+                home_team=home_team,
+                away_team=away_team,
+                competition=competition,
                 is_neutral=is_neutral,
+                mode=mode,
                 match_id=match_id or "",
+                kickoff_at=match_date or None,
                 enable_market=False,
                 enable_weather=False,
-                match_date=match_date or None,
                 venue=venue or None,
-            )
+                save_snapshot=False,
+            ))
             # Compatibility: build flat dict + quality + timer for existing render functions
             result_dict = result.to_dict()
             pred = result_dict["prediction"]
@@ -467,7 +470,7 @@ def _render_source_status(source_status: dict) -> None:
 
 
 # ── 运行预测 (placed after function definitions to avoid NameError) ──────────
-if st.button("开始预测", type="primary", disabled=not can_predict):
+if st.button("生成预览", type="primary", disabled=not can_predict):
     if enhanced_mode:
         _run_enhanced(home_team, away_team, competition, is_neutral, mode)
     else:

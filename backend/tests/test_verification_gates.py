@@ -1,7 +1,6 @@
 """Unit tests for verification_gates.py — P0-1 snapshot completeness gate."""
 from __future__ import annotations
 
-import pytest
 from app.core.verification_gates import (
     verify_snapshot_completeness,
     REQUIRED_COMPONENT_KEYS,
@@ -310,6 +309,28 @@ class TestPostflightCheck:
             calibration_applied=True,
         )
         assert len(failures) >= 1
+
+    def test_minimum_probability_clip_boundary_is_valid(self):
+        failures = postflight_check(
+            probs={"home_win_prob": 0.02, "draw_prob": 0.48, "away_win_prob": 0.50},
+            all_components_run=7,
+            market_required=False,
+            calibration_applied=True,
+        )
+
+        assert not [failure for failure in failures if failure.gate == "no_extreme_probs"]
+
+    def test_explicit_debug_run_can_disable_market_checks(self):
+        failures = postflight_check(
+            probs={"home_win_prob": 0.45, "draw_prob": 0.25, "away_win_prob": 0.30},
+            all_components_run=7,
+            market_applied=False,
+            market_provider_count=0,
+            market_required=False,
+            calibration_applied=True,
+        )
+
+        assert not [failure for failure in failures if failure.gate.startswith("market")]
 
     def test_calibration_not_applied_errors(self):
         """calibration_applied=False → error."""

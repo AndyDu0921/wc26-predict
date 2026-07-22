@@ -16,18 +16,21 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-
-logger = logging.getLogger(__name__)
 from typing import Any
 
-import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_RATING = 1500.0
 HOME_ADVANTAGE = 100.0          # Elo points for home team
 K_LEAGUE = 20                    # K-factor for regular league matches
 K_KNOCKOUT = 32                  # K-factor for knockout / World Cup matches
+KAPPA_DEFAULT = 0.24
+KAPPA_WORLD_CUP = 0.48
+KAPPA_EPL = 0.28
+KAPPA_UCL = 0.18
 
 
 def _elo_davidson_draw(elo_diff: float, kappa: float = 0.24) -> float:
@@ -40,7 +43,7 @@ def _elo_davidson_draw(elo_diff: float, kappa: float = 0.24) -> float:
     where r = elo_diff / 400, σ(r) = 1 / (1 + 10^(-r))
 
     κ controls the overall draw frequency:
-      - Football: κ ≈ 0.20–0.35
+      - Football: κ is competition-specific and code-versioned
       - EPL: κ ≈ 0.28 (high draw rate)
       - UCL knockout: κ ≈ 0.18 (low draw rate, extra time penalties)
       - Default: 0.24
@@ -55,63 +58,21 @@ def _elo_davidson_draw(elo_diff: float, kappa: float = 0.24) -> float:
     return max(0.02, min(0.35, draw_raw))
 
 
-# Audit R4-H4: cache kappa values to avoid N SQLite connections
-# per tournament simulation (1000+ matches → 1000+ DB hits).
-_KAPPA_CACHE: dict[str, float] = {}
-
-
 def get_kappa_for_competition(competition: str | None = None) -> float:
-    """Read κ from model_weight_config based on competition type.
-
-    Returns:
-        κ-Elo draw tendency parameter (0.18–0.50 typical range).
-        Falls back to 0.24 if DB unavailable or no match.
-        Results are cached in _KAPPA_CACHE for simulator performance.
-    """
+    """Return the code-versioned Elo-Davidson draw parameter."""
     if not competition:
-        return 0.24
+        return KAPPA_DEFAULT
 
     comp_lower = competition.lower()
-
-    # Map competition → config key
     if "world cup" in comp_lower or "fifa" in comp_lower:
-        key = "kappa_elo_wc"
+        return KAPPA_WORLD_CUP
     elif "premier league" in comp_lower or "epl" in comp_lower:
-        key = "kappa_elo_epl"
+        return KAPPA_EPL
     elif "champions league" in comp_lower or "ucl" in comp_lower:
-        key = "kappa_elo_ucl"
+        return KAPPA_UCL
     elif "fa cup" in comp_lower:
-        key = "kappa_elo_epl"  # FA Cup uses EPL κ (similar draw patterns)
-    else:
-        key = "kappa_elo_default"
-
-    if key in _KAPPA_CACHE:
-        return _KAPPA_CACHE[key]
-
-    try:
-        import sqlite3
-        from pathlib import Path
-        db_path = Path(__file__).resolve().parents[2] / "data" / "local_stage2.db"
-        conn = sqlite3.connect(str(db_path))
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT config_value FROM model_weight_config WHERE config_key = ?",
-                (key,)
-            )
-            row = cur.fetchone()
-            if row:
-                kappa = float(row[0])
-                _KAPPA_CACHE[key] = kappa
-                return kappa
-        finally:
-            conn.close()
-    except Exception:
-        logger.warning("Could not read kappa from DB for competition=%s — using default 0.24",
-                       competition, exc_info=True)
-
-    _KAPPA_CACHE[key] = 0.24
-    return 0.24
+        return KAPPA_EPL
+    return KAPPA_DEFAULT
 
 
 @dataclass(slots=True)
@@ -124,6 +85,7 @@ class EloPrediction:
     home_elo_adj: float           # home_elo + home_advantage
     rating_gap: float
     k_factor: float
+    draw_kappa: float
 
 
 class EloRatingSystem:
@@ -249,6 +211,7 @@ class EloRatingSystem:
             home_elo_adj=float(adj_home),
             rating_gap=float(gap),
             k_factor=float(self._k_factor(competition_weight)),
+            draw_kappa=float(kappa),
         )
 
     def get_ratings(self) -> dict[str, float]:

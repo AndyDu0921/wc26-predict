@@ -322,6 +322,7 @@ def postflight_check(
     all_components_run: int = 0,
     market_applied: bool = False,
     market_provider_count: int = 0,
+    market_required: bool = True,
     calibration_applied: bool = False,
     is_knockout: bool = False,
     elo_gap: float | None = None,
@@ -344,11 +345,12 @@ def postflight_check(
     if probs is not None:
         results.append(_check_draw_floor(probs, is_knockout))
 
-    # 4. Market boost applied
-    results.append(_check_market_applied(market_applied))
-
-    # 5. Market data provider count (must run AFTER pipeline — count is unknown preflight)
-    results.append(_check_market_provider_count(market_provider_count))
+    # 4-5. Market checks are mandatory in production, but explicit debug or
+    # parity runs may disable the source. Disabling it must never masquerade as
+    # a complete production prediction.
+    if market_required:
+        results.append(_check_market_applied(market_applied))
+        results.append(_check_market_provider_count(market_provider_count))
 
     # 6. Calibration applied
     results.append(_check_calibration_applied(calibration_applied))
@@ -401,11 +403,11 @@ def _check_no_extreme_probs(probs: dict[str, float]) -> GateResult:
     a = probs.get("away_win_prob", probs.get("away", 0.33))
 
     extremes: list[str] = []
-    if h <= MIN_PROB:
+    if h < MIN_PROB:
         extremes.append(f"home={h:.4f}")
-    if d <= MIN_PROB:
+    if d < MIN_PROB:
         extremes.append(f"draw={d:.4f}")
-    if a <= MIN_PROB:
+    if a < MIN_PROB:
         extremes.append(f"away={a:.4f}")
     if h >= 0.99:
         extremes.append(f"home={h:.4f}")

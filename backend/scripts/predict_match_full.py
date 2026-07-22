@@ -7,7 +7,9 @@ import argparse
 import io
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -20,25 +22,30 @@ if sys.platform == "win32" and "pytest" not in sys.modules:
         errors="replace",
     )
 
-from app.services.prediction_pipeline import PredictionPipeline, _count_market_providers
-from app.core.verification_gates import (
+from app.services.canonical_prediction_core import (  # noqa: E402
+    PredictionInvocation,
+    execute_prediction_core,
+)
+from app.services.prediction_pipeline import _count_market_providers  # noqa: E402
+from app.core.verification_gates import (  # noqa: E402
     preflight_check,
     postflight_check,
     format_gate_results,
     all_errors_passed,
 )
-from app.services.evaluation_registry import DEFAULT_DB_PATH
-from app.services.information_state_engine import (
+from app.services.evaluation_registry import DEFAULT_DB_PATH  # noqa: E402
+from app.services.match_resolver import normalize_name  # noqa: E402
+from app.services.information_state_engine import (  # noqa: E402
     audit_match_information_state,
     collect_match_evidence,
     extract_information_signals,
     score_information_signals,
 )
-from app.services.closed_loop_feature_snapshot import (
+from app.services.closed_loop_feature_snapshot import (  # noqa: E402
     persist_feature_snapshot_from_latest_prematch,
 )
-from scripts.audit_match_closed_loop import audit_match_closed_loop
-from scripts.backfill_prediction_persistence import repair_match as repair_prediction_persistence
+from scripts.audit_match_closed_loop import audit_match_closed_loop  # noqa: E402
+from scripts.backfill_prediction_persistence import repair_match as repair_prediction_persistence  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:
@@ -54,12 +61,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--competition")
     parser.add_argument("--match-id", default="")
     parser.add_argument("--match-date")
+    parser.add_argument("--stage", default="")
     parser.add_argument("--venue")
     parser.add_argument("--non-neutral", action="store_true")
     parser.add_argument("--mode", choices=("baseline", "standard", "full"), default="full")
     parser.add_argument("--bootstrap", action="store_true")
     parser.add_argument("--no-market", action="store_true")
     parser.add_argument("--no-weather", action="store_true")
+    parser.add_argument("--no-auto-resolve", action="store_true", help=argparse.SUPPRESS)
     persistence = parser.add_mutually_exclusive_group()
     persistence.add_argument("--save", action="store_true",
                              help="Persist snapshot to DB (default: enabled).")
@@ -67,8 +76,10 @@ def _parse_args() -> argparse.Namespace:
                              help="Skip DB persistence (debug only).")
 
     args = parser.parse_args()
-    args.home = args.home or args.home_pos or "Saudi Arabia"
-    args.away = args.away or args.away_pos or "Uruguay"
+    args.home = args.home or args.home_pos
+    args.away = args.away or args.away_pos
+    if not args.home or not args.away:
+        parser.error("home and away teams are required")
     args.competition = (
         args.competition
         or args.competition_pos
@@ -76,32 +87,95 @@ def _parse_args() -> argparse.Namespace:
     )
 
     # Auto-detect match_id from schedule if not provided
-    if not args.match_id:
+    if not args.match_id and not args.no_auto_resolve:
         args.match_id = _find_match_id(args.home, args.away, args.competition)
         if args.match_id:
             print(f"[Auto-resolved] match-id={args.match_id} for {args.home} vs {args.away}")
+
+    if args.match_id and not args.no_auto_resolve:
+        _hydrate_match_context(args)
 
     return args
 
 
 def _find_match_id(home_team: str, away_team: str, competition: str) -> str:
-    """Look up the wc26_schedule.id for a match by team names."""
+    """Resolve a unique fixture; never select an arbitrary first team pair."""
     import sqlite3
-    from pathlib import Path as _Path
-    db_path = _Path(__file__).resolve().parent.parent / "data" / "local_stage2.db"
+    db_path = Path(DEFAULT_DB_PATH)
     if not db_path.exists():
         return ""
     try:
-        conn = sqlite3.connect(str(db_path))
-        cur = conn.execute(
-            "SELECT id FROM wc26_schedule WHERE home_team=? AND away_team=? LIMIT 1",
-            (home_team, away_team),
-        )
-        row = cur.fetchone()
-        conn.close()
-        return str(row[0]) if row else ""
+        with sqlite3.connect(str(db_path)) as conn:
+            rows = []
+            if "world cup" in normalize_name(competition):
+                rows = conn.execute(
+                    "SELECT id FROM wc26_schedule WHERE home_team=? AND away_team=?",
+                    (home_team, away_team),
+                ).fetchall()
+            if len(rows) == 1:
+                return str(rows[0][0])
+            if len(rows) > 1:
+                return ""
+
+            rows = conn.execute(
+                """
+                SELECT CAST(m.id AS TEXT)
+                FROM matches m
+                JOIN teams ht ON ht.id=m.home_team_id
+                JOIN teams at ON at.id=m.away_team_id
+                WHERE ht.name=? AND at.name=? AND m.competition=?
+                """,
+                (home_team, away_team, competition),
+            ).fetchall()
+            return str(rows[0][0]) if len(rows) == 1 else ""
     except Exception:
         return ""
+
+
+def _hydrate_match_context(args: argparse.Namespace) -> None:
+    """Fill stage/kickoff/venue from one explicit match identity."""
+    import sqlite3
+
+    with sqlite3.connect(str(DEFAULT_DB_PATH)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM wc26_schedule WHERE CAST(id AS TEXT)=?",
+            (str(args.match_id),),
+        ).fetchone()
+        if row is not None:
+            if normalize_name(row["home_team"]) != normalize_name(args.home) or normalize_name(
+                row["away_team"]
+            ) != normalize_name(args.away):
+                raise SystemExit("match-id team pair does not match --home/--away")
+            args.stage = args.stage or str(row["stage"] or "")
+            args.venue = args.venue or str(row["venue"] or "")
+            if not args.match_date and row["match_date"] and row["kickoff_time"]:
+                time_text = str(row["kickoff_time"])
+                if len(time_text) == 5:
+                    time_text += ":00"
+                local = datetime.fromisoformat(f"{row['match_date']}T{time_text}")
+                args.match_date = local.replace(tzinfo=ZoneInfo("Asia/Shanghai")).isoformat()
+            return
+
+        row = conn.execute(
+            """
+            SELECT m.match_date, m.stage, m.venue, ht.name AS home_team, at.name AS away_team
+            FROM matches m
+            JOIN teams ht ON ht.id=m.home_team_id
+            JOIN teams at ON at.id=m.away_team_id
+            WHERE CAST(m.id AS TEXT)=?
+            """,
+            (str(args.match_id),),
+        ).fetchone()
+    if row is None:
+        raise SystemExit(f"match-id={args.match_id} was not found")
+    if normalize_name(row["home_team"]) != normalize_name(args.home) or normalize_name(
+        row["away_team"]
+    ) != normalize_name(args.away):
+        raise SystemExit("match-id team pair does not match --home/--away")
+    args.stage = args.stage or str(row["stage"] or "")
+    args.venue = args.venue or str(row["venue"] or "")
+    args.match_date = args.match_date or str(row["match_date"] or "")
 
 
 def _bootstrap_payload(home: str, away: str, is_neutral: bool) -> dict | None:
@@ -132,15 +206,54 @@ def _bootstrap_payload(home: str, away: str, is_neutral: bool) -> dict | None:
     }
 
 
+def _materialize_information_state(
+    args: argparse.Namespace,
+    *,
+    as_of_time: str,
+) -> dict:
+    if not args.no_save:
+        collect_match_evidence(
+            DEFAULT_DB_PATH,
+            match_id=args.match_id or None,
+            home_team=args.home,
+            away_team=args.away,
+            as_of_time=as_of_time,
+        )
+        extract_information_signals(
+            DEFAULT_DB_PATH,
+            match_id=args.match_id or None,
+            home_team=args.home,
+            away_team=args.away,
+            kickoff_at=args.match_date,
+            as_of_time=as_of_time,
+            persist=True,
+        )
+        score_information_signals(
+            DEFAULT_DB_PATH,
+            match_id=args.match_id or None,
+            home_team=args.home,
+            away_team=args.away,
+        )
+    return audit_match_information_state(
+        DEFAULT_DB_PATH,
+        match_id=args.match_id or None,
+        home_team=args.home,
+        away_team=args.away,
+        kickoff_at=args.match_date,
+        as_of_time=as_of_time,
+    )
+
+
 def main() -> int:
     args = _parse_args()
     is_neutral = not args.non_neutral
+    prediction_as_of = datetime.now(UTC).isoformat()
 
     # ── Pre-flight gate ────────────────────────────────────────────
     preflight_warnings = preflight_check(
         venue_confirmed=bool(args.venue),
         competition_type=args.competition,
-        match_stage="",
+        match_stage=args.stage,
     )
     if preflight_warnings:
         print(format_gate_results(preflight_warnings, "Pre-flight Gate"), file=sys.stderr)
@@ -148,33 +261,9 @@ def main() -> int:
 
     information_state_audit = None
     try:
-        if not args.no_save:
-            collect_match_evidence(
-                DEFAULT_DB_PATH,
-                match_id=args.match_id or None,
-                home_team=args.home,
-                away_team=args.away,
-            )
-            extract_information_signals(
-                DEFAULT_DB_PATH,
-                match_id=args.match_id or None,
-                home_team=args.home,
-                away_team=args.away,
-                kickoff_at=args.match_date,
-                persist=True,
-            )
-            score_information_signals(
-                DEFAULT_DB_PATH,
-                match_id=args.match_id or None,
-                home_team=args.home,
-                away_team=args.away,
-            )
-        information_state_audit = audit_match_information_state(
-            DEFAULT_DB_PATH,
-            match_id=args.match_id or None,
-            home_team=args.home,
-            away_team=args.away,
-            kickoff_at=args.match_date,
+        information_state_audit = _materialize_information_state(
+            args,
+            as_of_time=prediction_as_of,
         )
         missing = information_state_audit.get("missing", [])
         print(
@@ -188,20 +277,27 @@ def main() -> int:
     except Exception as exc:
         print(f"[Information State] audit failed: {exc}", file=sys.stderr)
 
-    pipeline = PredictionPipeline.from_artifacts(mode=args.mode)
-    result = pipeline.predict_sync(
-        args.home,
-        args.away,
-        args.competition,
+    result = execute_prediction_core(PredictionInvocation(
+        home_team=args.home,
+        away_team=args.away,
+        competition=args.competition,
         is_neutral=is_neutral,
         mode=args.mode,
         match_id=args.match_id,
-        match_date=args.match_date,
+        kickoff_at=args.match_date,
+        stage=args.stage,
         venue=args.venue,
         save_snapshot=not args.no_save,  # Default True; --no-save disables
         enable_market=not args.no_market,
         enable_weather=not args.no_weather,
-    )
+    ))
+    try:
+        information_state_audit = _materialize_information_state(
+            args,
+            as_of_time=datetime.now(UTC).isoformat(),
+        )
+    except Exception as exc:
+        print(f"[Information State] post-prediction evidence capture failed: {exc}", file=sys.stderr)
     payload = result.to_dict()
     if information_state_audit is not None:
         payload["information_state_audit"] = information_state_audit
@@ -219,6 +315,7 @@ def main() -> int:
         all_components_run=component_count,
         market_applied=payload.get("prediction", {}).get("market_applied", False) if isinstance(payload, dict) and isinstance(payload.get("prediction"), dict) else False,
         market_provider_count=market_provider_count,
+        market_required=not args.no_market,
         calibration_applied=payload.get("calibration_applied", False) if isinstance(payload, dict) else False,
     )
     if postflight_failures:

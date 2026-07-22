@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.12.0-alpha] - 2026-07-18
+
+### Added
+- One in-process prediction adapter, `canonical_prediction_core`, shared by manual CLI, API, admin, and worker triggers.
+- Immutable active artifact manifest with SHA-256 and size verification for DC, Enhancer, Elo, Pi, and Weibull runtime assets.
+- Candidate artifact bundles with training fingerprints; offline training no longer replaces active model files.
+- Same-cohort promotion evidence checks, probability-quality diagnostics, and robust current-vs-candidate experiment summaries.
+- Security contract tests for protected prediction/analysis routes, weak admin tokens, and wildcard CORS rejection.
+- Immutable signal-review audit rows and Alembic migration `i9d0e1f2g3h4`; model-entering admin signals require a real evidence-ledger row and commit review state atomically.
+- Canonical SQLite path guards for remaining sync consumers and an async-thread bridge that preserves weather collection in API/worker predictions.
+
+### Changed
+- Removed the duplicate async inference path and retained one canonical synchronous model chain behind all production surfaces.
+- API/worker persistence records actual generation time separately from requested T-minus horizon metadata.
+- Score matrices now support goals `0..10`, are normalized, and are reconciled to the final H/D/A distribution after nonlinear guards and calibration.
+- Dynamic Dixon-Coles is fitted as an expanding-window candidate; bivariate Poisson uses a shared-goal component; the weighted goal candidate is explicitly labeled empirical Bayes rather than full Bayesian state space.
+- Multiclass calibration and stacking candidates train only on earlier rows from the same model cohort.
+- Learning is diagnostic/proposal-only. Automatic context, signal-multiplier, weight, and artifact mutations were removed.
+- Market attribution uses full multiclass Brier score. Market odds remain a core prediction input and research benchmark.
+- Required production artifacts now fail closed when missing or tampered; inference no longer performs an implicit cold-start retrain.
+- `app.version.VERSION` is the only code-version fallback; the stale `PREDICTION_MODEL_VERSION` environment override was removed.
+- Dynamic Dixon-Coles shadow fitting now uses the World Cup participant pool and a four-year rolling window; the full candidate tournament completes instead of repeatedly fitting the entire 11,000-row national history for every sample.
+- Offline training always reads canonical SQLite and no longer loads executable dataframe caches. Tournament simulation uses the active bundle and canonical DB, and aborts instead of substituting `0.40/0.30/0.30` placeholder probabilities.
+- Dashboard prediction and tournament pages now use the canonical/current adapters and fail closed instead of importing removed services or fabricating fallback probabilities.
+
+### Removed
+- Duplicate BacktestGate, candidate catalog, async snapshot writer, async signal/context adjusters, process-eval store, closed-loop wrapper, and obsolete output-policy wrapper.
+- Confirmed dead ORM models and tests coupled only to the removed implementations.
+- Legacy artifact registry files, unused in-memory model-cache behavior, executable training dataframe cache paths, and stale tournament artifact paths.
+
+### Security
+- Prediction and LLM analysis mutation routes require admin authentication and stricter rate limits.
+- Weak/default admin tokens and wildcard credentialed CORS now fail closed.
+- Canonical prediction rejects Postgres or mismatched SQLite paths until a single-store Postgres snapshot adapter exists.
+- Non-security identifiers and fingerprints now use SHA-256. Runtime pickle bytes are path-confined, size-checked, and SHA-256 verified in memory before deserialization.
+- Dependency audit reports no known vulnerabilities; `pip check` reports no broken requirements. Bandit reports no high-severity findings; remaining B608 findings are reviewed parameterized/fixed-identifier SQL construction.
+
+### Verified
+- Final local engineering baseline: `617 passed`; Ruff `0` findings; compileall, diff check, and canonical temporary-DB smoke passed.
+- Alembic current=head=`i9d0e1f2g3h4`; SQLite integrity is `ok` with `0` foreign-key violations.
+- Registry: `93` independent matches, `35` strict, `47` diagnostic, `11` rejected; `5` strict rows contain legacy exact-zero probabilities.
+- V4.11 predecessor cohort has only `4` strict samples; V4.12 has no completed same-cohort sample yet. No predictive lift is claimed and promotion remains blocked.
+- Final pooled nine-candidate tournament completed on registry hash `7793416a258b2ed05d5bff2686dc7164010e46a299563d5490320ff6eb2070cd`; every candidate was rejected or unavailable. Dynamic bivariate Poisson improved H/D/A point estimates but paired CIs crossed zero and paired Score LogLoss worsened significantly.
+
 ## [4.11.0-alpha] — 2026-07-08
 
 ### Added
@@ -301,7 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Group Standings Table**: Real-time WC26 group standings in DB (`wc26_group_standings`).
 - **Calibrator Rebuild**: `calibrator_wc.json` rebuilt with 69 WC26 matches, threshold lowered to 20.
 - **Shared Fusion Engine**: `core/engine.py` — 7-component sequential fusion, single implementation serving CLI + API + Dashboard.
-- **Weight Proposal Gate**: `weight_proposal.py` + `backtest_gate.py` — institutionalized learning with mandatory backtest verification.
+- **Weight Proposal Gate**: candidate experiments and `model_change_proposals` enforce paired walk-forward evidence before manual promotion.
 - **Golden Prediction Fixtures**: 4 characterization tests locking down prediction outputs.
 - Complete PRD/Architecture document (918 lines).
 

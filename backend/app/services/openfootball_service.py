@@ -16,7 +16,6 @@ from app.models.enums import TeamType
 from app.services.team_resolver import TeamResolver
 from app.utils.datetime import utc_now
 from app.utils.http import fetch_json
-from app.utils.text import normalize_text
 
 logger = get_logger(__name__)
 

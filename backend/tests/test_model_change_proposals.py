@@ -1,6 +1,8 @@
 import json
 import sqlite3
 
+import pytest
+
 from app.services.model_change_proposals import (
     build_data_repair_proposal_from_repair_report,
     build_learning_log_weight_proposal,
@@ -172,6 +174,46 @@ def test_learning_log_weight_proposal_requires_walk_forward_even_with_many_logs(
     assert proposal.gate_decision["reasons"] == ["requires_paired_walk_forward_experiment"]
 
 
+def test_learning_log_weight_proposal_filters_status_and_model_cohort(tmp_path):
+    db_path = tmp_path / "proposal.db"
+    conn = _proposal_db(db_path)
+    conn.execute("ALTER TABLE prediction_learning_log ADD COLUMN prediction_run_id TEXT")
+    conn.execute(
+        "CREATE TABLE prediction_runs (id TEXT PRIMARY KEY, model_version TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO prediction_runs VALUES (?, ?)",
+        [
+            ("run-current", "4.12.0-alpha"),
+            ("run-old", "4.11.0-alpha"),
+            ("run-pending", "4.12.0-alpha"),
+        ],
+    )
+    rows = [
+        ("active", 1.0, "full", 0.01, 0.0, 0.0, None, None, 2.0, 0, 1, "run-current"),
+        ("active", 1.0, "full", 0.50, 0.0, 0.0, None, None, 2.0, 0, 1, "run-old"),
+        ("pending_review", 1.0, "full", 0.90, 0.0, 0.0, None, None, 2.0, 0, 1, "run-pending"),
+    ]
+    conn.executemany(
+        "INSERT INTO prediction_learning_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+    proposal = build_learning_log_weight_proposal(
+        db_path,
+        sample_registry_hash="abc",
+        min_active_logs=2,
+        required_model_cohort="4.12.0-alpha",
+    )
+
+    assert proposal.metrics["active_learning_logs"] == 1
+    assert proposal.metrics["mean_marginals"]["dc_marginal"] == 0.01
+    assert proposal.evidence["required_model_cohort"] == "4.12.0-alpha"
+    assert proposal.status == "proposal_rejected"
+
+
 def test_registry_feature_rule_proposal_tracks_data_quality_repairs():
     registry = {
         "registry_hash": "hash-1",
@@ -322,3 +364,69 @@ def test_status_update_records_review_without_production_mutation(tmp_path):
     assert row[0] == "approved_for_shadow"
     assert evidence["latest_review"]["production_mutation"] is False
     assert evidence["latest_review"]["reviewed_by"] == "Andy"
+
+
+def test_status_update_rejects_manual_shadow_approval_when_gate_failed(tmp_path):
+    db_path = tmp_path / "proposal.db"
+    conn = _proposal_db(db_path)
+    conn.close()
+    proposal = build_proposal_from_experiment(
+        {
+            "candidate_name": "dynamic_dixon_coles",
+            "sample_registry_hash": "abc",
+            "gate_decision": {"passed": False},
+        }
+    )
+    inserted = persist_model_change_proposal(db_path, proposal)
+
+    with pytest.raises(ValueError, match="gate_decision"):
+        update_model_change_proposal_status(
+            db_path,
+            proposal_id=inserted["id"],
+            new_status="approved_for_shadow",
+            reviewed_by="Andy",
+            manual_approval=True,
+        )
+
+
+def test_promotion_requires_shadow_stage_and_same_cohort_evidence(tmp_path):
+    db_path = tmp_path / "proposal.db"
+    conn = _proposal_db(db_path)
+    conn.close()
+    proposal = build_proposal_from_experiment(
+        {
+            "candidate_name": "dynamic_dixon_coles",
+            "sample_registry_hash": "abc",
+            "required_model_cohort": "4.12.0-alpha",
+            "n_samples": 40,
+            "gate_decision": {"passed": True},
+        }
+    )
+    inserted = persist_model_change_proposal(db_path, proposal)
+
+    with pytest.raises(ValueError, match="prior approved_for_shadow"):
+        update_model_change_proposal_status(
+            db_path,
+            proposal_id=inserted["id"],
+            new_status="promoted_config",
+            reviewed_by="Andy",
+            manual_approval=True,
+        )
+
+    update_model_change_proposal_status(
+        db_path,
+        proposal_id=inserted["id"],
+        new_status="approved_for_shadow",
+        reviewed_by="Andy",
+        manual_approval=True,
+    )
+    result = update_model_change_proposal_status(
+        db_path,
+        proposal_id=inserted["id"],
+        new_status="promoted_config",
+        reviewed_by="Andy",
+        manual_approval=True,
+    )
+
+    assert result["new_status"] == "promoted_config"
+    assert result["production_mutation"] is False

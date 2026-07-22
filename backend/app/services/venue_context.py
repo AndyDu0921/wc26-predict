@@ -23,7 +23,6 @@ Background:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 # ── WC26 Team → Country mapping (all 48 qualified teams) ──────────────
 

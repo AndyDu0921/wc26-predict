@@ -1,8 +1,8 @@
-"""SignalAdjusterSync — lightweight synchronous signal adjustment for artifact pipeline.
+"""Lightweight synchronous signal adjustment for the canonical artifact pipeline.
 
-Unlike the async SignalAdjuster (which requires DB for dynamic multipliers and
-rebuilds xG matrices), this version applies simple probability-level adjustments
-based on approved signals. Designed for the sync prediction_core.py pipeline.
+This path reads approved signals from SQLite and applies bounded
+probability-level adjustments. It does not manage dynamic multipliers or
+rebuild xG matrices.
 
 Usage:
     from app.services.signal_adjuster_sync import apply_signal_adjustments
@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.services.sqlite_paths import current_sync_sqlite_path
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
+logger = logging.getLogger(__name__)
 
 # Signal type → max probability shift
 ADJUSTMENT_MAX: dict[str, float] = {
@@ -47,17 +47,29 @@ def load_approved_signals(
     home_team: str,
     away_team: str,
     match_id: str | None = None,
+    *,
+    as_of_time: str | datetime | None = None,
+    kickoff_at: str | datetime | None = None,
+    db_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Load APPROVED + enters_model=1 signals relevant to either team.
+    """Load traceable approved signals available at the prediction cutoff.
 
     Returns list of dicts suitable for apply_signal_adjustments().
     """
-    if not DB_PATH.exists():
+    resolved_db_path = Path(db_path).resolve() if db_path else current_sync_sqlite_path()
+    if not resolved_db_path.exists():
         return []
 
+    as_of = _parse_dt(as_of_time) or datetime.now(UTC)
+    kickoff = _parse_dt(kickoff_at)
+
     try:
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect(str(resolved_db_path))
         conn.row_factory = sqlite3.Row
+
+        if not _has_table(conn, "evidence_items"):
+            conn.close()
+            return []
 
         # Find team IDs by name
         home_row = conn.execute(
@@ -100,13 +112,16 @@ def load_approved_signals(
             f"""SELECT ns.id, ns.signal_type, ns.impact_direction, ns.confidence,
                        ns.summary_zh, ns.player_name, ns.claim, ns.source_reliability,
                        ns.review_status, ns.enters_model, ns.evidence_id, ns.team_id,
+                       ns.created_at, ns.reviewed_at, ns.effective_until,
+                       ei.available_at AS evidence_available_at,
                        t.name as team_name
                 FROM news_signals ns
                 LEFT JOIN teams t ON ns.team_id = t.id
+                JOIN evidence_items ei
+                  ON CAST(ei.id AS TEXT) = CAST(ns.evidence_id AS TEXT)
                 WHERE (ns.review_status = 'approved' OR ns.review_status = 'APPROVED')
                   AND ns.enters_model = 1
                   AND ns.evidence_id IS NOT NULL
-                  AND (ns.effective_until IS NULL OR ns.effective_until > CURRENT_TIMESTAMP)
                   {scope_clause}
                   AND (ns.team_id IN ({placeholders})
                        OR ns.team_id IS NULL)
@@ -118,6 +133,17 @@ def load_approved_signals(
 
         signals = []
         for r in rows:
+            available_at = _parse_dt(r["evidence_available_at"])
+            reviewed_at = _parse_dt(r["reviewed_at"])
+            effective_until = _parse_dt(r["effective_until"])
+            if available_at is None or reviewed_at is None:
+                continue
+            if available_at > as_of or reviewed_at > as_of:
+                continue
+            if kickoff and (available_at > kickoff or reviewed_at > kickoff):
+                continue
+            if effective_until is not None and effective_until <= as_of:
+                continue
             sig = {
                 "id": r["id"],
                 "signal_type": r["signal_type"],
@@ -129,6 +155,8 @@ def load_approved_signals(
                 "source_reliability": r["source_reliability"],
                 "team_name": r["team_name"],
                 "evidence_id": r["evidence_id"],
+                "evidence_available_at": available_at.isoformat(),
+                "reviewed_at": reviewed_at.isoformat(),
             }
             signals.append(sig)
 
@@ -148,6 +176,9 @@ def apply_signal_adjustments(
     away_team: str,
     match_id: str | None = None,
     signals: list[dict[str, Any]] | None = None,
+    as_of_time: str | datetime | None = None,
+    kickoff_at: str | datetime | None = None,
+    db_path: str | Path | None = None,
 ) -> tuple[float, float, float, list[str]]:
     """Apply approved news signals as probability adjustments.
 
@@ -162,7 +193,14 @@ def apply_signal_adjustments(
     risk_tags: list[str] = []
 
     if signals is None:
-        signals = load_approved_signals(home_team, away_team, match_id=match_id)
+        signals = load_approved_signals(
+            home_team,
+            away_team,
+            match_id=match_id,
+            as_of_time=as_of_time,
+            kickoff_at=kickoff_at,
+            db_path=db_path,
+        )
 
     if not signals:
         return home_prob, draw_prob, away_prob, risk_tags
@@ -201,8 +239,8 @@ def apply_signal_adjustments(
             continue
 
     # Cap combined adjustments
-    home_net = min(home_positive - home_negative, 0.20)
-    away_net = min(away_positive - away_negative, 0.20)
+    home_net = max(-0.20, min(home_positive - home_negative, 0.20))
+    away_net = max(-0.20, min(away_positive - away_negative, 0.20))
 
     # Apply: shift probability from draw and the other team
     if home_net > 0:
@@ -236,3 +274,25 @@ def apply_signal_adjustments(
         )
 
     return new_home, new_draw, new_away, risk_tags
+
+
+def _has_table(conn: sqlite3.Connection, table_name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone() is not None
+
+
+def _parse_dt(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

@@ -13,7 +13,7 @@ import hashlib
 import json
 import re
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -212,6 +212,7 @@ def collect_match_evidence(
     home_team: str | None = None,
     away_team: str | None = None,
     limit_articles: int = 20,
+    as_of_time: str | None = None,
 ) -> dict[str, Any]:
     """Import traceable local evidence into the V4.10 ledger."""
     conn = sqlite3.connect(str(db_path))
@@ -222,9 +223,14 @@ def collect_match_evidence(
     try:
         ensure_information_state_tables(conn)
         resolved = _resolve_match_context(conn, match_id=match_id, home_team=home_team, away_team=away_team)
-        candidates.extend(_evidence_from_latest_pre_match_snapshot(conn, resolved))
-        candidates.extend(_evidence_from_manual_events(conn, resolved))
-        candidates.extend(_evidence_from_news_articles(conn, resolved, limit_articles=limit_articles))
+        candidates.extend(_evidence_from_latest_pre_match_snapshot(conn, resolved, as_of_time=as_of_time))
+        candidates.extend(_evidence_from_manual_events(conn, resolved, as_of_time=as_of_time))
+        candidates.extend(_evidence_from_news_articles(
+            conn,
+            resolved,
+            limit_articles=limit_articles,
+            as_of_time=as_of_time,
+        ))
     finally:
         conn.close()
 
@@ -243,6 +249,7 @@ def collect_match_evidence(
         "match_id": match_id,
         "home_team": home_team,
         "away_team": away_team,
+        "as_of_time": as_of_time,
         "candidate_count": len(candidates),
         "inserted": inserted,
         "skipped": skipped,
@@ -257,6 +264,7 @@ def extract_information_signals(
     home_team: str | None = None,
     away_team: str | None = None,
     kickoff_at: str | None = None,
+    as_of_time: str | None = None,
     persist: bool = True,
 ) -> dict[str, Any]:
     """Extract deterministic shadow signals from ledger evidence."""
@@ -269,6 +277,7 @@ def extract_information_signals(
             match_id=match_id,
             home_team=home_team,
             away_team=away_team,
+            as_of_time=as_of_time,
         )
         signals = []
         for row in evidence_rows:
@@ -345,6 +354,7 @@ def audit_match_information_state(
     home_team: str | None = None,
     away_team: str | None = None,
     kickoff_at: str | None = None,
+    as_of_time: str | None = None,
 ) -> dict[str, Any]:
     """Return a non-blocking pre-match information quality gate."""
     conn = sqlite3.connect(str(db_path))
@@ -353,17 +363,23 @@ def audit_match_information_state(
         ensure_information_state_tables(conn)
         resolved = _resolve_match_context(conn, match_id=match_id, home_team=home_team, away_team=away_team)
         effective_kickoff = kickoff_at or resolved.get("kickoff_at")
-        evidence_rows = _load_evidence_rows(
+        all_evidence_rows = _load_evidence_rows(
             conn,
             match_id=resolved.get("match_id") or match_id,
             home_team=resolved.get("home_team") or home_team,
             away_team=resolved.get("away_team") or away_team,
+        )
+        evidence_rows = _filter_rows_by_as_of(
+            all_evidence_rows,
+            "available_at",
+            as_of_time,
         )
         signal_rows = _load_signal_rows(
             conn,
             match_id=resolved.get("match_id") or match_id,
             home_team=resolved.get("home_team") or home_team,
             away_team=resolved.get("away_team") or away_team,
+            as_of_time=as_of_time,
         )
     finally:
         conn.close()
@@ -371,11 +387,17 @@ def audit_match_information_state(
     evidence_types = {str(row["evidence_type"]) for row in evidence_rows}
     active_signals = [row for row in signal_rows if str(row["status"]) in {"shadow", "approved_for_shadow"}]
     signal_types = {str(row["signal_type"]) for row in active_signals}
-    future_items = [
+    future_kickoff_items = [
         row["id"]
         for row in evidence_rows
         if _is_after(row["available_at"], effective_kickoff)
     ]
+    future_as_of_items = [
+        row["id"]
+        for row in all_evidence_rows
+        if _is_after(row["available_at"], as_of_time)
+    ] if as_of_time else []
+    kickoff_known = _parse_dt(effective_kickoff) is not None
     checks = {
         "market_odds": "market_odds" in evidence_types,
         "weather": "weather" in evidence_types,
@@ -384,7 +406,12 @@ def audit_match_information_state(
             {"injury", "lineup", "manual_event"} & evidence_types
             or {"injury", "suspension", "return", "lineup", "rotation"} & signal_types
         ),
-        "all_evidence_before_kickoff": len(future_items) == 0,
+        "kickoff_known": kickoff_known,
+        "all_evidence_before_kickoff": kickoff_known and len(future_kickoff_items) == 0,
+        "all_evidence_available_by_as_of": bool(as_of_time) and all(
+            not _is_after(row["available_at"], as_of_time)
+            for row in evidence_rows
+        ),
         "has_structured_signals": bool(active_signals),
     }
     missing = [key for key, value in checks.items() if not value]
@@ -395,15 +422,23 @@ def audit_match_information_state(
         "home_team": resolved.get("home_team") or home_team,
         "away_team": resolved.get("away_team") or away_team,
         "kickoff_at": effective_kickoff,
+        "as_of_time": as_of_time,
         "checks": checks,
         "missing": missing,
         "evidence_count": len(evidence_rows),
+        "excluded_post_as_of_evidence_count": len(future_as_of_items),
         "signal_count": len(signal_rows),
         "active_shadow_signal_count": len(active_signals),
-        "future_evidence_ids": future_items,
+        "future_evidence_ids": future_kickoff_items,
+        "post_as_of_evidence_ids": future_as_of_items,
         "quality_score": round(score, 4),
         "confidence_modifier": round(0.85 + 0.15 * score, 4),
-        "strict_ready": checks["all_evidence_before_kickoff"] and checks["market_odds"] and checks["weather"],
+        "strict_ready": (
+            checks["all_evidence_before_kickoff"]
+            and checks["all_evidence_available_by_as_of"]
+            and checks["market_odds"]
+            and checks["weather"]
+        ),
         "notes": "Low quality does not block prediction; it must be shown and snapshotted.",
     }
 
@@ -415,6 +450,7 @@ def build_match_information_state_snapshot(
     home_team: str | None = None,
     away_team: str | None = None,
     kickoff_at: str | None = None,
+    as_of_time: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the V4.10 information-state payload for prediction snapshots."""
     try:
@@ -424,6 +460,7 @@ def build_match_information_state_snapshot(
             home_team=home_team,
             away_team=away_team,
             kickoff_at=kickoff_at,
+            as_of_time=as_of_time,
         )
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -433,6 +470,7 @@ def build_match_information_state_snapshot(
                 match_id=audit.get("match_id") or match_id,
                 home_team=audit.get("home_team") or home_team,
                 away_team=audit.get("away_team") or away_team,
+                as_of_time=as_of_time,
             )]
         finally:
             conn.close()
@@ -540,22 +578,28 @@ def _normalize_evidence(item: EvidenceInput) -> dict[str, Any]:
     }
 
 
-def _evidence_from_latest_pre_match_snapshot(conn: sqlite3.Connection, context: dict[str, str | None]) -> list[EvidenceInput]:
+def _evidence_from_latest_pre_match_snapshot(
+    conn: sqlite3.Connection,
+    context: dict[str, str | None],
+    *,
+    as_of_time: str | None,
+) -> list[EvidenceInput]:
     if not _has_table(conn, "pre_match_snapshots"):
         return []
     filters, params = _match_filters(context)
     if not filters:
         return []
-    row = conn.execute(
+    rows = conn.execute(
         f"""
         SELECT *
         FROM pre_match_snapshots
         WHERE {' OR '.join(filters)}
         ORDER BY snapshot_at DESC
-        LIMIT 1
         """,
         params,
-    ).fetchone()
+    ).fetchall()
+    rows = _filter_rows_by_as_of(rows, "snapshot_at", as_of_time)
+    row = rows[0] if rows else None
     if row is None:
         return []
     items: list[EvidenceInput] = []
@@ -588,7 +632,12 @@ def _evidence_from_latest_pre_match_snapshot(conn: sqlite3.Connection, context: 
     return items
 
 
-def _evidence_from_manual_events(conn: sqlite3.Connection, context: dict[str, str | None]) -> list[EvidenceInput]:
+def _evidence_from_manual_events(
+    conn: sqlite3.Connection,
+    context: dict[str, str | None],
+    *,
+    as_of_time: str | None,
+) -> list[EvidenceInput]:
     if not _has_table(conn, "manual_events"):
         return []
     filters = []
@@ -612,6 +661,7 @@ def _evidence_from_manual_events(conn: sqlite3.Connection, context: dict[str, st
         """,
         params,
     ).fetchall()
+    rows = _filter_rows_by_as_of(rows, "created_at", as_of_time)
     items: list[EvidenceInput] = []
     for row in rows:
         source_url = row["source_url"]
@@ -650,6 +700,7 @@ def _evidence_from_news_articles(
     context: dict[str, str | None],
     *,
     limit_articles: int,
+    as_of_time: str | None,
 ) -> list[EvidenceInput]:
     if not _has_table(conn, "news_articles"):
         return []
@@ -669,8 +720,10 @@ def _evidence_from_news_articles(
         ORDER BY COALESCE(published_at, fetched_at) DESC
         LIMIT ?
         """,
-        [*params, limit_articles],
+        [*params, max(limit_articles * 4, limit_articles)],
     ).fetchall()
+    rows = _filter_rows_by_as_of(rows, "published_at", as_of_time, fallback_column="fetched_at")
+    rows = rows[:limit_articles]
     return [
         EvidenceInput(
             evidence_type="news",
@@ -698,12 +751,13 @@ def _load_evidence_rows(
     match_id: str | None,
     home_team: str | None,
     away_team: str | None,
+    as_of_time: str | None = None,
 ) -> list[sqlite3.Row]:
     ensure_information_state_tables(conn)
     filters, params = _match_filters({"match_id": match_id, "home_team": home_team, "away_team": away_team})
     if not filters:
         return []
-    return conn.execute(
+    rows = conn.execute(
         f"""
         SELECT *
         FROM evidence_items
@@ -712,6 +766,7 @@ def _load_evidence_rows(
         """,
         params,
     ).fetchall()
+    return _filter_rows_by_as_of(rows, "available_at", as_of_time)
 
 
 def _load_signal_rows(
@@ -720,6 +775,7 @@ def _load_signal_rows(
     match_id: str | None,
     home_team: str | None,
     away_team: str | None,
+    as_of_time: str | None = None,
 ) -> list[sqlite3.Row]:
     ensure_information_state_tables(conn)
     teams = [team for team in (home_team, away_team) if team]
@@ -736,7 +792,7 @@ def _load_signal_rows(
     else:
         where_sql = f"team IN ({','.join('?' for _ in teams)})"
         params = teams
-    return conn.execute(
+    rows = conn.execute(
         f"""
         SELECT *
         FROM information_state_signals
@@ -745,6 +801,7 @@ def _load_signal_rows(
         """,
         params,
     ).fetchall()
+    return _filter_rows_by_as_of(rows, "available_at", as_of_time)
 
 
 def _signals_from_evidence(row: sqlite3.Row, *, kickoff_at: str | None) -> list[dict[str, Any]]:
@@ -1140,6 +1197,30 @@ def _is_after(left: Any, right: Any) -> bool:
     left_dt = _parse_dt(left)
     right_dt = _parse_dt(right)
     return bool(left_dt and right_dt and left_dt > right_dt)
+
+
+def _filter_rows_by_as_of(
+    rows: list[sqlite3.Row],
+    column: str,
+    as_of_time: str | None,
+    *,
+    fallback_column: str | None = None,
+) -> list[sqlite3.Row]:
+    """Keep only records demonstrably available at the prediction freeze time."""
+    if not as_of_time:
+        return list(rows)
+    cutoff = _parse_dt(as_of_time)
+    if cutoff is None:
+        return []
+    filtered: list[sqlite3.Row] = []
+    for row in rows:
+        raw = row[column] if column in row.keys() else None
+        if raw in (None, "") and fallback_column and fallback_column in row.keys():
+            raw = row[fallback_column]
+        available = _parse_dt(raw)
+        if available is not None and available <= cutoff:
+            filtered.append(row)
+    return filtered
 
 
 def _parse_dt(raw: Any) -> datetime | None:

@@ -3,7 +3,7 @@
 This is a research-only component: it translates player availability records
 into auditable xG modifier candidates, but it does not mutate production
 probabilities or weights.  The prediction pipeline can store this payload as
-shadow evidence; BacktestGate must approve any future production use.
+shadow evidence; paired temporal experiment gates must approve future production use.
 """
 
 from __future__ import annotations
@@ -15,10 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from app.services.injury_data import InjuryDataService, InjuryRecord
+from app.services.sqlite_paths import current_sync_sqlite_path
 
-
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_DB_PATH = BACKEND_DIR / "data" / "local_stage2.db"
 
 STATUS_MINUTES_DELTA = {
     "out": -90.0,
@@ -97,7 +95,11 @@ def build_player_availability_shadow(
         records = InjuryDataService().load()
     catalog = player_catalog
     if catalog is None:
-        catalog = _load_player_catalog(db_path or DEFAULT_DB_PATH, home_team, away_team)
+        catalog = _load_player_catalog(
+            db_path or current_sync_sqlite_path(),
+            home_team,
+            away_team,
+        )
 
     if not records:
         return PlayerAvailabilitySnapshot(

@@ -4,7 +4,6 @@ All odds providers (API-Football, The Odds API, Football-Data.co.uk, etc.)
 must implement this interface.
 """
 from __future__ import annotations
-import logging
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass

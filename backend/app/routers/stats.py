@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
-from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query, Request
 from redis import Redis
@@ -27,6 +25,7 @@ from app.schemas.stats import (
     RecentThirtySummary,
 )
 from app.services.calibration import IsotonicCalibrator
+from app.version import VERSION
 from app.services.football_data_service import FootballDataService
 
 logger = logging.getLogger(__name__)
@@ -173,7 +172,7 @@ async def get_accuracy_stats(request: Request, db: AsyncSession = Depends(get_db
         by_competition=by_competition,
         recent_30=recent_30,
         calibration_applied=calibrator.is_fitted,
-        model_version=latest_model_version or settings.prediction_model_version,
+        model_version=latest_model_version or VERSION,
     )
     await _cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
     return response

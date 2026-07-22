@@ -17,7 +17,6 @@ import os
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
 
 import httpx
 

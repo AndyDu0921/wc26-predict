@@ -8,6 +8,7 @@ trigger so API/worker predictions do not bypass snapshots.
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from datetime import UTC, datetime, timedelta
 import os
@@ -23,6 +24,7 @@ from app.config import ROOT_DIR
 from app.exceptions import NotFoundError
 from app.models import Match, PredictionRun
 from app.models.enums import PredictionRunType
+from app.services.canonical_prediction_core import PredictionInvocation, execute_prediction_core
 from app.services.closed_loop_feature_snapshot import (
     persist_feature_snapshot_from_latest_prematch,
 )
@@ -32,7 +34,6 @@ from app.services.information_state_engine import (
     extract_information_signals,
     score_information_signals,
 )
-from app.services.prediction_pipeline import PredictionPipeline
 from app.services.sqlite_paths import assert_canonical_sqlite_alignment
 
 
@@ -47,32 +48,44 @@ async def run_canonical_prediction(
     sync_db_path = assert_canonical_sqlite_alignment()
     match = await _load_match(db, match_id)
     prediction_run_type = PredictionRunType(run_type)
-    as_of_time = _resolve_as_of_time(match, prediction_run_type)
+    generation_started_at = datetime.now(UTC)
+    requested_as_of_time = _resolve_requested_as_of_time(match, prediction_run_type)
     kickoff_at = _iso(match.match_date)
     home_team = match.home_team.name
     away_team = match.away_team.name
 
-    _materialize_information_state(
+    information_state_audit = _materialize_information_state(
         db_path=sync_db_path,
         match_id=str(match.id),
         home_team=home_team,
         away_team=away_team,
         kickoff_at=kickoff_at,
+        as_of_time=generation_started_at.isoformat(),
     )
 
-    pipeline = PredictionPipeline.from_artifacts(mode=mode)
-    result = pipeline.predict_sync(
-        home_team,
-        away_team,
-        match.competition,
+    invocation = PredictionInvocation(
+        home_team=home_team,
+        away_team=away_team,
+        competition=match.competition,
         is_neutral=bool(match.is_neutral_venue),
         mode=mode,
         match_id=str(match.id),
-        match_date=kickoff_at,
+        kickoff_at=kickoff_at,
+        stage=str(match.stage or ""),
         venue=match.venue,
         save_snapshot=True,
         enable_market=True,
         enable_weather=True,
+    )
+    result = await _execute_prediction_in_worker_thread(invocation)
+    actual_generation_time = datetime.now(UTC)
+    information_state_audit = _materialize_information_state(
+        db_path=sync_db_path,
+        match_id=str(match.id),
+        home_team=home_team,
+        away_team=away_team,
+        kickoff_at=kickoff_at,
+        as_of_time=actual_generation_time.isoformat(),
     )
     report_path, report_markdown = _write_prediction_report(result)
     run_id = await _insert_prediction_run(
@@ -80,7 +93,9 @@ async def run_canonical_prediction(
         match=match,
         result=result,
         run_type=prediction_run_type.value,
-        as_of_time=as_of_time,
+        as_of_time=actual_generation_time,
+        requested_as_of_time=requested_as_of_time,
+        information_state_audit=information_state_audit,
     )
 
     # Ensure the independent sqlite repair can write without sharing the
@@ -93,13 +108,6 @@ async def run_canonical_prediction(
         report_markdown=report_markdown,
         db_path=sync_db_path,
     )
-    _materialize_information_state(
-        db_path=sync_db_path,
-        match_id=str(match.id),
-        home_team=home_team,
-        away_team=away_team,
-        kickoff_at=kickoff_at,
-    )
     persist_feature_snapshot_from_latest_prematch(sync_db_path, match_id=str(match.id))
 
     run = await _latest_prediction_run(db, match.id, run_type=prediction_run_type.value)
@@ -108,6 +116,13 @@ async def run_canonical_prediction(
     if run is None:
         raise RuntimeError(f"Canonical prediction did not persist prediction_run for match_id={match.id}")
     return run.id or run_id
+
+
+async def _execute_prediction_in_worker_thread(
+    invocation: PredictionInvocation,
+) -> Any:
+    """Keep blocking model/network work outside the application event loop."""
+    return await asyncio.to_thread(execute_prediction_core, invocation)
 
 
 async def _load_match(db: AsyncSession, match_id: UUID) -> Match:
@@ -144,6 +159,8 @@ async def _insert_prediction_run(
     result: Any,
     run_type: str,
     as_of_time: datetime,
+    requested_as_of_time: datetime | None,
+    information_state_audit: dict[str, Any],
 ) -> UUID:
     payload = result.to_dict()
     prediction = payload.get("prediction", {})
@@ -164,11 +181,17 @@ async def _insert_prediction_run(
         input_feature_snapshot={
             "schema_version": "prediction_run_feature_snapshot.v2",
             "source": "canonical_prediction_runner",
+            "actual_generation_time": as_of_time.isoformat(),
+            "requested_horizon_time": (
+                requested_as_of_time.isoformat() if requested_as_of_time else None
+            ),
+            "requested_run_type": run_type,
             "prediction": prediction,
             "component_probs": payload.get("component_probs", {}),
             "missing_inputs": payload.get("missing_inputs", []),
             "source_status": payload.get("source_status", {}),
             "degraded_reasons": payload.get("degraded_reasons", []),
+            "information_state_audit": information_state_audit,
         },
         approved_signals=[
             item for item in (result.active_events or []) if isinstance(item, dict)
@@ -179,7 +202,7 @@ async def _insert_prediction_run(
     return run.id
 
 
-def _resolve_as_of_time(match: Match, run_type: PredictionRunType) -> datetime:
+def _resolve_requested_as_of_time(match: Match, run_type: PredictionRunType) -> datetime | None:
     kickoff = match.match_date
     if kickoff.tzinfo is None:
         kickoff = kickoff.replace(tzinfo=UTC)
@@ -187,7 +210,17 @@ def _resolve_as_of_time(match: Match, run_type: PredictionRunType) -> datetime:
         return kickoff - timedelta(hours=24)
     if run_type == PredictionRunType.T_MINUS_3H:
         return kickoff - timedelta(hours=3)
-    return datetime.now(UTC)
+    return None
+
+
+def _parse_generation_time(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 def _iso(value: Any) -> str:
@@ -203,13 +236,15 @@ def _materialize_information_state(
     home_team: str,
     away_team: str,
     kickoff_at: str,
-) -> None:
+    as_of_time: str,
+) -> dict[str, Any]:
     try:
         collect_match_evidence(
             db_path,
             match_id=match_id,
             home_team=home_team,
             away_team=away_team,
+            as_of_time=as_of_time,
         )
         extract_information_signals(
             db_path,
@@ -217,6 +252,7 @@ def _materialize_information_state(
             home_team=home_team,
             away_team=away_team,
             kickoff_at=kickoff_at,
+            as_of_time=as_of_time,
             persist=True,
         )
         score_information_signals(
@@ -225,17 +261,25 @@ def _materialize_information_state(
             home_team=home_team,
             away_team=away_team,
         )
-        audit_match_information_state(
+        return audit_match_information_state(
             db_path,
             match_id=match_id,
             home_team=home_team,
             away_team=away_team,
             kickoff_at=kickoff_at,
+            as_of_time=as_of_time,
         )
-    except Exception:
+    except Exception as exc:
         # Prediction should still be possible when information collection is
         # degraded; the snapshot records missing inputs for later audit.
-        return
+        return {
+            "schema_version": "match_information_state_audit.v1",
+            "quality_score": 0.0,
+            "strict_ready": False,
+            "missing": ["information_state_unavailable"],
+            "error": str(exc),
+            "as_of_time": as_of_time,
+        }
 
 
 def _materialize_prediction_persistence(match_id: str, *, db_path: str | Path) -> None:
@@ -252,15 +296,10 @@ def _write_prediction_report(result: Any) -> tuple[str, str]:
     date_token = _date_token(result.match_date or result.generated_at or datetime.now(UTC).isoformat())
     home = _safe_token(result.home_team)
     away = _safe_token(result.away_team)
-    path = report_dir / f"{date_token}_{home}_vs_{away}_prediction.md"
+    generation_token = _generation_token(result.generated_at)
+    path = report_dir / f"{date_token}_{home}_vs_{away}_prediction_{generation_token}.md"
     markdown = _render_prediction_report(result)
-    if path.exists():
-        try:
-            markdown = path.read_text(encoding="utf-8")
-        except OSError:
-            pass
-    else:
-        path.write_text(markdown, encoding="utf-8")
+    path.write_text(markdown, encoding="utf-8")
     try:
         rel_path = path.resolve().relative_to(ROOT_DIR.resolve()).as_posix()
     except ValueError:
@@ -329,9 +368,9 @@ def _render_prediction_report(result: Any) -> str:
     lines = [
         f"# Prediction: {result.home_team} vs {result.away_team}",
         "",
-        f"Generated: {datetime.now(UTC).isoformat()}",
+        f"Generated: {result.generated_at}",
         f"Match time: {result.match_date or 'unknown'}",
-        f"Pipeline: canonical_prediction_runner -> PredictionPipeline",
+        "Pipeline: canonical_prediction_runner -> PredictionPipeline",
         "",
         "## Probabilities",
         "",
@@ -386,6 +425,11 @@ def _date_token(value: str) -> str:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date().isoformat()
     except ValueError:
         return datetime.now(UTC).date().isoformat()
+
+
+def _generation_token(value: Any) -> str:
+    parsed = _parse_generation_time(value) or datetime.now(UTC)
+    return parsed.strftime("%Y%m%dT%H%M%S%fZ")
 
 
 def _safe_token(value: str) -> str:

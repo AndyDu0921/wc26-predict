@@ -230,9 +230,12 @@ def overdispersed_scoreline(hxg: float, axg: float, max_g: int = 20) -> dict:
         for a in range(max_g):
             pa = axg ** a * math.exp(-axg) / math.factorial(a)
             p = ph * pa
-            if h > a: pp_h += p
-            elif h == a: pp_d += p
-            else: pp_a += p
+            if h > a:
+                pp_h += p
+            elif h == a:
+                pp_d += p
+            else:
+                pp_a += p
 
     # Calibrated NegBin — build full score matrix alongside H/D/A
     nb_h = nb_d = nb_a = 0.0
@@ -244,9 +247,12 @@ def overdispersed_scoreline(hxg: float, axg: float, max_g: int = 20) -> dict:
             pa = negbin_pmf(a, axg_cal, NEGBIN_R)
             p = ph * pa
             row.append(p)
-            if h > a: nb_h += p
-            elif h == a: nb_d += p
-            else: nb_a += p
+            if h > a:
+                nb_h += p
+            elif h == a:
+                nb_d += p
+            else:
+                nb_a += p
         nb_matrix.append(row)
 
     total_nb = nb_h + nb_d + nb_a
@@ -368,7 +374,7 @@ def negbin_score_matrix(
             for a in range(max_g + 1):
                 matrix[h][a] /= total
 
-    # Optional τ correction (Sarmanov-NB model of Michels et al. 2023)
+    # Optional Dixon-Coles-style low-score tau correction.
     if tau_rho is not None:
         matrix = apply_tau_correction(matrix, hxg_cal, axg_cal, tau_rho)
 

@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
+from app.services.dixon_coles import DixonColesModel
 from app.services.player_availability import build_player_availability_shadow
 
 
@@ -57,6 +59,9 @@ CANDIDATE_FAMILIES = {
     "player_availability_shadow": "player_availability",
 }
 
+DYNAMIC_DC_HALF_LIFE_DAYS = 180
+DYNAMIC_DC_MAX_HISTORY_DAYS = 4 * 365
+
 
 @dataclass(frozen=True)
 class ShadowCandidateResult:
@@ -65,6 +70,7 @@ class ShadowCandidateResult:
     probs: dict[str, float] | None = None
     reason: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
+    score_matrix: list[list[float]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -124,7 +130,17 @@ def build_shadow_candidate_prediction(
         "dynamic_bivariate_poisson",
         "bayesian_weighted_dynamic",
     }:
-        history = _load_history(db_path, before=kickoff)
+        participant_pool: set[str] | None = None
+        max_age_days: int | None = None
+        if canonical_name == "dynamic_dixon_coles":
+            participant_pool = _load_world_cup_participant_pool(db_path)
+            max_age_days = DYNAMIC_DC_MAX_HISTORY_DAYS
+        history = _load_history(
+            db_path,
+            before=kickoff,
+            team_pool=participant_pool,
+            max_age_days=max_age_days,
+        )
         if len(history) < 100:
             return ShadowCandidateResult(
                 candidate_name,
@@ -136,6 +152,17 @@ def build_shadow_candidate_prediction(
                     "shadow_only": True,
                 },
             )
+        if canonical_name == "dynamic_dixon_coles":
+            return _dynamic_dixon_coles_candidate(
+                candidate_name,
+                history,
+                home_team=str(row["home_team"]),
+                away_team=str(row["away_team"]),
+                is_neutral=bool(row.get("is_neutral", True)),
+                as_of=kickoff,
+                participant_pool_size=len(participant_pool or ()),
+                max_history_days=max_age_days,
+            )
         lambdas = _dynamic_lambdas(
             history,
             home_team=str(row["home_team"]),
@@ -144,13 +171,14 @@ def build_shadow_candidate_prediction(
             bayesian=canonical_name == "bayesian_weighted_dynamic",
         )
         if canonical_name == "dynamic_bivariate_poisson":
-            probs = _bivariate_poisson_probs(
+            score_matrix = _bivariate_poisson_matrix(
                 lambdas["home_xg"],
                 lambdas["away_xg"],
                 shared_lambda=lambdas["shared_lambda"],
             )
         else:
-            probs = _independent_poisson_probs(lambdas["home_xg"], lambdas["away_xg"])
+            score_matrix = _independent_poisson_matrix(lambdas["home_xg"], lambdas["away_xg"])
+        probs = _matrix_to_probs(score_matrix)
         lambdas["candidate_family"] = candidate_family(candidate_name)
         lambdas["canonical_candidate_name"] = canonical_name
         lambdas["shadow_only"] = True
@@ -160,6 +188,7 @@ def build_shadow_candidate_prediction(
             probs=probs,
             reason="computed_from_pre_match_history",
             payload=lambdas,
+            score_matrix=score_matrix,
         )
 
     if canonical_name == "dirichlet_calibration":
@@ -172,6 +201,87 @@ def build_shadow_candidate_prediction(
         return _covariate_hybrid_candidate(candidate_name, row, db_path=db_path, registry_rows=registry_rows or [])
 
     return ShadowCandidateResult(candidate_name, False, reason="not_implemented")
+
+
+def _dynamic_dixon_coles_candidate(
+    candidate_name: str,
+    history: list[HistoricalMatch],
+    *,
+    home_team: str,
+    away_team: str,
+    is_neutral: bool,
+    as_of: datetime,
+    participant_pool_size: int,
+    max_history_days: int | None,
+) -> ShadowCandidateResult:
+    """Fit a genuine expanding-window Dixon-Coles model for one cutoff."""
+    frame = pd.DataFrame([
+        {
+            "home_team": match.home_team,
+            "away_team": match.away_team,
+            "match_date": match.match_date,
+            "home_goals": match.home_goals,
+            "away_goals": match.away_goals,
+            "competition_weight": 1.0,
+            "is_neutral_venue": match.is_neutral,
+        }
+        for match in history
+    ])
+    try:
+        model = DixonColesModel(half_life_days=DYNAMIC_DC_HALF_LIFE_DAYS)
+        fit = model.fit(frame)
+        prediction = model.predict_match(
+            home_team,
+            away_team,
+            is_neutral_venue=is_neutral,
+        )
+        score_matrix, _ = model.predict_score_matrix(
+            home_team,
+            away_team,
+            is_neutral_venue=is_neutral,
+            max_goals=10,
+        )
+    except Exception as exc:
+        return ShadowCandidateResult(
+            candidate_name,
+            False,
+            reason=f"dixon_coles_fit_failed:{type(exc).__name__}",
+            payload={
+                "history_count": len(history),
+                "as_of": as_of.isoformat(),
+                "shadow_only": True,
+            },
+        )
+    return ShadowCandidateResult(
+        candidate_name,
+        True,
+        probs=_normalize(prediction),
+        reason="expanding_window_dixon_coles",
+        payload={
+            "model_kind": "dixon_coles_low_score_correlation",
+            "history_count": len(history),
+            "as_of": as_of.isoformat(),
+            "half_life_days": model.half_life_days,
+            "max_history_days": max_history_days,
+            "training_scope": (
+                "world_cup_participant_pool"
+                if participant_pool_size
+                else "all_national_teams_fallback"
+            ),
+            "training_team_pool_size": participant_pool_size or None,
+            "discarded_match_max_weight_bound": (
+                round(0.5 ** (max_history_days / model.half_life_days), 8)
+                if max_history_days
+                else None
+            ),
+            "rho": round(float(model.rho), 8),
+            "fit_converged": bool(fit.converged),
+            "fit_message": str(fit.message),
+            "candidate_family": candidate_family(candidate_name),
+            "shadow_only": True,
+        },
+        score_matrix=score_matrix.tolist(),
+    )
 
 
 def candidate_family(candidate_name: str) -> str:
@@ -231,15 +341,45 @@ def _player_availability_shadow(
     )
 
 
-def _load_history(db_path: str | Path, *, before: datetime) -> list[HistoricalMatch]:
+def _load_history(
+    db_path: str | Path,
+    *,
+    before: datetime,
+    team_pool: set[str] | None = None,
+    max_age_days: int | None = None,
+) -> list[HistoricalMatch]:
     path = Path(db_path)
     if not path.exists():
         return []
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     try:
+        match_columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(matches)").fetchall()
+        }
+        team_columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(teams)").fetchall()
+        }
+        scope_filters: list[str] = []
+        if "competition_type" in match_columns:
+            scope_filters.append("m.competition_type = 'national'")
+        if "team_type" in team_columns:
+            scope_filters.extend(("ht.team_type = 'national'", "at.team_type = 'national'"))
+        params: list[Any] = []
+        if team_pool:
+            placeholders = ",".join("?" for _ in team_pool)
+            scope_filters.extend(
+                (
+                    f"ht.name IN ({placeholders})",
+                    f"at.name IN ({placeholders})",
+                )
+            )
+            ordered_pool = sorted(team_pool)
+            params.extend(ordered_pool)
+            params.extend(ordered_pool)
+        scope_sql = "" if not scope_filters else " AND " + " AND ".join(scope_filters)
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 ht.name AS home_team,
                 at.name AS away_team,
@@ -254,14 +394,23 @@ def _load_history(db_path: str | Path, *, before: datetime) -> list[HistoricalMa
             JOIN match_results mr ON m.id = mr.match_id
             WHERE mr.home_goals IS NOT NULL
               AND mr.away_goals IS NOT NULL
-            """
+              {scope_sql}
+            """,
+            params,
         ).fetchall()
     finally:
         conn.close()
     history = []
+    oldest_allowed = (
+        before.timestamp() - max_age_days * 86400
+        if max_age_days is not None
+        else None
+    )
     for item in rows:
         match_dt = _parse_dt(item["match_date"])
         if match_dt is None or match_dt >= before:
+            continue
+        if oldest_allowed is not None and match_dt.timestamp() < oldest_allowed:
             continue
         history.append(
             HistoricalMatch(
@@ -275,6 +424,38 @@ def _load_history(db_path: str | Path, *, before: datetime) -> list[HistoricalMa
             )
         )
     return history
+
+
+def _load_world_cup_participant_pool(db_path: str | Path) -> set[str] | None:
+    """Load pre-tournament participant identities without reading results."""
+    path = Path(db_path)
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(str(path))
+    try:
+        if not any(
+            row[0] == "wc26_schedule"
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        ):
+            return None
+        rows = conn.execute(
+            """
+            SELECT home_team, away_team
+            FROM wc26_schedule
+            WHERE stage = 'Group Stage'
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+    teams = {
+        str(team).strip()
+        for row in rows
+        for team in row
+        if team is not None and str(team).strip()
+    }
+    return teams or None
 
 
 def _dynamic_lambdas(
@@ -300,19 +481,24 @@ def _dynamic_lambdas(
     away_profile = _team_profile(weighted, away_team, global_goal, bayesian=bayesian)
     home_xg = global_home * home_profile["attack"] * away_profile["defense"]
     away_xg = global_away * away_profile["attack"] * home_profile["defense"]
-    draw_rate = sum(
-        weight for match, weight in weighted
-        if match.home_goals == match.away_goals
+    covariance = sum(
+        weight
+        * (match.home_goals - global_home)
+        * (match.away_goals - global_away)
+        for match, weight in weighted
     ) / total_w
-    shared_lambda = min(0.18, max(0.02, draw_rate * 0.18))
+    shared_lambda = min(0.35, max(0.0, covariance))
     return {
         "home_xg": round(_clamp(home_xg, 0.15, 4.5), 6),
         "away_xg": round(_clamp(away_xg, 0.15, 4.5), 6),
         "shared_lambda": round(shared_lambda, 6),
+        "shared_lambda_method": "weighted_goal_covariance_moment_estimator",
         "history_count": len(history),
         "half_life_days": half_life_days,
         "bayesian_shrinkage": bayesian,
-        "evolution_method": "weighted_bayesian_time_decay" if bayesian else "weighted_time_decay",
+        "evolution_method": (
+            "time_decay_empirical_bayes_shrinkage" if bayesian else "weighted_time_decay"
+        ),
         "home_team_profile": home_profile,
         "away_team_profile": away_profile,
     }
@@ -354,21 +540,26 @@ def _team_profile(
     }
 
 
-def _independent_poisson_probs(home_xg: float, away_xg: float, max_goals: int = 8) -> dict[str, float]:
-    mat = [
+def _independent_poisson_matrix(
+    home_xg: float,
+    away_xg: float,
+    max_goals: int = 10,
+) -> list[list[float]]:
+    matrix = [
         [_poisson_pmf(h, home_xg) * _poisson_pmf(a, away_xg) for a in range(max_goals + 1)]
         for h in range(max_goals + 1)
     ]
-    return _matrix_to_probs(mat)
+    total = sum(sum(row) for row in matrix) or 1.0
+    return [[value / total for value in row] for row in matrix]
 
 
-def _bivariate_poisson_probs(
+def _bivariate_poisson_matrix(
     home_xg: float,
     away_xg: float,
     *,
     shared_lambda: float,
-    max_goals: int = 8,
-) -> dict[str, float]:
+    max_goals: int = 10,
+) -> list[list[float]]:
     lam3 = min(shared_lambda, home_xg * 0.35, away_xg * 0.35)
     lam1 = max(home_xg - lam3, 1e-6)
     lam2 = max(away_xg - lam3, 1e-6)
@@ -386,7 +577,8 @@ def _bivariate_poisson_probs(
                 )
             row.append(base * prob)
         mat.append(row)
-    return _matrix_to_probs(mat)
+    total = sum(sum(row) for row in mat) or 1.0
+    return [[value / total for value in row] for row in mat]
 
 
 def _matrix_to_probs(matrix: list[list[float]]) -> dict[str, float]:
@@ -419,22 +611,49 @@ def _dirichlet_like_calibration(
                 "shadow_only": True,
             },
         )
-    # Conservative multiclass calibration proxy: learn only a scalar shrinkage
-    # toward uniform from prior log-loss, never a full Dirichlet parameter set.
+    from sklearn.linear_model import LogisticRegression
+
+    features: list[list[float]] = []
+    targets: list[int] = []
+    for previous_row in previous:
+        actual = _actual_index(
+            previous_row.get("actual_home_goals"),
+            previous_row.get("actual_away_goals"),
+        )
+        if actual is None:
+            continue
+        probs = _normalize(previous_row["current_probs"])
+        features.append([math.log(max(probs[key], 1e-6)) for key in ("home", "draw", "away")])
+        targets.append(actual)
+    if len(set(targets)) < 3:
+        return ShadowCandidateResult(
+            candidate_name,
+            False,
+            reason="prior_samples_missing_one_or_more_outcome_classes",
+            payload={"prior_samples": len(targets), "shadow_only": True},
+        )
+    calibrator = LogisticRegression(C=0.1, max_iter=2000, solver="lbfgs")
+    calibrator.fit(np.asarray(features, dtype=float), np.asarray(targets, dtype=int))
     current = _normalize(row["current_probs"])
-    shrink = _calibration_shrinkage(previous)
-    calibrated = {
-        key: current[key] * (1 - shrink) + (1 / 3) * shrink
-        for key in ("home", "draw", "away")
-    }
+    current_features = np.asarray(
+        [[math.log(max(current[key], 1e-6)) for key in ("home", "draw", "away")]],
+        dtype=float,
+    )
+    raw_prediction = calibrator.predict_proba(current_features)[0]
+    calibrated = {"home": 0.0, "draw": 0.0, "away": 0.0}
+    labels = ("home", "draw", "away")
+    for class_id, probability in zip(calibrator.classes_, raw_prediction, strict=True):
+        calibrated[labels[int(class_id)]] = float(probability)
     return ShadowCandidateResult(
         candidate_name,
         True,
         probs=_normalize(calibrated),
-        reason="scalar_multiclass_shrinkage_from_prior_samples",
+        reason="multinomial_log_probability_calibration",
         payload={
             "prior_samples": len(previous),
-            "shrinkage": shrink,
+            "model_kind": "dirichlet_style_multinomial_log_calibration",
+            "regularization_c": 0.1,
+            "classes": calibrator.classes_.tolist(),
             "candidate_family": candidate_family(candidate_name),
             "shadow_only": True,
         },
@@ -458,16 +677,92 @@ def _stacking_optimizer(
                 "shadow_only": True,
             },
         )
+    from sklearn.linear_model import LogisticRegression
+
+    training_features: list[list[float]] = []
+    targets: list[int] = []
+    for previous_row in previous:
+        feature = _stacking_features(previous_row.get("component_probs"))
+        actual = _actual_index(
+            previous_row.get("actual_home_goals"),
+            previous_row.get("actual_away_goals"),
+        )
+        if feature is None or actual is None:
+            continue
+        training_features.append(feature)
+        targets.append(actual)
+    current_features = _stacking_features(row.get("component_probs"))
+    if current_features is None:
+        return ShadowCandidateResult(
+            candidate_name,
+            False,
+            reason="current_component_probabilities_unavailable",
+        )
+    if len(training_features) < 50 or len(set(targets)) < 3:
+        return ShadowCandidateResult(
+            candidate_name,
+            False,
+            reason=f"insufficient_component_training_rows_{len(training_features)}",
+            payload={"prior_samples": len(previous), "shadow_only": True},
+        )
+    learner = LogisticRegression(C=0.1, max_iter=2000, solver="lbfgs")
+    learner.fit(np.asarray(training_features), np.asarray(targets))
+    predicted = learner.predict_proba(np.asarray([current_features]))[0]
+    labels = ("home", "draw", "away")
+    probs = {label: 0.0 for label in labels}
+    for class_id, probability in zip(learner.classes_, predicted, strict=True):
+        probs[labels[int(class_id)]] = float(probability)
     return ShadowCandidateResult(
         candidate_name,
-        False,
-        reason="component_level_training_payload_unavailable",
+        True,
+        probs=_normalize(probs),
+        reason="expanding_window_multinomial_component_stacking",
         payload={
             "prior_samples": len(previous),
+            "training_rows": len(training_features),
+            "model_kind": "multinomial_logistic_component_stacking",
             "candidate_family": candidate_family(candidate_name),
             "shadow_only": True,
         },
     )
+
+
+def _stacking_features(raw_components: Any) -> list[float] | None:
+    if not isinstance(raw_components, dict):
+        return None
+    aliases = {
+        "dc": ("dc", "dixon_coles"),
+        "enhancer": ("enhancer", "tabular_enhancer"),
+        "negbin": ("negbin", "negative_binomial"),
+        "weibull": ("weibull",),
+        "elo": ("elo", "elo_davidson"),
+        "pi": ("pi", "pi_rating"),
+        "market": ("market", "market_probs", "odds_snapshot"),
+    }
+    feature: list[float] = []
+    available_count = 0
+    for names in aliases.values():
+        value = next((raw_components.get(name) for name in names if raw_components.get(name)), None)
+        triplet = _component_triplet(value)
+        if triplet is None:
+            feature.extend((1 / 3, 1 / 3, 1 / 3, 0.0))
+        else:
+            available_count += 1
+            feature.extend((triplet["home"], triplet["draw"], triplet["away"], 1.0))
+    return feature if available_count >= 3 else None
+
+
+def _component_triplet(raw: Any) -> dict[str, float] | None:
+    if not isinstance(raw, dict):
+        return None
+    candidates = {
+        "home": raw.get("home", raw.get("home_win_prob", raw.get("home_prob"))),
+        "draw": raw.get("draw", raw.get("draw_prob")),
+        "away": raw.get("away", raw.get("away_win_prob", raw.get("away_prob"))),
+    }
+    if any(value is None for value in candidates.values()):
+        return None
+    return _normalize(candidates)
 
 
 def _covariate_hybrid_candidate(
@@ -532,30 +827,16 @@ def _previous_paired_rows(row: dict[str, Any], registry_rows: list[dict[str, Any
     if as_of is None:
         return []
     previous = []
+    required_cohort = str(row.get("model_cohort") or "unknown")
     for candidate in registry_rows:
         if not candidate.get("eligible_for_backtest") or not isinstance(candidate.get("current_probs"), dict):
+            continue
+        if str(candidate.get("model_cohort") or "unknown") != required_cohort:
             continue
         c_time = _parse_dt(candidate.get("kickoff_at") or candidate.get("match_date"))
         if c_time is not None and c_time < as_of:
             previous.append(candidate)
     return previous
-
-
-def _calibration_shrinkage(rows: list[dict[str, Any]]) -> float:
-    losses = []
-    for row in rows:
-        actual = _actual_index(row.get("actual_home_goals"), row.get("actual_away_goals"))
-        if actual is None:
-            continue
-        probs = _normalize(row["current_probs"])
-        losses.append(-math.log(max([probs["home"], probs["draw"], probs["away"]][actual], 1e-12)))
-    if not losses:
-        return 0.0
-    mean_loss = float(np.mean(losses))
-    uniform_loss = -math.log(1 / 3)
-    if mean_loss <= uniform_loss:
-        return 0.0
-    return round(_clamp((mean_loss - uniform_loss) / 2.0, 0.0, 0.20), 6)
 
 
 def _actual_index(home_goals: Any, away_goals: Any) -> int | None:

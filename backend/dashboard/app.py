@@ -80,7 +80,7 @@ st.caption(f"版本 {VERSION} | 你的个人 AI 足球研究工作台")
 st.markdown("""
 ### 欢迎使用 WC26 Predict 本地工作台
 
-这是你的个人 AI 足球分析系统。一切都在本地运行 —— 不上云、不调 API、数据不出你的电脑。
+这是本地足球概率研究工作台。实时赔率、天气、新闻和 LLM 数据源仅在明确配置时调用。
 
 #### 快速导航
 
@@ -96,11 +96,11 @@ st.markdown("""
 #### 系统架构
 
 ```
-历史数据 → 离线训练 → 模型文件 (dc.pkl, enhancer.joblib, ...)
+历史数据 → immutable active bundle
                             ↓
-                 PredictionPipeline / Dashboard
+                 Canonical Prediction Core
                             ↓
-              4 模型融合 (DC + Enhancer + Elo + Pi)
+       DC + Enhancer + NegBin + Weibull + Elo + Pi + Market
                             ↓
                概率输出 (0 token，纯数学计算)
 ```
@@ -109,11 +109,11 @@ st.markdown("""
 # 快速状态卡片
 try:
     from dashboard.db import db
-    from app.services.artifact_registry import load_registry
+    from app.services.artifact_bundle import load_active_bundle
 
     stats = db.get_db_stats()
-    registry = load_registry()
-    trained = registry.get("trained_at", "从未训练")
+    bundle = load_active_bundle()
+    trained = bundle.get("registered_at", "未注册")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -123,7 +123,7 @@ try:
     with col3:
         st.metric("WC26 赛程", f"{stats.get('wc26_schedule', '?')}/104")
     with col4:
-        st.metric("最近训练", str(trained)[:16] if trained else "从未训练")
+        st.metric("Active bundle", str(trained)[:16] if trained else "未注册")
 
 except Exception as e:
     st.warning(f"无法加载系统状态: {e}")
